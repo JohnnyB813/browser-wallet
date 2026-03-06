@@ -6,7 +6,7 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
-import { Address, Wart } from "warthog-ts";
+import { Address, Wart, Funds, TokenPrecision, Liquidity } from "warthog-ts";
 
 interface AccountType {
   id: number;
@@ -16,6 +16,8 @@ interface AccountType {
   balanceUSD: number;
   visible: boolean;
 }
+
+type TransferType = "wart" | "token" | "liquidity";
 
 function SendPage() {
   const navigate = useNavigate();
@@ -32,14 +34,33 @@ function SendPage() {
     setWallet,
     setTmpDestinationWalletState,
     setTmpWartAmountState,
+    setTmpAssetHashState,
+    setTmpTokenAmountState,
+    setTmpPrecisionState,
+    setTmpTransferTypeState,
   } = useWallet();
 
   const [accounts, setAccounts] = useState<AccountType[]>([]);
   const [isDropdownVisible, setDropdownVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [transferType, setTransferType] = useState<TransferType>("wart");
   const [publicAddress, setPublicAddress] = useState<string>("");
-  const [amount, setAmount] = useState<string>("");
-  const [amountError, setAmountError] = useState<string | null>(null);
+  const [addressError, setAddressError] = useState<string | null>(null);
+
+  const [wartAmount, setWartAmount] = useState<string>("");
+  const [wartAmountError, setWartAmountError] = useState<string | null>(null);
+
+  const [assetHash, setAssetHash] = useState<string>("");
+  const [assetHashError, setAssetHashError] = useState<string | null>(null);
+
+  const [tokenAmount, setTokenAmount] = useState<string>("");
+  const [tokenAmountError, setTokenAmountError] = useState<string | null>(null);
+
+  const [precision, setPrecision] = useState(8);
+
+  const [liquidityUnits, setLiquidityUnits] = useState<string>("");
+  const [liquidityError, setLiquidityError] = useState<string | null>(null);
 
   const toggleDropdown = () => setDropdownVisible((prev) => !prev);
 
@@ -50,33 +71,119 @@ function SendPage() {
     setDropdownVisible(false);
   };
 
-  const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPublicAddress(e.target.value);
+  const handleTransferTypeChange = (type: TransferType) => {
+    setTransferType(type);
   };
 
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setAmount(value);
+    setPublicAddress(value);
+    if (!Address.validate(value)) {
+      setAddressError("Invalid address format");
+    } else {
+      setAddressError(null);
+    }
+  };
+
+  const handleWartAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setWartAmount(value);
     const parsed = Wart.parse(value);
     if (parsed === null) {
-      setAmountError("Invalid WART amount");
+      setWartAmountError("Invalid WART amount");
     } else {
-      setAmountError(null);
+      setWartAmountError(null);
+    }
+  };
+
+  const handleAssetHashChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setAssetHash(value);
+    if (value.length !== 64) {
+      setAssetHashError("Asset hash must be 64 characters");
+    } else if (!/^[a-fA-F0-9]+$/.test(value)) {
+      setAssetHashError("Invalid hex");
+    } else {
+      setAssetHashError(null);
+    }
+  };
+
+  const handleTokenAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setTokenAmount(value);
+    const parsed = Funds.parse(value, new TokenPrecision(precision));
+    if (parsed === null) {
+      setTokenAmountError("Invalid amount");
+    } else {
+      setTokenAmountError(null);
+    }
+  };
+
+  const handlePrecisionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = parseInt(e.target.value);
+    setPrecision(value);
+    setTmpPrecisionState(value);
+    const parsed = Funds.parse(tokenAmount, new TokenPrecision(value));
+    if (parsed === null && tokenAmount !== "") {
+      setTokenAmountError("Invalid amount for precision");
+    } else {
+      setTokenAmountError(null);
+    }
+  };
+
+  const handleLiquidityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setLiquidityUnits(value);
+    const parsed = Liquidity.parse(value);
+    if (parsed === null) {
+      setLiquidityError("Invalid liquidity units");
+    } else {
+      setLiquidityError(null);
     }
   };
 
   const handelSubmit = () => {
-    if (publicAddress === "") {
-      setError("Please enter a public address");
-    } else if (!Address.validate(publicAddress)) {
-      setError("Invalid address format");
-    } else if (amount === "" || amountError) {
-      setError("Please enter a valid amount");
-    } else {
-      setTmpDestinationWalletState(publicAddress);
-      setTmpWartAmountState(amount);
-      navigate("/sendstep2");
+    setError(null);
+    setTmpTransferTypeState(transferType);
+
+    if (!publicAddress || addressError) {
+      setError("Please enter a valid address");
+      return;
     }
+
+    if (transferType === "wart") {
+      if (!wartAmount || wartAmountError) {
+        setError("Please enter a valid WART amount");
+        return;
+      }
+      setTmpWartAmountState(wartAmount);
+    } else if (transferType === "token") {
+      if (!assetHash || assetHashError) {
+        setError("Please enter a valid asset hash");
+        return;
+      }
+      if (!tokenAmount || tokenAmountError) {
+        setError("Please enter a valid token amount");
+        return;
+      }
+      setTmpAssetHashState(assetHash);
+      setTmpTokenAmountState(tokenAmount);
+      setTmpPrecisionState(precision);
+    } else if (transferType === "liquidity") {
+      if (!assetHash || assetHashError) {
+        setError("Please enter a valid asset hash");
+        return;
+      }
+      if (!liquidityUnits || liquidityError) {
+        setError("Please enter valid liquidity units");
+        return;
+      }
+      setTmpAssetHashState(assetHash);
+      setTmpTokenAmountState(liquidityUnits);
+    }
+
+    setTmpDestinationWalletState(publicAddress);
+    navigate("/sendstep2");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -87,11 +194,7 @@ function SendPage() {
 
   useEffect(() => {
     if (nameList.length !== walletList.length) {
-      console.log(
-        `**** unmatched error in nameList and walletList:`,
-        nameList.length,
-        walletList.length,
-      );
+      console.log(`**** error:`, nameList.length, walletList.length);
     } else {
       setAccounts(
         nameList.map((name, index) => ({
@@ -106,9 +209,55 @@ function SendPage() {
     }
   }, [walletList, nameList, visibleWalletList]);
 
+  const isFormValid = () => {
+    if (!publicAddress || addressError) return false;
+    if (transferType === "wart") return wartAmount && !wartAmountError;
+    if (transferType === "token")
+      return assetHash && !assetHashError && tokenAmount && !tokenAmountError;
+    if (transferType === "liquidity")
+      return assetHash && !assetHashError && liquidityUnits && !liquidityError;
+    return false;
+  };
+
   return (
     <div className="min-h-screen container relative">
       <Header title="Send" />
+
+      <div className="mt-4">
+        <p className="text-white text-sm">Transfer Type</p>
+        <div className="flex gap-2 mt-2">
+          <button
+            className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
+              transferType === "wart"
+                ? "bg-primary text-black"
+                : "border border-primary text-primary hover:border-primary/80"
+            }`}
+            onClick={() => handleTransferTypeChange("wart")}
+          >
+            WART
+          </button>
+          <button
+            className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
+              transferType === "token"
+                ? "bg-primary text-black"
+                : "border border-primary text-primary hover:border-primary/80"
+            }`}
+            onClick={() => handleTransferTypeChange("token")}
+          >
+            Token
+          </button>
+          <button
+            className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
+              transferType === "liquidity"
+                ? "bg-primary text-black"
+                : "border border-primary text-primary hover:border-primary/80"
+            }`}
+            onClick={() => handleTransferTypeChange("liquidity")}
+          >
+            Liquidity
+          </button>
+        </div>
+      </div>
 
       <div className="mt-4">
         <p className="text-white text-sm">From</p>
@@ -118,12 +267,7 @@ function SendPage() {
             onClick={toggleDropdown}
           >
             <div className="flex items-center gap-3">
-              {/* <img
-                                className="w-12 h-12 rounded-full object-cover"
-                                src={"profile-image.png"}
-                                alt="Profile"
-                            /> */}
-              {<Jazzicon diameter={48} seed={selectedWalletIndex} />}
+              <Jazzicon diameter={48} seed={selectedWalletIndex} />
               <div>
                 <p className="text-white text-lg font-semibold">{name}</p>
                 <p className="text-white/50 text-xs">
@@ -141,14 +285,7 @@ function SendPage() {
                   className="flex items-center gap-3 p-4 hover:bg-white/10 cursor-pointer"
                   onClick={() => selectUser(account.id)}
                 >
-                  {/* <img
-                                        className="w-10 h-10 rounded-full object-cover"
-                                        src={"profile-image.png"}
-                                        alt={account.name}
-                                    /> */}
-                  <div className="w-10 h-10">
-                    {<Jazzicon diameter={40} seed={account.id} />}
-                  </div>
+                  <Jazzicon diameter={40} seed={account.id} />
                   <div>
                     <p className="text-white text-sm font-semibold">
                       {account.name}
@@ -172,50 +309,128 @@ function SendPage() {
             onChange={handleAddressChange}
             onKeyDown={handleKeyDown}
           />
-          <img className="w-6 h-6" src="icons/scan.svg" alt="Scan" />
         </div>
-        {error && <div className="text-red-500 text-sm mt-2">{error}</div>}
-      </div>
-
-      <div className="mt-4">
-        <p className="text-white text-sm">Amount (WART)</p>
-        <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
-          <input
-            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
-            placeholder="Enter amount"
-            type="number"
-            value={amount}
-            onChange={handleAmountChange}
-            onKeyDown={handleKeyDown}
-          />
-        </div>
-        {amountError && (
-          <div className="text-red-500 text-sm mt-2">{amountError}</div>
+        {addressError && (
+          <div className="text-red-500 text-sm mt-2">{addressError}</div>
         )}
       </div>
 
-      {/* TODO: add recent section: comming soon */}
-      {/* <div className="mt-6">
-                <p className="text-white text-base font-semibold">Recent</p>
-                <div className="flex justify-between items-center mt-4">
-                    <div className="flex items-center gap-4">
-                        <img className="w-12 h-12 rounded-full object-cover" src="profile-image.png" alt="Profile" />
-                        <div>
-                            <p className="text-white text-lg font-semibold">{name}</p>
-                            <p className="text-white/50 text-xs">{formatWalletAddress(wallet || "")}</p>
-                        </div>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-white text-lg">? USD</p>
-                        <p className="text-white/50 text-sm">? Wart</p>
-                    </div>
-                </div>
-            </div> */}
+      {transferType === "wart" && (
+        <div className="mt-4">
+          <p className="text-white text-sm">Amount (WART)</p>
+          <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+            <input
+              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+              placeholder="Enter amount"
+              type="number"
+              value={wartAmount}
+              onChange={handleWartAmountChange}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
+          {wartAmountError && (
+            <div className="text-red-500 text-sm mt-2">{wartAmountError}</div>
+          )}
+        </div>
+      )}
+
+      {transferType === "token" && (
+        <>
+          <div className="mt-4">
+            <p className="text-white text-sm">Asset Hash</p>
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+              <input
+                className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+                placeholder="Enter asset hash (64 char hex)"
+                value={assetHash}
+                onChange={handleAssetHashChange}
+                onKeyDown={handleKeyDown}
+                maxLength={64}
+              />
+            </div>
+            {assetHashError && (
+              <div className="text-red-500 text-sm mt-2">{assetHashError}</div>
+            )}
+          </div>
+          <div className="mt-4">
+            <p className="text-white text-sm">Amount</p>
+            <div className="flex gap-3">
+              <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+                <input
+                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                  placeholder="Enter token amount"
+                  type="number"
+                  value={tokenAmount}
+                  onChange={handleTokenAmountChange}
+                  onKeyDown={handleKeyDown}
+                />
+              </div>
+              <select
+                className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-none"
+                value={precision}
+                onChange={handlePrecisionChange}
+              >
+                {[
+                  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+                  18,
+                ].map((p) => (
+                  <option key={p} value={p} className="bg-black">
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {tokenAmountError && (
+              <div className="text-red-500 text-sm mt-2">
+                {tokenAmountError}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {transferType === "liquidity" && (
+        <>
+          <div className="mt-4">
+            <p className="text-white text-sm">Asset Hash</p>
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+              <input
+                className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+                placeholder="Enter asset hash (64 char hex)"
+                value={assetHash}
+                onChange={handleAssetHashChange}
+                onKeyDown={handleKeyDown}
+                maxLength={64}
+              />
+            </div>
+            {assetHashError && (
+              <div className="text-red-500 text-sm mt-2">{assetHashError}</div>
+            )}
+          </div>
+          <div className="mt-4">
+            <p className="text-white text-sm">Liquidity Units</p>
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+              <input
+                className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                placeholder="Enter liquidity units"
+                type="number"
+                value={liquidityUnits}
+                onChange={handleLiquidityChange}
+                onKeyDown={handleKeyDown}
+              />
+            </div>
+            {liquidityError && (
+              <div className="text-red-500 text-sm mt-2">{liquidityError}</div>
+            )}
+          </div>
+        </>
+      )}
+
+      {error && <div className="text-red-500 text-sm mt-4">{error}</div>}
 
       <div className="flex bottom-3 absolute left-0 px-3 w-full gap-3">
         <Button
           variant="outline"
-          ariaLabel="Backup"
           className="w-full mt-5 hover:bg-primary/10"
           onClick={() => navigate("/home")}
         >
@@ -223,9 +438,9 @@ function SendPage() {
         </Button>
         <Button
           variant="primary"
-          ariaLabel="Continue"
           className="w-full mt-5"
           onClick={handelSubmit}
+          disabled={!isFormValid()}
         >
           Continue
         </Button>

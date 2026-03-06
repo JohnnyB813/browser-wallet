@@ -20,14 +20,8 @@ import useWallet from "./hooks/useWallet";
 import SendFinalStep from "./pages/Sendstep2";
 import SelectNode from "./pages/SelectNode";
 import TransactionTypePage from "./pages/TransactionTypePage";
-import TransferTokenPage from "./pages/TransferTokenPage";
-import TransferTokenStep2 from "./pages/TransferTokenStep2";
-import TransferLiquidityPage from "./pages/TransferLiquidityPage";
-import TransferLiquidityStep2 from "./pages/TransferLiquidityStep2";
-import BuyTokenPage from "./pages/BuyTokenPage";
-import BuyTokenStep2 from "./pages/BuyTokenStep2";
-import SellTokenPage from "./pages/SellTokenPage";
-import SellTokenStep2 from "./pages/SellTokenStep2";
+import TradePage from "./pages/TradePage";
+import TradeStep2 from "./pages/TradeStep2";
 import AddLiquidityPage from "./pages/AddLiquidityPage";
 import AddLiquidityStep2 from "./pages/AddLiquidityStep2";
 import RemoveLiquidityPage from "./pages/RemoveLiquidityPage";
@@ -108,17 +102,8 @@ const App: React.FC = () => {
       <Route path="/account-details" element={<AccountDetails />} />
       <Route path="/private-key" element={<ShowPrivateKey />} />
       <Route path="/transactions" element={<TransactionTypePage />} />
-      <Route path="/send-token" element={<TransferTokenPage />} />
-      <Route path="/send-token-step2" element={<TransferTokenStep2 />} />
-      <Route path="/transfer-liquidity" element={<TransferLiquidityPage />} />
-      <Route
-        path="/transfer-liquidity-step2"
-        element={<TransferLiquidityStep2 />}
-      />
-      <Route path="/buy-token" element={<BuyTokenPage />} />
-      <Route path="/buy-token-step2" element={<BuyTokenStep2 />} />
-      <Route path="/sell-token" element={<SellTokenPage />} />
-      <Route path="/sell-token-step2" element={<SellTokenStep2 />} />
+      <Route path="/trade" element={<TradePage />} />
+      <Route path="/trade-step2" element={<TradeStep2 />} />
       <Route path="/add-liquidity" element={<AddLiquidityPage />} />
       <Route path="/add-liquidity-step2" element={<AddLiquidityStep2 />} />
       <Route path="/remove-liquidity" element={<RemoveLiquidityPage />} />

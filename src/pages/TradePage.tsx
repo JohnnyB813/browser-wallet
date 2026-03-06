@@ -6,7 +6,7 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, parsePriceInput } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
-import { Wart } from "warthog-ts";
+import { Wart, Funds, TokenPrecision } from "warthog-ts";
 
 interface AccountType {
   id: number;
@@ -17,7 +17,9 @@ interface AccountType {
   visible: boolean;
 }
 
-function BuyTokenPage() {
+type TradeType = "buy" | "sell";
+
+function TradePage() {
   const navigate = useNavigate();
 
   const {
@@ -32,11 +34,17 @@ function BuyTokenPage() {
     setWallet,
     setTmpAssetHashState,
     setTmpWartAmountState,
+    setTmpTokenAmountState,
     setTmpLimitPriceState,
+    setTmpPrecisionState,
+    setTmpTradeTypeState,
   } = useWallet();
 
   const [accounts, setAccounts] = useState<AccountType[]>([]);
   const [isDropdownVisible, setDropdownVisible] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [tradeType, setTradeType] = useState<TradeType>("buy");
 
   const [assetHash, setAssetHash] = useState("");
   const [assetHashError, setAssetHashError] = useState<string | null>(null);
@@ -44,10 +52,13 @@ function BuyTokenPage() {
   const [wartAmount, setWartAmount] = useState("");
   const [wartAmountError, setWartAmountError] = useState<string | null>(null);
 
+  const [tokenAmount, setTokenAmount] = useState("");
+  const [tokenAmountError, setTokenAmountError] = useState<string | null>(null);
+
+  const [precision, setPrecision] = useState(8);
+
   const [limitPrice, setLimitPrice] = useState("");
   const [limitPriceError, setLimitPriceError] = useState<string | null>(null);
-
-  const [generalError, setGeneralError] = useState<string | null>(null);
 
   const toggleDropdown = () => setDropdownVisible((prev) => !prev);
 
@@ -58,13 +69,17 @@ function BuyTokenPage() {
     setDropdownVisible(false);
   };
 
+  const handleTradeTypeChange = (type: TradeType) => {
+    setTradeType(type);
+  };
+
   const handleAssetHashChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setAssetHash(value);
     if (value.length !== 64) {
       setAssetHashError("Asset hash must be 64 characters");
     } else if (!/^[a-fA-F0-9]+$/.test(value)) {
-      setAssetHashError("Asset hash must be valid hex");
+      setAssetHashError("Invalid hex");
     } else {
       setAssetHashError(null);
     }
@@ -81,6 +96,29 @@ function BuyTokenPage() {
     }
   };
 
+  const handleTokenAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setTokenAmount(value);
+    const parsed = Funds.parse(value, new TokenPrecision(precision));
+    if (parsed === null) {
+      setTokenAmountError("Invalid amount");
+    } else {
+      setTokenAmountError(null);
+    }
+  };
+
+  const handlePrecisionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = parseInt(e.target.value);
+    setPrecision(value);
+    setTmpPrecisionState(value);
+    const parsed = Funds.parse(tokenAmount, new TokenPrecision(value));
+    if (parsed === null && tokenAmount !== "") {
+      setTokenAmountError("Invalid amount for precision");
+    } else {
+      setTokenAmountError(null);
+    }
+  };
+
   const handleLimitPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setLimitPrice(value);
@@ -92,44 +130,52 @@ function BuyTokenPage() {
     }
   };
 
-  const handleSubmit = () => {
-    setGeneralError(null);
+  const handelSubmit = () => {
+    setError(null);
+    setTmpTradeTypeState(tradeType);
 
     if (!assetHash || assetHashError) {
-      setGeneralError("Please enter a valid asset hash");
-      return;
-    }
-    if (!wartAmount || wartAmountError) {
-      setGeneralError("Please enter a valid WART amount");
-      return;
-    }
-    if (!limitPrice || limitPriceError) {
-      setGeneralError("Please enter a valid limit price");
+      setError("Please enter a valid asset hash");
       return;
     }
 
-    const parsedWart = Wart.parse(wartAmount);
-    const parsedPrice = parsePriceInput(limitPrice);
-    if (parsedWart === null || parsedPrice === null) {
-      setGeneralError("Failed to parse values");
+    if (tradeType === "buy") {
+      if (!wartAmount || wartAmountError) {
+        setError("Please enter a valid WART amount");
+        return;
+      }
+    } else {
+      if (!tokenAmount || tokenAmountError) {
+        setError("Please enter a valid token amount");
+        return;
+      }
+    }
+
+    if (!limitPrice || limitPriceError) {
+      setError("Please enter a valid limit price");
       return;
     }
 
     setTmpAssetHashState(assetHash);
-    setTmpWartAmountState(wartAmount);
+    if (tradeType === "buy") {
+      setTmpWartAmountState(wartAmount);
+    } else {
+      setTmpTokenAmountState(tokenAmount);
+      setTmpPrecisionState(precision);
+    }
     setTmpLimitPriceState(limitPrice);
-    navigate("/buy-token-step2");
+    navigate("/trade-step2");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      handleSubmit();
+      handelSubmit();
     }
   };
 
   useEffect(() => {
     if (nameList.length !== walletList.length) {
-      console.log(`**** unmatched error:`, nameList.length, walletList.length);
+      console.log(`**** error:`, nameList.length, walletList.length);
     } else {
       setAccounts(
         nameList.map((name, index) => ({
@@ -144,17 +190,43 @@ function BuyTokenPage() {
     }
   }, [walletList, nameList, visibleWalletList]);
 
-  const isFormValid =
-    assetHash &&
-    !assetHashError &&
-    wartAmount &&
-    !wartAmountError &&
-    limitPrice &&
-    !limitPriceError;
+  const isFormValid = () => {
+    if (!assetHash || assetHashError) return false;
+    if (!limitPrice || limitPriceError) return false;
+    if (tradeType === "buy") return wartAmount && !wartAmountError;
+    if (tradeType === "sell") return tokenAmount && !tokenAmountError;
+    return false;
+  };
 
   return (
     <div className="min-h-screen container relative">
-      <Header title="Buy Token" />
+      <Header title="Trade" />
+
+      <div className="mt-4">
+        <p className="text-white text-sm">Trade Type</p>
+        <div className="flex gap-2 mt-2">
+          <button
+            className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
+              tradeType === "buy"
+                ? "bg-primary text-black"
+                : "border border-primary text-primary hover:border-primary/80"
+            }`}
+            onClick={() => handleTradeTypeChange("buy")}
+          >
+            Buy
+          </button>
+          <button
+            className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
+              tradeType === "sell"
+                ? "bg-primary text-black"
+                : "border border-primary text-primary hover:border-primary/80"
+            }`}
+            onClick={() => handleTradeTypeChange("sell")}
+          >
+            Sell
+          </button>
+        </div>
+      </div>
 
       <div className="mt-4">
         <p className="text-white text-sm">From</p>
@@ -197,7 +269,9 @@ function BuyTokenPage() {
       </div>
 
       <div className="mt-4">
-        <p className="text-white text-sm">Asset Hash (Token to Buy)</p>
+        <p className="text-white text-sm">
+          Asset Hash ({tradeType === "buy" ? "Token to Buy" : "Token to Sell"})
+        </p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
           <input
             className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
@@ -213,22 +287,59 @@ function BuyTokenPage() {
         )}
       </div>
 
-      <div className="mt-4">
-        <p className="text-white text-sm">WART Amount to Spend</p>
-        <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
-          <input
-            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
-            placeholder="Enter WART amount"
-            type="number"
-            value={wartAmount}
-            onChange={handleWartAmountChange}
-            onKeyDown={handleKeyDown}
-          />
+      {tradeType === "buy" && (
+        <div className="mt-4">
+          <p className="text-white text-sm">WART Amount to Spend</p>
+          <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+            <input
+              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+              placeholder="Enter WART amount"
+              type="number"
+              value={wartAmount}
+              onChange={handleWartAmountChange}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
+          {wartAmountError && (
+            <div className="text-red-500 text-sm mt-2">{wartAmountError}</div>
+          )}
         </div>
-        {wartAmountError && (
-          <div className="text-red-500 text-sm mt-2">{wartAmountError}</div>
-        )}
-      </div>
+      )}
+
+      {tradeType === "sell" && (
+        <div className="mt-4">
+          <p className="text-white text-sm">Token Amount to Sell</p>
+          <div className="flex gap-3">
+            <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+              <input
+                className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                placeholder="Enter token amount"
+                type="number"
+                value={tokenAmount}
+                onChange={handleTokenAmountChange}
+                onKeyDown={handleKeyDown}
+              />
+            </div>
+            <select
+              className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-none"
+              value={precision}
+              onChange={handlePrecisionChange}
+            >
+              {[
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+                18,
+              ].map((p) => (
+                <option key={p} value={p} className="bg-black">
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+          {tokenAmountError && (
+            <div className="text-red-500 text-sm mt-2">{tokenAmountError}</div>
+          )}
+        </div>
+      )}
 
       <div className="mt-4">
         <p className="text-white text-sm">Limit Price</p>
@@ -248,9 +359,7 @@ function BuyTokenPage() {
         )}
       </div>
 
-      {generalError && (
-        <div className="text-red-500 text-sm mt-4">{generalError}</div>
-      )}
+      {error && <div className="text-red-500 text-sm mt-4">{error}</div>}
 
       <div className="flex bottom-3 absolute left-0 px-3 w-full gap-3">
         <Button
@@ -263,8 +372,8 @@ function BuyTokenPage() {
         <Button
           variant="primary"
           className="w-full mt-5"
-          onClick={handleSubmit}
-          disabled={!isFormValid}
+          onClick={handelSubmit}
+          disabled={!isFormValid()}
         >
           Continue
         </Button>
@@ -273,4 +382,4 @@ function BuyTokenPage() {
   );
 }
 
-export default BuyTokenPage;
+export default TradePage;

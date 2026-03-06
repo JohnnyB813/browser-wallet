@@ -31,6 +31,8 @@ interface WalletContextProps {
   tmpCancelHeight: number | null;
   tmpCancelNonceId: number | null;
   tmpTokenName: string | null;
+  tmpTransferType: "wart" | "token" | "liquidity";
+  tmpTradeType: "buy" | "sell";
   inputWordsBackup: string[];
   setName: (name: string) => void;
   setSeedPhrase: (seedPhrase: string) => void;
@@ -68,6 +70,10 @@ interface WalletContextProps {
   setTmpCancelHeightState: (tmpCancelHeight: number) => void;
   setTmpCancelNonceIdState: (tmpCancelNonceId: number) => void;
   setTmpTokenNameState: (tmpTokenName: string) => void;
+  setTmpTransferTypeState: (
+    tmpTransferType: "wart" | "token" | "liquidity",
+  ) => void;
+  setTmpTradeTypeState: (tmpTradeType: "buy" | "sell") => void;
   getAccountFromIndex: (index: number) => Account;
 }
 
@@ -125,6 +131,10 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     null,
   );
   const [tmpTokenName, setTmpTokenNameState] = useState<string | null>(null);
+  const [tmpTransferType, setTmpTransferTypeState] = useState<
+    "wart" | "token" | "liquidity"
+  >("wart");
+  const [tmpTradeType, setTmpTradeTypeState] = useState<"buy" | "sell">("buy");
   const [inputWordsBackup, setInputWordsBackupState] = useState<string[]>([]);
 
   const arrayBufferToHex = (buffer: ArrayBuffer): string => {
@@ -454,6 +464,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         tmpCancelHeight,
         tmpCancelNonceId,
         tmpTokenName,
+        tmpTransferType,
+        tmpTradeType,
         inputWordsBackup,
         accountPath,
         setSeedPhrase,
@@ -488,6 +500,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setTmpCancelHeightState,
         setTmpCancelNonceIdState,
         setTmpTokenNameState,
+        setTmpTransferTypeState,
+        setTmpTradeTypeState,
         getAccountFromIndex,
         importWallet,
         setInputWordsBackup,

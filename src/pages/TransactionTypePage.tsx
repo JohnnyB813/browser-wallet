@@ -1,15 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import {
-  IoSwapVertical,
   IoAddCircle,
   IoRemoveCircle,
   IoCloseCircle,
   IoCreate,
   IoTrendingUp,
-  IoTrendingDown,
   IoCash,
-  IoWater,
 } from "react-icons/io5";
 
 interface TransactionType {
@@ -22,39 +19,18 @@ interface TransactionType {
 
 const transactionTypes: TransactionType[] = [
   {
-    id: "wart",
-    title: "Send WART",
-    description: "Transfer native WART tokens",
+    id: "send",
+    title: "Send",
+    description: "Transfer WART, tokens, or liquidity",
     icon: <IoCash className="text-3xl text-primary" />,
     route: "/send",
   },
   {
-    id: "token",
-    title: "Send Token",
-    description: "Transfer existing tokens/assets",
-    icon: <IoSwapVertical className="text-3xl text-primary" />,
-    route: "/send-token",
-  },
-  {
-    id: "liquidity",
-    title: "Transfer Liquidity",
-    description: "Transfer liquidity pool tokens",
-    icon: <IoWater className="text-3xl text-primary" />,
-    route: "/transfer-liquidity",
-  },
-  {
-    id: "buy",
-    title: "Buy Token",
-    description: "Buy tokens with WART at limit price",
+    id: "trade",
+    title: "Trade",
+    description: "Buy or sell tokens at limit price",
     icon: <IoTrendingUp className="text-3xl text-primary" />,
-    route: "/buy-token",
-  },
-  {
-    id: "sell",
-    title: "Sell Token",
-    description: "Sell tokens for WART at limit price",
-    icon: <IoTrendingDown className="text-3xl text-primary" />,
-    route: "/sell-token",
+    route: "/trade",
   },
   {
     id: "add-liquidity",

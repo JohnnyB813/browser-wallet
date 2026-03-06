@@ -2,15 +2,22 @@ import { useEffect, useState } from "react";
 import Header from "../components/Header";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
-import { AiOutlineSwap } from "react-icons/ai";
 import UserDropdown from "../components/UserDropdown";
-import NetworkDropdown from "../components/NetworkDropdown";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress } from "../utils";
 import axios from "axios";
-import { ethers } from "ethers";
-import secp256k1 from "secp256k1";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
+import {
+  Address,
+  Funds,
+  TokenPrecision,
+  Wart,
+  Liquidity,
+  RoundedFee,
+  NonceId,
+  HDWallet,
+  TransactionContext,
+} from "warthog-ts";
 
 interface AccountType {
   id: number;
@@ -20,19 +27,6 @@ interface AccountType {
   balanceUSD: number;
   visible: boolean;
 }
-
-interface Network {
-  id: string;
-  name: string;
-  logo: string;
-}
-
-const networks: Network[] = [
-  { id: "1", name: "WART", logo: "logo.png" },
-  { id: "2", name: "ETH", logo: "icons/eth_logo.svg" },
-  { id: "3", name: "BNB", logo: "icons/bnb_logo.png" },
-  { id: "4", name: "POL", logo: "icons/pol.png" },
-];
 
 function SendFinalStep() {
   const {
@@ -44,20 +38,19 @@ function SendFinalStep() {
     nodeList,
     tmpDestinationWallet,
     tmpWartAmount,
+    tmpAssetHash,
+    tmpTokenAmount,
+    tmpPrecision,
+    tmpTransferType,
     visibleWalletList,
     setSelectedWalletIndex,
     setName,
     setWallet,
-    getAccountFromIndex,
+    seedPhrase,
   } = useWallet();
   const navigate = useNavigate();
 
   const [accounts, setAccounts] = useState<AccountType[]>([]);
-  const [selectedNetwork, setSelectedNetwork] = useState<Network | null>(
-    networks[0],
-  );
-  const [isSwapped, setSwapped] = useState(false);
-  const [amount, setAmount] = useState<number>(Number(tmpWartAmount) || 0);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -75,8 +68,38 @@ function SendFinalStep() {
     setSelectedWalletIndex(id);
   };
 
-  const handleSwap = () => {
-    setSwapped((prev) => !prev); // Toggle the swap state
+  const getAccountFromIndex = (index: number) => {
+    return HDWallet.fromMnemonic(seedPhrase!).deriveAccountAtIndex(index);
+  };
+
+  useEffect(() => {
+    if (nameList.length !== walletList.length) {
+      console.log(`**** error:`, nameList.length, walletList.length);
+    } else {
+      setAccounts(
+        nameList.map((name, index) => ({
+          id: index,
+          name,
+          address: walletList[index],
+          balance: 0,
+          balanceUSD: 0,
+          visible: visibleWalletList[index],
+        })),
+      );
+    }
+  }, [walletList, nameList, visibleWalletList]);
+
+  const getTransferTitle = () => {
+    if (tmpTransferType === "wart") return "Send WART";
+    if (tmpTransferType === "token") return "Send Token";
+    return "Transfer Liquidity";
+  };
+
+  const getDisplayAmount = () => {
+    if (tmpTransferType === "wart") return `${tmpWartAmount || 0} WART`;
+    if (tmpTransferType === "token")
+      return `${tmpTokenAmount || 0} tokens (${tmpPrecision || 8} decimals)`;
+    return `${tmpTokenAmount || 0} liquidity units`;
   };
 
   const handleTransaction = async () => {
@@ -89,7 +112,6 @@ function SendFinalStep() {
     setTransactionStatus("processing");
 
     try {
-      // Replace this with your actual transaction logic
       const headResponse = (
         await axios.get(`${nodeList[selectedNodeIndex]}/chain/head`)
       ).data;
@@ -97,6 +119,7 @@ function SendFinalStep() {
       const pinHeight = headResponse.data.pinHeight as number;
       const nonceId = nonce + 1;
       setNonce(nonceId);
+
       const rawFeeE8 = "9999";
       const result = (
         await axios.get(
@@ -106,71 +129,60 @@ function SendFinalStep() {
       ).data;
       const feeE8 = result.data.roundedE8;
 
-      const buf1 = Buffer.from(pinHash, "hex");
-      const buf2 = Buffer.alloc(19);
-      buf2.writeUInt32BE(pinHeight, 0);
-      buf2.writeUInt32BE(nonceId, 4);
-      buf2.writeUInt8(0, 8);
-      buf2.writeUInt8(0, 9);
-      buf2.writeUInt8(0, 10);
-      buf2.writeBigUInt64BE(BigInt(feeE8), 11);
-      const buf3 = Buffer.from(tmpDestinationWallet?.slice(0, 40) || "", "hex");
-      const buf4 = Buffer.alloc(8);
-      const tmpWartAmountE8 = Math.round(
-        Number(tmpWartAmount || 0) * 100000000,
-      );
-      buf4.writeBigUInt64BE(BigInt(tmpWartAmountE8), 0);
-      console.log(`**** tmpWartAmountE8:`, tmpWartAmountE8);
-      const toSign = Buffer.concat([buf1, buf2, buf3, buf4]);
-      console.log(`**** toSign:`, toSign);
-
-      const signHash = ethers.sha256("0x" + toSign.toString("hex")).slice(2);
-      console.log(`**** signHash:`, signHash);
-
-      const privKey = getAccountFromIndex(selectedWalletIndex).privateKeyHex;
-      const signed = secp256k1.ecdsaSign(
-        Uint8Array.from(Buffer.from(signHash, "hex")),
-        Uint8Array.from(Buffer.from(privKey, "hex")),
-      );
-      console.log(`**** signed:`, signed);
-      const signatureWithoutRecid = Buffer.from(signed.signature);
-      console.log(`**** signatureWithoutRecid:`, signatureWithoutRecid);
-      const signatureWithoutRecidNormalized = secp256k1.signatureNormalize(
-        signed.signature,
-      );
-      let recid = signed.recid;
-      console.log(
-        `**** signatureWithoutRecidNormalized:`,
-        signatureWithoutRecidNormalized,
-      );
-      if (
-        Buffer.compare(
-          signatureWithoutRecid,
-          signatureWithoutRecidNormalized,
-        ) !== 0
-      ) {
-        recid = recid ^ 1;
+      const account = getAccountFromIndex(selectedWalletIndex);
+      const toAddr = Address.fromHex(tmpDestinationWallet!);
+      if (!toAddr) {
+        throw new Error("Invalid recipient address");
       }
-      console.log(`**** recid:`, recid);
-      const recidBuffer = Buffer.alloc(1);
-      console.log(`**** recidBuffer:`, recidBuffer);
-      recidBuffer.writeUint8(recid);
-      console.log(`**** recidBuffer:`, recidBuffer);
-      const signature65 = Buffer.concat([
-        signatureWithoutRecidNormalized,
-        recidBuffer,
-      ]);
-      console.log(`**** signature65:`, signature65);
-      const postdata = {
-        pinHeight: pinHeight,
-        nonceId: nonceId,
-        toAddr: tmpDestinationWallet || "",
-        tmpWartAmountE8: tmpWartAmountE8,
-        feeE8: feeE8,
-        signature65: signature65.toString("hex"),
-      };
 
-      console.log(`**** postdata:`, postdata);
+      const chainPin = { pinHash, pinHeight };
+      const fee = RoundedFee.fromE8(BigInt(feeE8), false)!;
+      const nonceIdObj = NonceId.fromNumber(nonceId)!;
+
+      const context = new TransactionContext(chainPin, fee, nonceIdObj);
+
+      let tx;
+
+      if (tmpTransferType === "wart") {
+        const wartParsed = Wart.parse(tmpWartAmount || "0");
+        if (!wartParsed) throw new Error("Invalid WART amount");
+        tx = context.transferWart(account, toAddr, wartParsed);
+      } else if (tmpTransferType === "token") {
+        const fundsParsed = Funds.parse(
+          tmpTokenAmount || "0",
+          new TokenPrecision(tmpPrecision || 8),
+        );
+        if (!fundsParsed) throw new Error("Invalid token amount");
+        tx = context.transferAsset(account, tmpAssetHash!, toAddr, fundsParsed);
+      } else if (tmpTransferType === "liquidity") {
+        const liquidityParsed = Liquidity.parse(tmpTokenAmount || "0");
+        if (!liquidityParsed) throw new Error("Invalid liquidity amount");
+        tx = context.transferLiquidity(
+          account,
+          tmpAssetHash!,
+          toAddr,
+          liquidityParsed,
+        );
+      }
+
+      const postdata = {
+        type: tx!.type,
+        pinHeight: tx!.pinHeight,
+        nonceId: tx!.nonceId,
+        feeE8: tx!.feeE8,
+        ...(tmpTransferType === "wart"
+          ? {
+              toAddr: tx!.toAddr,
+              wartE8: Number("wart" in tx! ? (tx as any).wartE8 : 0),
+            }
+          : {
+              assetHash: tx!.assetHash,
+              isLiquidity: tmpTransferType === "liquidity",
+              toAddr: tx!.toAddr,
+              amountU64: Number((tx as any).amountU64),
+            }),
+        signature65: tx!.signature65,
+      };
 
       axios
         .post(`${nodeList[selectedNodeIndex]}/transaction/add`, postdata)
@@ -191,14 +203,6 @@ function SendFinalStep() {
             error instanceof Error ? error.message : "Transaction failed",
           );
         });
-
-      // const result = await sendTransaction({
-      //     from: accounts[selectedWalletIndex].address,
-      //     to: tmpDestinationWallet,
-      //     tmpWartAmount: tmpWartAmount,
-      //     network: selectedNetwork?.id,
-      //     token: selectedNetwork?.name
-      // });
     } catch (error) {
       setTransactionStatus("error");
       setTransactionError(
@@ -209,30 +213,9 @@ function SendFinalStep() {
     }
   };
 
-  useEffect(() => {
-    if (nameList.length !== walletList.length) {
-      console.log(
-        `**** unmatched error in nameList and walletList:`,
-        nameList.length,
-        walletList.length,
-      );
-    } else {
-      setAccounts(
-        nameList.map((name, index) => ({
-          id: index,
-          name,
-          address: walletList[index],
-          balance: 0,
-          balanceUSD: 0,
-          visible: visibleWalletList[index],
-        })),
-      );
-    }
-  }, [walletList, nameList, visibleWalletList]);
-
   return (
     <div className="min-h-screen container relative">
-      <Header title="Send" />
+      <Header title={getTransferTitle()} />
 
       <div className="flex flex-col gap-1">
         <p className="text-white text-sm">From</p>
@@ -241,20 +224,10 @@ function SendFinalStep() {
           selectedUser={accounts[selectedWalletIndex]}
           onSelectUser={selectUser}
         />
-        <NetworkDropdown
-          networks={networks}
-          selectedNetwork={selectedNetwork}
-          onSelectNetwork={setSelectedNetwork}
-          handleSwap={handleSwap}
-          isSwapped={isSwapped}
-          amount={amount}
-          setAmount={setAmount}
-        />
 
         <p className="text-white text-sm mt-3">To</p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
-          {/* <img className="w-12 h-12 rounded-full" src="profile-image.png" alt="Profile" /> */}
-          {<Jazzicon diameter={48} seed={1000} />}
+          <Jazzicon diameter={48} seed={1000} />
           <div>
             <p className="text-white text-lg font-semibold">Receiver</p>
             <p className="text-white/50 text-xs">
@@ -262,41 +235,15 @@ function SendFinalStep() {
             </p>
           </div>
         </div>
+
         <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <img
-              className="w-12 h-12 rounded-full"
-              src={selectedNetwork?.logo}
-              alt="logo"
-            />
             <div>
-              <p className="text-white text-lg font-semibold">
-                {selectedNetwork?.name}
-              </p>
+              <p className="text-white text-lg font-semibold">Amount</p>
             </div>
           </div>
-          <div className="flex gap-3 items-center">
-            <div className="text-right">
-              {isSwapped ? (
-                <>
-                  <p className="text-white text-lg">${tmpWartAmount}</p>
-                  <p className="text-white/50 text-sm">
-                    {tmpWartAmount} {selectedNetwork?.name}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="text-white text-lg">
-                    {tmpWartAmount} {selectedNetwork?.name}
-                  </p>
-                  <p className="text-white/50 text-sm">${tmpWartAmount}</p>
-                </>
-              )}
-            </div>
-            <AiOutlineSwap
-              className="text-white rotate-90 text-2xl"
-              onClick={handleSwap}
-            />
+          <div className="text-right">
+            <p className="text-white text-lg">{getDisplayAmount()}</p>
           </div>
         </div>
       </div>
@@ -304,11 +251,11 @@ function SendFinalStep() {
       <div className="flex bottom-3 absolute left-0 px-3 w-full gap-3">
         <Button
           variant="outline"
-          ariaLabel="Backup"
+          ariaLabel="Back"
           className="w-full mt-5 hover:bg-primary/10"
-          onClick={() => navigate("/home")}
+          onClick={() => navigate("/send")}
         >
-          Cancel
+          Back
         </Button>
         <Button
           variant="primary"
@@ -320,7 +267,6 @@ function SendFinalStep() {
         </Button>
       </div>
 
-      {/* Add Confirmation Popup */}
       {showConfirmation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-[#1A1A1A] rounded-lg p-6 max-w-md w-full border border-primary/25">
@@ -333,9 +279,8 @@ function SendFinalStep() {
                   <div className="bg-[#2A2A2A] p-4 rounded-lg">
                     <p className="text-white/70 text-sm">Sending</p>
                     <p className="text-white text-lg font-semibold">
-                      {tmpWartAmount} {selectedNetwork?.name}
+                      {getDisplayAmount()}
                     </p>
-                    <p className="text-white/50 text-sm">${tmpWartAmount}</p>
                   </div>
 
                   <div className="bg-[#2A2A2A] p-4 rounded-lg">

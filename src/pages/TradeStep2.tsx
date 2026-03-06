@@ -4,10 +4,17 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
-import { formatWalletAddress } from "../utils";
+import { formatWalletAddress, parsePriceInput } from "../utils";
 import axios from "axios";
-import { Address, Liquidity, RoundedFee, NonceId, HDWallet } from "warthog-ts";
-import Jazzicon from "react-jazzicon/dist/Jazzicon";
+import {
+  RoundedFee,
+  NonceId,
+  HDWallet,
+  TransactionContext,
+  Wart,
+  Funds,
+  TokenPrecision,
+} from "warthog-ts";
 
 interface AccountType {
   id: number;
@@ -18,7 +25,7 @@ interface AccountType {
   visible: boolean;
 }
 
-function TransferLiquidityStep2() {
+function TradeStep2() {
   const {
     password,
     selectedWalletIndex,
@@ -26,9 +33,12 @@ function TransferLiquidityStep2() {
     nameList,
     walletList,
     nodeList,
-    tmpDestinationWallet,
     tmpAssetHash,
+    tmpWartAmount,
     tmpTokenAmount,
+    tmpLimitPrice,
+    tmpPrecision,
+    tmpTradeType,
     visibleWalletList,
     setSelectedWalletIndex,
     setName,
@@ -61,11 +71,7 @@ function TransferLiquidityStep2() {
 
   useEffect(() => {
     if (nameList.length !== walletList.length) {
-      console.log(
-        `**** unmatched error in nameList and walletList:`,
-        nameList.length,
-        walletList.length,
-      );
+      console.log(`**** error:`, nameList.length, walletList.length);
     } else {
       setAccounts(
         nameList.map((name, index) => ({
@@ -80,7 +86,16 @@ function TransferLiquidityStep2() {
     }
   }, [walletList, nameList, visibleWalletList]);
 
-  const parsedAmount = tmpTokenAmount ? Liquidity.parse(tmpTokenAmount) : null;
+  const getTradeTitle = () => {
+    return tmpTradeType === "buy" ? "Buy Token" : "Sell Token";
+  };
+
+  const getDisplayAmount = () => {
+    if (tmpTradeType === "buy") {
+      return `${tmpWartAmount || 0} WART`;
+    }
+    return `${tmpTokenAmount || 0} tokens (${tmpPrecision || 8} decimals)`;
+  };
 
   const handleTransaction = async () => {
     if (confirmPassword !== password) {
@@ -88,7 +103,7 @@ function TransferLiquidityStep2() {
       return;
     }
 
-    if (!tmpDestinationWallet || !parsedAmount || !tmpAssetHash) {
+    if (!tmpAssetHash || !tmpLimitPrice) {
       setTransactionError("Missing transaction data");
       setTransactionStatus("error");
       return;
@@ -109,31 +124,38 @@ function TransferLiquidityStep2() {
       const rawFeeE8 = "9999";
       const result = (
         await axios.get(
-          `${nodeList[selectedNodeIndex]}/tools/encode16bit/from_e8/` +
-            rawFeeE8,
+          `${nodeList[selectedNodeIndex]}/tools/encode16bit/from_e8/${rawFeeE8}`,
         )
       ).data;
       const feeE8 = result.data.roundedE8;
 
       const account = getAccountFromIndex(selectedWalletIndex);
-      const toAddr = Address.fromHex(tmpDestinationWallet);
-      if (!toAddr) {
-        throw new Error("Invalid recipient address");
-      }
 
       const chainPin = { pinHash, pinHeight };
       const fee = RoundedFee.fromE8(BigInt(feeE8), false)!;
       const nonceIdObj = NonceId.fromNumber(nonceId)!;
 
-      const { TransactionContext } = await import("warthog-ts");
       const context = new TransactionContext(chainPin, fee, nonceIdObj);
 
-      const tx = context.transferLiquidity(
-        account,
-        tmpAssetHash,
-        toAddr,
-        parsedAmount!,
-      );
+      const priceParsed = parsePriceInput(tmpLimitPrice);
+      if (!priceParsed) {
+        throw new Error("Failed to parse limit price");
+      }
+
+      let tx;
+
+      if (tmpTradeType === "buy") {
+        const wartParsed = Wart.parse(tmpWartAmount || "0");
+        if (!wartParsed) throw new Error("Invalid WART amount");
+        tx = context.buy(account, tmpAssetHash, wartParsed, priceParsed);
+      } else {
+        const fundsParsed = Funds.parse(
+          tmpTokenAmount || "0",
+          new TokenPrecision(tmpPrecision || 8),
+        );
+        if (!fundsParsed) throw new Error("Invalid token amount");
+        tx = context.sell(account, tmpAssetHash, fundsParsed, priceParsed);
+      }
 
       const postdata = {
         type: tx.type,
@@ -141,16 +163,15 @@ function TransferLiquidityStep2() {
         nonceId: tx.nonceId,
         feeE8: tx.feeE8,
         assetHash: tx.assetHash,
-        isLiquidity: tx.isLiquidity,
-        toAddr: tx.toAddr,
+        isBuy: tmpTradeType === "buy",
         amountU64: Number(tx.amountU64),
+        limit: tx.limit,
         signature65: tx.signature65,
       };
 
       axios
         .post(`${nodeList[selectedNodeIndex]}/transaction/add`, postdata)
         .then((res) => {
-          console.log(`**** res:`, res.data);
           if (res.data?.error) {
             setTransactionStatus("error");
             setTransactionError(res.data.error);
@@ -160,7 +181,6 @@ function TransferLiquidityStep2() {
           }
         })
         .catch((error) => {
-          console.log(`**** error:`, error);
           setTransactionStatus("error");
           setTransactionError(
             error instanceof Error ? error.message : "Transaction failed",
@@ -178,7 +198,7 @@ function TransferLiquidityStep2() {
 
   return (
     <div className="min-h-screen container relative">
-      <Header title="Transfer Liquidity" />
+      <Header title={getTradeTitle()} />
 
       <div className="flex flex-col gap-1">
         <p className="text-white text-sm">From</p>
@@ -191,7 +211,7 @@ function TransferLiquidityStep2() {
         <p className="text-white text-sm mt-3">Asset</p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
           <div>
-            <p className="text-white text-lg font-semibold">Asset</p>
+            <p className="text-white text-lg font-semibold">Token</p>
             <p className="text-white/50 text-xs">
               {tmpAssetHash
                 ? formatWalletAddress(tmpAssetHash, 20, 10)
@@ -200,27 +220,23 @@ function TransferLiquidityStep2() {
           </div>
         </div>
 
-        <p className="text-white text-sm mt-3">To</p>
-        <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
-          <Jazzicon diameter={48} seed={1000} />
+        <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md mt-3">
           <div>
-            <p className="text-white text-lg font-semibold">Receiver</p>
-            <p className="text-white/50 text-xs">
-              {formatWalletAddress(tmpDestinationWallet || "")}
+            <p className="text-white text-lg font-semibold">
+              {tmpTradeType === "buy" ? "WART to Spend" : "Tokens to Sell"}
             </p>
+          </div>
+          <div className="text-right">
+            <p className="text-white text-lg">{getDisplayAmount()}</p>
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <div>
-              <p className="text-white text-lg font-semibold">
-                Liquidity Units
-              </p>
-            </div>
+        <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md mt-3">
+          <div>
+            <p className="text-white text-lg font-semibold">Limit Price</p>
           </div>
           <div className="text-right">
-            <p className="text-white text-lg">{tmpTokenAmount || 0} units</p>
+            <p className="text-white text-lg">{tmpLimitPrice || 0}</p>
           </div>
         </div>
       </div>
@@ -228,15 +244,13 @@ function TransferLiquidityStep2() {
       <div className="flex bottom-3 absolute left-0 px-3 w-full gap-3">
         <Button
           variant="outline"
-          ariaLabel="Back"
           className="w-full mt-5 hover:bg-primary/10"
-          onClick={() => navigate("/transfer-liquidity")}
+          onClick={() => navigate("/trade")}
         >
           Back
         </Button>
         <Button
           variant="primary"
-          ariaLabel="Continue"
           className="w-full mt-5"
           onClick={() => setShowConfirmation(true)}
         >
@@ -254,12 +268,13 @@ function TransferLiquidityStep2() {
                 </h3>
                 <div className="space-y-4 mb-6">
                   <div className="bg-[#2A2A2A] p-4 rounded-lg">
-                    <p className="text-white/70 text-sm">Sending</p>
+                    <p className="text-white/70 text-sm">
+                      {tmpTradeType === "buy" ? "Spending" : "Selling"}
+                    </p>
                     <p className="text-white text-lg font-semibold">
-                      {tmpTokenAmount || 0} liquidity units
+                      {getDisplayAmount()}
                     </p>
                   </div>
-
                   <div className="bg-[#2A2A2A] p-4 rounded-lg">
                     <p className="text-white/70 text-sm">Asset</p>
                     <p className="text-white/50 text-xs">
@@ -268,15 +283,12 @@ function TransferLiquidityStep2() {
                         : "None"}
                     </p>
                   </div>
-
                   <div className="bg-[#2A2A2A] p-4 rounded-lg">
-                    <p className="text-white/70 text-sm">To</p>
-                    <p className="text-white text-lg font-semibold">Receiver</p>
-                    <p className="text-white/50 text-sm">
-                      {formatWalletAddress(tmpDestinationWallet || "")}
+                    <p className="text-white/70 text-sm">Limit Price</p>
+                    <p className="text-white text-lg font-semibold">
+                      {tmpLimitPrice || 0}
                     </p>
                   </div>
-
                   <div>
                     <label
                       htmlFor="password"
@@ -302,7 +314,6 @@ function TransferLiquidityStep2() {
                     )}
                   </div>
                 </div>
-
                 <div className="flex gap-3">
                   <Button
                     variant="outline"
@@ -333,9 +344,7 @@ function TransferLiquidityStep2() {
                 <h3 className="text-white text-xl font-semibold mb-2">
                   Processing Transaction
                 </h3>
-                <p className="text-white/70">
-                  Please wait while we process your transaction...
-                </p>
+                <p className="text-white/70">Please wait...</p>
               </div>
             )}
 
@@ -360,10 +369,10 @@ function TransferLiquidityStep2() {
                   Transaction Successful!
                 </h3>
                 <p className="text-white/70 mb-4">
-                  Your transaction has been processed successfully.
+                  Your transaction has been processed.
                 </p>
                 <p className="text-sm text-white/50 break-all mb-6">
-                  Transaction Hash:{" "}
+                  Hash:{" "}
                   <a
                     href={`https://wartscan.io/tx/${transactionHash}`}
                     target="_blank"
@@ -439,4 +448,4 @@ function TransferLiquidityStep2() {
   );
 }
 
-export default TransferLiquidityStep2;
+export default TradeStep2;
