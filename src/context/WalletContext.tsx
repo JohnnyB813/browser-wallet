@@ -72,12 +72,18 @@ interface WalletContextProps {
 }
 
 const defaultNodeList = [
+  "http://localhost:3100",
   "http://51.75.21.134:3001",
   "http://62.72.44.89:3001",
   "http://dev.node-s.com:3001",
 ];
 
-const defaultNodeNameList = ["polaire", "blu & Asia", "johnnyb Us East"];
+const defaultNodeNameList = [
+  "localhost",
+  "polaire",
+  "blu & Asia",
+  "johnnyb Us East",
+];
 
 const WalletContext = createContext<WalletContextProps | undefined>(undefined);
 
