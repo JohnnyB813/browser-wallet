@@ -6,7 +6,7 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
-import { Address } from "warthog-ts";
+import { Address, Wart } from "warthog-ts";
 
 interface AccountType {
   id: number;
@@ -31,12 +31,15 @@ function SendPage() {
     setName,
     setWallet,
     setTmpDestinationWalletState,
+    setTmpWartAmountState,
   } = useWallet();
 
   const [accounts, setAccounts] = useState<AccountType[]>([]);
   const [isDropdownVisible, setDropdownVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publicAddress, setPublicAddress] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [amountError, setAmountError] = useState<string | null>(null);
 
   const toggleDropdown = () => setDropdownVisible((prev) => !prev);
 
@@ -51,13 +54,27 @@ function SendPage() {
     setPublicAddress(e.target.value);
   };
 
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setAmount(value);
+    const parsed = Wart.parse(value);
+    if (parsed === null) {
+      setAmountError("Invalid WART amount");
+    } else {
+      setAmountError(null);
+    }
+  };
+
   const handelSubmit = () => {
     if (publicAddress === "") {
       setError("Please enter a public address");
     } else if (!Address.validate(publicAddress)) {
       setError("Invalid address format");
+    } else if (amount === "" || amountError) {
+      setError("Please enter a valid amount");
     } else {
       setTmpDestinationWalletState(publicAddress);
+      setTmpWartAmountState(amount);
       navigate("/sendstep2");
     }
   };
@@ -158,6 +175,23 @@ function SendPage() {
           <img className="w-6 h-6" src="icons/scan.svg" alt="Scan" />
         </div>
         {error && <div className="text-red-500 text-sm mt-2">{error}</div>}
+      </div>
+
+      <div className="mt-4">
+        <p className="text-white text-sm">Amount (WART)</p>
+        <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+          <input
+            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+            placeholder="Enter amount"
+            type="number"
+            value={amount}
+            onChange={handleAmountChange}
+            onKeyDown={handleKeyDown}
+          />
+        </div>
+        {amountError && (
+          <div className="text-red-500 text-sm mt-2">{amountError}</div>
+        )}
       </div>
 
       {/* TODO: add recent section: comming soon */}

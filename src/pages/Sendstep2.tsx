@@ -43,6 +43,7 @@ function SendFinalStep() {
     walletList,
     nodeList,
     tmpDestinationWallet,
+    tmpWartAmount,
     visibleWalletList,
     setSelectedWalletIndex,
     setName,
@@ -56,7 +57,7 @@ function SendFinalStep() {
     networks[0],
   );
   const [isSwapped, setSwapped] = useState(false);
-  const [amount, setAmount] = useState<number>(0);
+  const [amount, setAmount] = useState<number>(Number(tmpWartAmount) || 0);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -115,9 +116,11 @@ function SendFinalStep() {
       buf2.writeBigUInt64BE(BigInt(feeE8), 11);
       const buf3 = Buffer.from(tmpDestinationWallet?.slice(0, 40) || "", "hex");
       const buf4 = Buffer.alloc(8);
-      const amountE8 = Math.round(amount * 100000000);
-      buf4.writeBigUInt64BE(BigInt(amountE8), 0);
-      console.log(`**** amountE8:`, amountE8);
+      const tmpWartAmountE8 = Math.round(
+        Number(tmpWartAmount || 0) * 100000000,
+      );
+      buf4.writeBigUInt64BE(BigInt(tmpWartAmountE8), 0);
+      console.log(`**** tmpWartAmountE8:`, tmpWartAmountE8);
       const toSign = Buffer.concat([buf1, buf2, buf3, buf4]);
       console.log(`**** toSign:`, toSign);
 
@@ -162,7 +165,7 @@ function SendFinalStep() {
         pinHeight: pinHeight,
         nonceId: nonceId,
         toAddr: tmpDestinationWallet || "",
-        amountE8: amountE8,
+        tmpWartAmountE8: tmpWartAmountE8,
         feeE8: feeE8,
         signature65: signature65.toString("hex"),
       };
@@ -192,7 +195,7 @@ function SendFinalStep() {
       // const result = await sendTransaction({
       //     from: accounts[selectedWalletIndex].address,
       //     to: tmpDestinationWallet,
-      //     amount: amount,
+      //     tmpWartAmount: tmpWartAmount,
       //     network: selectedNetwork?.id,
       //     token: selectedNetwork?.name
       // });
@@ -276,17 +279,17 @@ function SendFinalStep() {
             <div className="text-right">
               {isSwapped ? (
                 <>
-                  <p className="text-white text-lg">${amount}</p>
+                  <p className="text-white text-lg">${tmpWartAmount}</p>
                   <p className="text-white/50 text-sm">
-                    {amount} {selectedNetwork?.name}
+                    {tmpWartAmount} {selectedNetwork?.name}
                   </p>
                 </>
               ) : (
                 <>
                   <p className="text-white text-lg">
-                    {amount} {selectedNetwork?.name}
+                    {tmpWartAmount} {selectedNetwork?.name}
                   </p>
-                  <p className="text-white/50 text-sm">${amount}</p>
+                  <p className="text-white/50 text-sm">${tmpWartAmount}</p>
                 </>
               )}
             </div>
@@ -330,9 +333,9 @@ function SendFinalStep() {
                   <div className="bg-[#2A2A2A] p-4 rounded-lg">
                     <p className="text-white/70 text-sm">Sending</p>
                     <p className="text-white text-lg font-semibold">
-                      {amount} {selectedNetwork?.name}
+                      {tmpWartAmount} {selectedNetwork?.name}
                     </p>
-                    <p className="text-white/50 text-sm">${amount}</p>
+                    <p className="text-white/50 text-sm">${tmpWartAmount}</p>
                   </div>
 
                   <div className="bg-[#2A2A2A] p-4 rounded-lg">
