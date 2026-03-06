@@ -124,8 +124,7 @@ function SendFinalStep() {
       const signHash = ethers.sha256("0x" + toSign.toString("hex")).slice(2);
       console.log(`**** signHash:`, signHash);
 
-      const privKey =
-        getAccountFromIndex(selectedWalletIndex).getPrivateKeyHex();
+      const privKey = getAccountFromIndex(selectedWalletIndex).privateKeyHex;
       const signed = secp256k1.ecdsaSign(
         Uint8Array.from(Buffer.from(signHash, "hex")),
         Uint8Array.from(Buffer.from(privKey, "hex")),

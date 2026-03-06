@@ -182,9 +182,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       // mnemonic 12 words
       const mnemonic = bip39.generateMnemonic();
 
-      const address = HDWallet.fromMnemonic(mnemonic)
-        .deriveAccountAtIndex(0)
-        .getAddress();
+      const address =
+        HDWallet.fromMnemonic(mnemonic).deriveAccountAtIndex(0).address.hex;
 
       // save to storage
       setSeedPhrase(mnemonic);
@@ -207,9 +206,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const addAccount = async (name: string | null): Promise<void> => {
     try {
       const index = walletList.length;
-      const address = HDWallet.fromMnemonic(seedPhrase!)
-        .deriveAccountAtIndex(index)
-        .getAddress();
+      const address = HDWallet.fromMnemonic(seedPhrase!).deriveAccountAtIndex(
+        index,
+      ).address.hex;
 
       // save to storage
       setWallet(address);
@@ -232,9 +231,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     const mnemonic = seedPhrase;
 
     // generate key pair
-    const address = HDWallet.fromMnemonic(mnemonic)
-      .deriveAccountAtIndex(0)
-      .getAddress();
+    const address =
+      HDWallet.fromMnemonic(mnemonic).deriveAccountAtIndex(0).address.hex;
     console.log("***** address", address);
 
     // save to storage

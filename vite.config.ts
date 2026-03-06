@@ -15,7 +15,7 @@ export default defineConfig({
       ],
     }),
     nodePolyfills({
-      include: ["buffer"],
+      include: ["buffer", "crypto"],
       globals: {
         Buffer: true,
         process: true,
