@@ -73,6 +73,7 @@ interface WalletContextProps {
   setTmpTransferTypeState: (
     tmpTransferType: "wart" | "token" | "liquidity",
   ) => void;
+  refreshTokenExpiration: () => void;
   setTmpTradeTypeState: (tmpTradeType: "buy" | "sell") => void;
   getAccountFromIndex: (index: number) => Account;
 }
@@ -298,8 +299,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   };
   const setToken = (token: string): void => {
     setTokenState(token);
-    const expirationTime = Date.now() + 3600 * 1000; // 1 hour
     saveToBrowserStorage("token", token);
+    refreshTokenExpiration();
+  };
+
+  const refreshTokenExpiration = (): void => {
+    const expirationTime = Date.now() + 3600 * 1000;
     saveToBrowserStorage("tokenExpiration", expirationTime.toString());
   };
 
@@ -501,6 +506,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setTmpCancelNonceIdState,
         setTmpTokenNameState,
         setTmpTransferTypeState,
+        refreshTokenExpiration,
         setTmpTradeTypeState,
         getAccountFromIndex,
         importWallet,

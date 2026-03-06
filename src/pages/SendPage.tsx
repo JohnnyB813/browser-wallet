@@ -220,225 +220,233 @@ function SendPage() {
   };
 
   return (
-    <div className="min-h-screen container relative">
+    <div className="flex flex-col min-h-screen container">
       <Header title="Send" />
 
-      <div className="mt-4">
-        <p className="text-white text-sm">Transfer Type</p>
-        <div className="flex gap-2 mt-2">
-          <button
-            className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
-              transferType === "wart"
-                ? "bg-primary text-black"
-                : "border border-primary text-primary hover:border-primary/80"
-            }`}
-            onClick={() => handleTransferTypeChange("wart")}
-          >
-            WART
-          </button>
-          <button
-            className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
-              transferType === "token"
-                ? "bg-primary text-black"
-                : "border border-primary text-primary hover:border-primary/80"
-            }`}
-            onClick={() => handleTransferTypeChange("token")}
-          >
-            Token
-          </button>
-          <button
-            className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
-              transferType === "liquidity"
-                ? "bg-primary text-black"
-                : "border border-primary text-primary hover:border-primary/80"
-            }`}
-            onClick={() => handleTransferTypeChange("liquidity")}
-          >
-            Liquidity
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <p className="text-white text-sm">From</p>
-        <div className="relative">
-          <div
-            className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md cursor-pointer"
-            onClick={toggleDropdown}
-          >
-            <div className="flex items-center gap-3">
-              <Jazzicon diameter={48} seed={selectedWalletIndex} />
-              <div>
-                <p className="text-white text-lg font-semibold">{name}</p>
-                <p className="text-white/50 text-xs">
-                  {formatWalletAddress(wallet || "")}
-                </p>
-              </div>
-            </div>
-            <FaChevronDown className="text-white" />
-          </div>
-          {isDropdownVisible && (
-            <div className="absolute z-10 mt-2 left-0 w-full bg-black border border-primary/50 rounded-lg overflow-hidden">
-              {accounts.map((account) => (
-                <div
-                  key={account.id}
-                  className="flex items-center gap-3 p-4 hover:bg-white/10 cursor-pointer"
-                  onClick={() => selectUser(account.id)}
-                >
-                  <Jazzicon diameter={40} seed={account.id} />
-                  <div>
-                    <p className="text-white text-sm font-semibold">
-                      {account.name}
-                    </p>
-                    <p className="text-white/50 text-xs">{account.address}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <p className="text-white text-sm">To</p>
-        <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
-          <input
-            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
-            placeholder="Enter public address"
-            value={publicAddress}
-            onChange={handleAddressChange}
-            onKeyDown={handleKeyDown}
-          />
-        </div>
-        {addressError && (
-          <div className="text-red-500 text-sm mt-2">{addressError}</div>
-        )}
-      </div>
-
-      {transferType === "wart" && (
+      <div className="flex-1 overflow-y-auto pb-24">
         <div className="mt-4">
-          <p className="text-white text-sm">Amount (WART)</p>
+          <p className="text-white text-sm">Transfer Type</p>
+          <div className="flex gap-2 mt-2">
+            <button
+              className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
+                transferType === "wart"
+                  ? "bg-primary text-black"
+                  : "border border-primary text-primary hover:border-primary/80"
+              }`}
+              onClick={() => handleTransferTypeChange("wart")}
+            >
+              WART
+            </button>
+            <button
+              className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
+                transferType === "token"
+                  ? "bg-primary text-black"
+                  : "border border-primary text-primary hover:border-primary/80"
+              }`}
+              onClick={() => handleTransferTypeChange("token")}
+            >
+              Token
+            </button>
+            <button
+              className={`flex-1 py-3 rounded-full text-sm font-semibold transition-all duration-200 ${
+                transferType === "liquidity"
+                  ? "bg-primary text-black"
+                  : "border border-primary text-primary hover:border-primary/80"
+              }`}
+              onClick={() => handleTransferTypeChange("liquidity")}
+            >
+              Liquidity
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-white text-sm">From</p>
+          <div className="relative">
+            <div
+              className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md cursor-pointer"
+              onClick={toggleDropdown}
+            >
+              <div className="flex items-center gap-3">
+                <Jazzicon diameter={48} seed={selectedWalletIndex} />
+                <div>
+                  <p className="text-white text-lg font-semibold">{name}</p>
+                  <p className="text-white/50 text-xs">
+                    {formatWalletAddress(wallet || "")}
+                  </p>
+                </div>
+              </div>
+              <FaChevronDown className="text-white" />
+            </div>
+            {isDropdownVisible && (
+              <div className="absolute z-10 mt-2 left-0 w-full bg-black border border-primary/50 rounded-lg overflow-hidden">
+                {accounts.map((account) => (
+                  <div
+                    key={account.id}
+                    className="flex items-center gap-3 p-4 hover:bg-white/10 cursor-pointer"
+                    onClick={() => selectUser(account.id)}
+                  >
+                    <Jazzicon diameter={40} seed={account.id} />
+                    <div>
+                      <p className="text-white text-sm font-semibold">
+                        {account.name}
+                      </p>
+                      <p className="text-white/50 text-xs">{account.address}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-white text-sm">To</p>
           <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
             <input
-              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
-              placeholder="Enter amount"
-              type="number"
-              value={wartAmount}
-              onChange={handleWartAmountChange}
+              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+              placeholder="Enter public address"
+              value={publicAddress}
+              onChange={handleAddressChange}
               onKeyDown={handleKeyDown}
             />
           </div>
-          {wartAmountError && (
-            <div className="text-red-500 text-sm mt-2">{wartAmountError}</div>
+          {addressError && (
+            <div className="text-red-500 text-sm mt-2">{addressError}</div>
           )}
         </div>
-      )}
 
-      {transferType === "token" && (
-        <>
+        {transferType === "wart" && (
           <div className="mt-4">
-            <p className="text-white text-sm">Asset Hash</p>
-            <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
-              <input
-                className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
-                placeholder="Enter asset hash (64 char hex)"
-                value={assetHash}
-                onChange={handleAssetHashChange}
-                onKeyDown={handleKeyDown}
-                maxLength={64}
-              />
-            </div>
-            {assetHashError && (
-              <div className="text-red-500 text-sm mt-2">{assetHashError}</div>
-            )}
-          </div>
-          <div className="mt-4">
-            <p className="text-white text-sm">Amount</p>
-            <div className="flex gap-3">
-              <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
-                <input
-                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
-                  placeholder="Enter token amount"
-                  type="number"
-                  value={tokenAmount}
-                  onChange={handleTokenAmountChange}
-                  onKeyDown={handleKeyDown}
-                />
-              </div>
-              <select
-                className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-none"
-                value={precision}
-                onChange={handlePrecisionChange}
-              >
-                {[
-                  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-                  18,
-                ].map((p) => (
-                  <option key={p} value={p} className="bg-black">
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {tokenAmountError && (
-              <div className="text-red-500 text-sm mt-2">
-                {tokenAmountError}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {transferType === "liquidity" && (
-        <>
-          <div className="mt-4">
-            <p className="text-white text-sm">Asset Hash</p>
-            <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
-              <input
-                className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
-                placeholder="Enter asset hash (64 char hex)"
-                value={assetHash}
-                onChange={handleAssetHashChange}
-                onKeyDown={handleKeyDown}
-                maxLength={64}
-              />
-            </div>
-            {assetHashError && (
-              <div className="text-red-500 text-sm mt-2">{assetHashError}</div>
-            )}
-          </div>
-          <div className="mt-4">
-            <p className="text-white text-sm">Liquidity Units</p>
+            <p className="text-white text-sm">Amount (WART)</p>
             <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
               <input
                 className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
-                placeholder="Enter liquidity units"
+                placeholder="Enter amount"
                 type="number"
-                value={liquidityUnits}
-                onChange={handleLiquidityChange}
+                value={wartAmount}
+                onChange={handleWartAmountChange}
                 onKeyDown={handleKeyDown}
               />
             </div>
-            {liquidityError && (
-              <div className="text-red-500 text-sm mt-2">{liquidityError}</div>
+            {wartAmountError && (
+              <div className="text-red-500 text-sm mt-2">{wartAmountError}</div>
             )}
           </div>
-        </>
-      )}
+        )}
 
-      {error && <div className="text-red-500 text-sm mt-4">{error}</div>}
+        {transferType === "token" && (
+          <>
+            <div className="mt-4">
+              <p className="text-white text-sm">Asset Hash</p>
+              <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+                <input
+                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+                  placeholder="Enter asset hash (64 char hex)"
+                  value={assetHash}
+                  onChange={handleAssetHashChange}
+                  onKeyDown={handleKeyDown}
+                  maxLength={64}
+                />
+              </div>
+              {assetHashError && (
+                <div className="text-red-500 text-sm mt-2">
+                  {assetHashError}
+                </div>
+              )}
+            </div>
+            <div className="mt-4">
+              <p className="text-white text-sm">Amount</p>
+              <div className="flex gap-3">
+                <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+                  <input
+                    className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                    placeholder="Enter token amount"
+                    type="number"
+                    value={tokenAmount}
+                    onChange={handleTokenAmountChange}
+                    onKeyDown={handleKeyDown}
+                  />
+                </div>
+                <select
+                  className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-none"
+                  value={precision}
+                  onChange={handlePrecisionChange}
+                >
+                  {[
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    17, 18,
+                  ].map((p) => (
+                    <option key={p} value={p} className="bg-black">
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {tokenAmountError && (
+                <div className="text-red-500 text-sm mt-2">
+                  {tokenAmountError}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
-      <div className="flex bottom-3 absolute left-0 px-3 w-full gap-3">
+        {transferType === "liquidity" && (
+          <>
+            <div className="mt-4">
+              <p className="text-white text-sm">Asset Hash</p>
+              <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+                <input
+                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+                  placeholder="Enter asset hash (64 char hex)"
+                  value={assetHash}
+                  onChange={handleAssetHashChange}
+                  onKeyDown={handleKeyDown}
+                  maxLength={64}
+                />
+              </div>
+              {assetHashError && (
+                <div className="text-red-500 text-sm mt-2">
+                  {assetHashError}
+                </div>
+              )}
+            </div>
+            <div className="mt-4">
+              <p className="text-white text-sm">Liquidity Units</p>
+              <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+                <input
+                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                  placeholder="Enter liquidity units"
+                  type="number"
+                  value={liquidityUnits}
+                  onChange={handleLiquidityChange}
+                  onKeyDown={handleKeyDown}
+                />
+              </div>
+              {liquidityError && (
+                <div className="text-red-500 text-sm mt-2">
+                  {liquidityError}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {error && <div className="text-red-500 text-sm mt-4">{error}</div>}
+      </div>
+
+      <div className="flex gap-3 px-3 pb-4 pt-2">
         <Button
           variant="outline"
-          className="w-full mt-5 hover:bg-primary/10"
+          className="w-full"
           onClick={() => navigate("/home")}
         >
           Cancel
         </Button>
         <Button
           variant="primary"
-          className="w-full mt-5"
+          className="w-full"
           onClick={handelSubmit}
           disabled={!isFormValid()}
         >

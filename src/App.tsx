@@ -39,13 +39,34 @@ interface Activity {
 }
 
 const App: React.FC = () => {
-  const { seedPhrase, wallet, password, token, clearToken } = useWallet();
+  const {
+    seedPhrase,
+    wallet,
+    password,
+    token,
+    clearToken,
+    refreshTokenExpiration,
+  } = useWallet();
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(
     null,
   );
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleActivity = () => {
+      if (token) {
+        refreshTokenExpiration();
+      }
+    };
+    window.addEventListener("click", handleActivity);
+    window.addEventListener("keydown", handleActivity);
+    return () => {
+      window.removeEventListener("click", handleActivity);
+      window.removeEventListener("keydown", handleActivity);
+    };
+  }, [token, refreshTokenExpiration]);
 
   const startLoading = useCallback(() => {
     const interval = setInterval(() => {
