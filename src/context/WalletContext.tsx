@@ -23,6 +23,14 @@ interface WalletContextProps {
   password: string | null;
   name: string | null;
   tmpDestinationWallet: string | null;
+  tmpAssetHash: string | null;
+  tmpTokenAmount: string | null;
+  tmpWartAmount: string | null;
+  tmpLimitPrice: string | null;
+  tmpPrecision: number;
+  tmpCancelHeight: number | null;
+  tmpCancelNonceId: number | null;
+  tmpTokenName: string | null;
   inputWordsBackup: string[];
   setName: (name: string) => void;
   setSeedPhrase: (seedPhrase: string) => void;
@@ -52,6 +60,14 @@ interface WalletContextProps {
   setSelectedNodeIndexState: (selectedNodeIndex: number) => void;
   setVisibleWalletListState: (visibleWalletList: boolean[]) => void;
   setTmpDestinationWalletState: (tmpDestinationWallet: string) => void;
+  setTmpAssetHashState: (tmpAssetHash: string) => void;
+  setTmpTokenAmountState: (tmpTokenAmount: string) => void;
+  setTmpWartAmountState: (tmpWartAmount: string) => void;
+  setTmpLimitPriceState: (tmpLimitPrice: string) => void;
+  setTmpPrecisionState: (tmpPrecision: number) => void;
+  setTmpCancelHeightState: (tmpCancelHeight: number) => void;
+  setTmpCancelNonceIdState: (tmpCancelNonceId: number) => void;
+  setTmpTokenNameState: (tmpTokenName: string) => void;
   getAccountFromIndex: (index: number) => Account;
 }
 
@@ -89,6 +105,20 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const [tmpDestinationWallet, setTmpDestinationWalletState] = useState<
     string | null
   >(null);
+  const [tmpAssetHash, setTmpAssetHashState] = useState<string | null>(null);
+  const [tmpTokenAmount, setTmpTokenAmountState] = useState<string | null>(
+    null,
+  );
+  const [tmpWartAmount, setTmpWartAmountState] = useState<string | null>(null);
+  const [tmpLimitPrice, setTmpLimitPriceState] = useState<string | null>(null);
+  const [tmpPrecision, setTmpPrecisionState] = useState<number>(8);
+  const [tmpCancelHeight, setTmpCancelHeightState] = useState<number | null>(
+    null,
+  );
+  const [tmpCancelNonceId, setTmpCancelNonceIdState] = useState<number | null>(
+    null,
+  );
+  const [tmpTokenName, setTmpTokenNameState] = useState<string | null>(null);
   const [inputWordsBackup, setInputWordsBackupState] = useState<string[]>([]);
 
   const arrayBufferToHex = (buffer: ArrayBuffer): string => {
@@ -410,6 +440,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         selectedNodeIndex,
         visibleWalletList,
         tmpDestinationWallet,
+        tmpAssetHash,
+        tmpTokenAmount,
+        tmpWartAmount,
+        tmpLimitPrice,
+        tmpPrecision,
+        tmpCancelHeight,
+        tmpCancelNonceId,
+        tmpTokenName,
         inputWordsBackup,
         accountPath,
         setSeedPhrase,
@@ -436,6 +474,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setSelectedNodeIndexState,
         setVisibleWalletListState,
         setTmpDestinationWalletState,
+        setTmpAssetHashState,
+        setTmpTokenAmountState,
+        setTmpWartAmountState,
+        setTmpLimitPriceState,
+        setTmpPrecisionState,
+        setTmpCancelHeightState,
+        setTmpCancelNonceIdState,
+        setTmpTokenNameState,
         getAccountFromIndex,
         importWallet,
         setInputWordsBackup,

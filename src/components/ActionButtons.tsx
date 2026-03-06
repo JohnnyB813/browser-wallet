@@ -11,7 +11,7 @@ const ActionButtons: React.FC = () => {
         variant="primary"
         ariaLabel="Send"
         className="w-full"
-        onClick={() => navigate("/send")}
+        onClick={() => navigate("/transactions")}
       >
         Send
       </Button>
