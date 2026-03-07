@@ -296,7 +296,8 @@ function TradePage() {
               <input
                 className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
                 placeholder="Enter WART amount"
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={wartAmount}
                 onChange={handleWartAmountChange}
                 onKeyDown={handleKeyDown}
@@ -316,7 +317,8 @@ function TradePage() {
                 <input
                   className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
                   placeholder="Enter token amount"
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={tokenAmount}
                   onChange={handleTokenAmountChange}
                   onKeyDown={handleKeyDown}
@@ -351,7 +353,8 @@ function TradePage() {
             <input
               className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
               placeholder="Enter limit price (e.g. 0.05)"
-              type="number"
+              type="text"
+              inputMode="decimal"
               step="any"
               value={limitPrice}
               onChange={handleLimitPriceChange}

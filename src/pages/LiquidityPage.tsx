@@ -287,7 +287,8 @@ function LiquidityPage() {
                   <input
                     className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
                     placeholder="Enter token amount"
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={tokenAmount}
                     onChange={handleTokenAmountChange}
                     onKeyDown={handleKeyDown}
@@ -320,7 +321,8 @@ function LiquidityPage() {
                 <input
                   className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
                   placeholder="Enter WART amount"
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={wartAmount}
                   onChange={handleWartAmountChange}
                   onKeyDown={handleKeyDown}
@@ -342,7 +344,8 @@ function LiquidityPage() {
               <input
                 className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
                 placeholder="Enter units"
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={liquidityUnits}
                 onChange={handleLiquidityUnitsChange}
                 onKeyDown={handleKeyDown}
