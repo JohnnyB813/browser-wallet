@@ -102,30 +102,30 @@ const Home: React.FC<Props> = ({ setSelectedActivity }) => {
           balance={balance ? parseFloat(balance.toFixed(2)) : 0}
           usdValue={balanceUSD ? parseFloat(balanceUSD.toFixed(2)) : 0}
         />
-        <div className="grid grid-cols-2 gap-3 w-full">
+        <div className="grid grid-cols-4 gap-2 w-full">
           <div
-            className="p-3 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
+            className="p-2 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
             onClick={() => navigate("/send")}
           >
             <IoCash className="text-2xl text-primary" />
             <p className="text-white text-xs font-semibold">Send</p>
           </div>
           <div
-            className="p-3 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
+            className="p-2 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
             onClick={() => navigate("/trade")}
           >
             <IoTrendingUp className="text-2xl text-primary" />
             <p className="text-white text-xs font-semibold">Trade</p>
           </div>
           <div
-            className="p-3 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
+            className="p-2 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
             onClick={() => navigate("/liquidity")}
           >
             <IoWater className="text-2xl text-primary" />
             <p className="text-white text-xs font-semibold">Liquidity</p>
           </div>
           <div
-            className="p-3 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
+            className="p-2 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
             onClick={() => navigate("/cancel-order")}
           >
             <IoCloseCircle className="text-2xl text-primary" />
