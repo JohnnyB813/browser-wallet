@@ -322,11 +322,11 @@ function SendPage() {
 
         {transferType === "wart" && (
           <div className="mt-4">
-            <p className="text-white text-sm">Amount (WART)</p>
+            <p className="text-white text-sm">Amount</p>
             <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
               <input
                 className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
-                placeholder="Enter amount"
+                placeholder="Enter amount to transfer"
                 type="text"
                 inputMode="decimal"
                 value={wartAmount}
@@ -366,7 +366,7 @@ function SendPage() {
                 <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                   <input
                     className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
-                    placeholder="Enter token amount"
+                    placeholder="Enter amount to transfer"
                     type="text"
                     inputMode="decimal"
                     value={tokenAmount}
@@ -419,11 +419,11 @@ function SendPage() {
               )}
             </div>
             <div className="mt-4">
-              <p className="text-white text-sm">Liquidity Units</p>
+              <p className="text-white text-sm">Amount</p>
               <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                 <input
                   className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
-                  placeholder="Enter liquidity units"
+                  placeholder="Enter amount to transfer"
                   type="text"
                   inputMode="decimal"
                   value={liquidityUnits}

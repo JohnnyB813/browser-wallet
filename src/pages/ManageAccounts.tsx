@@ -124,7 +124,7 @@ function ManageAccounts() {
           onClick={() => setIsDialogOpen(true)}
           className="w-full"
         >
-          + Add more account
+          + Add
         </Button>
       </div>
 
