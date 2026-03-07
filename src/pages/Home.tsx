@@ -21,7 +21,7 @@ interface Props {
 }
 
 enum Tab {
-  Tokens,
+  Assets,
   Activity,
 }
 
@@ -37,7 +37,7 @@ const activities: Activity[] = [
 const Home: React.FC<Props> = ({ setSelectedActivity }) => {
   const { wallet, selectedNodeIndex, nodeList } = useWallet();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<Tab>(Tab.Tokens);
+  const [activeTab, setActiveTab] = useState<Tab>(Tab.Assets);
   const [balance, setBalance] = useState(0);
   const [balanceUSD, setBalanceUSD] = useState(0);
 
@@ -134,7 +134,7 @@ const Home: React.FC<Props> = ({ setSelectedActivity }) => {
         </div>
       </div>
       <TabNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
-      {activeTab === Tab.Tokens ? (
+      {activeTab === Tab.Assets ? (
         <>
           <div className="flex justify-end mt-4">
             <button

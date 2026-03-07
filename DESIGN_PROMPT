@@ -364,7 +364,7 @@ These elements MUST be present for authenticity:
 - `WalletInfo.tsx` - Wallet address display with copy functionality and explorer link
 - `ProfileHeader.tsx` - User avatar (Jazzicon), name, account path, and settings menu
 - `ActionButtons.tsx` - Send/Receive action buttons row
-- `TabNavigation.tsx` - Tokens/Activity tabs with underline indicator
+- `TabNavigation.tsx` - Assets/Activity tabs with underline indicator
 
 ### Organisms
 

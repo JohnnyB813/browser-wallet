@@ -1,7 +1,7 @@
 import React from "react";
 
 enum Tab {
-  Tokens,
+  Assets,
   Activity,
 }
 
@@ -16,7 +16,7 @@ const TabNavigation: React.FC<TabNavigationProps> = ({
 }) => (
   <div className="text-sm font-medium text-center text-gray-500 border-b border-white/20 mt-5">
     <ul className="flex -mb-px">
-      {[Tab.Tokens, Tab.Activity].map((tab) => (
+      {[Tab.Assets, Tab.Activity].map((tab) => (
         <li key={tab} className="w-full">
           <button
             onClick={() => setActiveTab(tab)}
