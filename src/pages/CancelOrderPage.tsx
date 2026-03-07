@@ -193,7 +193,7 @@ function CancelOrderPage() {
         <Button
           variant="outline"
           className="w-full mt-5 hover:bg-primary/10"
-          onClick={() => navigate("/transactions")}
+          onClick={() => navigate("/home")}
         >
           Back
         </Button>

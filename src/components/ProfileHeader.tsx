@@ -4,19 +4,29 @@ import { useNavigate } from "react-router-dom";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import useWallet from "../hooks/useWallet";
 
-const ProfileHeader: React.FC = () => {
+interface ProfileHeaderProps {
+  wallet: string | null;
+}
+
+const ProfileHeader: React.FC<ProfileHeaderProps> = ({ wallet }) => {
   const { selectedWalletIndex, accountPath } = useWallet();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { name, clearToken } = useWallet();
   const navigate = useNavigate();
-  const menuRef = useRef<HTMLDivElement>(null); // Ref for the menu
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const formatAddress = (addr: string): string => {
+    if (!addr) return "";
+    const noPrefix = addr.startsWith("0x") ? addr.slice(2) : addr;
+    if (noPrefix.length <= 8) return noPrefix;
+    return `${noPrefix.slice(0, 4)}...${noPrefix.slice(-4)}`;
+  };
 
   const toggleMenu = () => {
     setIsMenuOpen((prev) => !prev);
   };
 
   const handleClickOutside = (event: MouseEvent) => {
-    // Close the menu if the click is outside the menu
     if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
       setIsMenuOpen(false);
     }
@@ -40,17 +50,20 @@ const ProfileHeader: React.FC = () => {
   }, [isMenuOpen]);
 
   return (
-    <div className="flex justify-between w-full">
+    <div
+      className="flex justify-between w-full cursor-pointer"
+      onClick={() => navigate("/receive")}
+    >
       <div className="flex items-center gap-3">
         <Jazzicon diameter={60} seed={selectedWalletIndex} />
         <div className="grid gap-1">
           <h1 className="text-white text-xl font-semibold">{name}</h1>
           <p className="text-white/30 text-xs font-normal">
-            {accountPath(selectedWalletIndex)}
+            {accountPath(selectedWalletIndex)} · {formatAddress(wallet || "")}
           </p>
         </div>
       </div>
-      <div className="relative" ref={menuRef}>
+      <div className="relative" onClick={(e) => e.stopPropagation()}>
         <div
           onClick={toggleMenu}
           className="w-[70px] h-[70px] bg-white/5 rounded-full border border-primary flex justify-center items-center cursor-pointer"

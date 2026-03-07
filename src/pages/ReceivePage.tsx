@@ -2,6 +2,7 @@ import { useState } from "react";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import { QRCodeSVG } from "qrcode.react";
+import { IoOpenOutline } from "react-icons/io5";
 
 function IconButton({
   iconSrc,
@@ -85,6 +86,17 @@ function ReceivePage() {
             label={copyLabel}
             onClick={handleCopyAddress}
           />
+          <a
+            href={`https://wartscan.io/account/${wallet}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col items-center gap-2 cursor-pointer"
+          >
+            <div className="flex justify-center items-center w-16 h-16 bg-[#f1f1f1] rounded-full">
+              <IoOpenOutline className="w-8 h-8 text-black" />
+            </div>
+            <div className="text-sm text-white">Explorer</div>
+          </a>
         </div>
       </div>
     </div>

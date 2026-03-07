@@ -19,7 +19,6 @@ import ShowPrivateKey from "./pages/ShowPrivateKey";
 import useWallet from "./hooks/useWallet";
 import SendFinalStep from "./pages/Sendstep2";
 import SelectNode from "./pages/SelectNode";
-import TransactionTypePage from "./pages/TransactionTypePage";
 import TradePage from "./pages/TradePage";
 import TradeStep2 from "./pages/TradeStep2";
 import LiquidityPage from "./pages/LiquidityPage";
@@ -120,7 +119,6 @@ const App: React.FC = () => {
       <Route path="/select-node" element={<SelectNode />} />
       <Route path="/account-details" element={<AccountDetails />} />
       <Route path="/private-key" element={<ShowPrivateKey />} />
-      <Route path="/transactions" element={<TransactionTypePage />} />
       <Route path="/trade" element={<TradePage />} />
       <Route path="/trade-step2" element={<TradeStep2 />} />
       <Route path="/liquidity" element={<LiquidityPage />} />

@@ -23,15 +23,6 @@ const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onCopy }) => {
         </h2>
       </div>
       <div className="flex gap-8 mt-5">
-        <a
-          href={`https://wartscan.io/account/${wallet}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2"
-        >
-          <img src="Document.svg" alt="Document" className="w-5 h-5" />
-          <span className="text-white text-sm">View on explorer</span>
-        </a>
         <button
           onClick={() => navigate("/receive")}
           className="flex items-center gap-2"

@@ -364,7 +364,7 @@ function LiquidityPage() {
         <Button
           variant="outline"
           className="w-full"
-          onClick={() => navigate("/transactions")}
+          onClick={() => navigate("/home")}
         >
           Back
         </Button>

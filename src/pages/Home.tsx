@@ -1,14 +1,13 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import ProfileHeader from "../components/ProfileHeader";
-import WalletInfo from "../components/WalletInfo";
 import Balance from "../components/Balance";
-import ActionButtons from "../components/ActionButtons";
 import TabNavigation from "../components/TabNavigation";
 import TokenItem from "../components/TokenItem";
 import ActivityItem from "../components/ActivityItem";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
+import { IoCash, IoTrendingUp, IoWater, IoCloseCircle } from "react-icons/io5";
 
 interface Activity {
   date: string;
@@ -41,10 +40,6 @@ const Home: React.FC<Props> = ({ setSelectedActivity }) => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Tokens);
   const [balance, setBalance] = useState(0);
   const [balanceUSD, setBalanceUSD] = useState(0);
-
-  const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text);
-  }, []);
 
   const handleActivityClick = (activityItem: Activity) => {
     setSelectedActivity(activityItem);
@@ -100,16 +95,43 @@ const Home: React.FC<Props> = ({ setSelectedActivity }) => {
   return (
     <div className="container min-h-screen">
       <div className="p-2.5 bg-white/10 w-full rounded-48 backdrop-blur-[9px] flex-col justify-center items-center gap-4 inline-flex">
-        <ProfileHeader />
-        <WalletInfo
-          wallet={wallet}
-          onCopy={() => copyToClipboard(wallet || "")}
-        />
+        <ProfileHeader wallet={wallet} />
+      </div>
+      <div className="p-2.5 bg-white/10 w-full rounded-48 backdrop-blur-[9px] flex-col justify-center items-center gap-4 inline-flex mt-4">
         <Balance
           balance={balance ? parseFloat(balance.toFixed(2)) : 0}
           usdValue={balanceUSD ? parseFloat(balanceUSD.toFixed(2)) : 0}
         />
-        <ActionButtons />
+        <div className="grid grid-cols-2 gap-3 w-full">
+          <div
+            className="p-3 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
+            onClick={() => navigate("/send")}
+          >
+            <IoCash className="text-2xl text-primary" />
+            <p className="text-white text-xs font-semibold">Send</p>
+          </div>
+          <div
+            className="p-3 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
+            onClick={() => navigate("/trade")}
+          >
+            <IoTrendingUp className="text-2xl text-primary" />
+            <p className="text-white text-xs font-semibold">Trade</p>
+          </div>
+          <div
+            className="p-3 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
+            onClick={() => navigate("/liquidity")}
+          >
+            <IoWater className="text-2xl text-primary" />
+            <p className="text-white text-xs font-semibold">Liquidity</p>
+          </div>
+          <div
+            className="p-3 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
+            onClick={() => navigate("/cancel-order")}
+          >
+            <IoCloseCircle className="text-2xl text-primary" />
+            <p className="text-white text-xs font-semibold">Cancel</p>
+          </div>
+        </div>
       </div>
       <TabNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
       {activeTab === Tab.Tokens ? (
