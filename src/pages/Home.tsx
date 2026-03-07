@@ -7,7 +7,7 @@ import TokenItem from "../components/TokenItem";
 import ActivityItem from "../components/ActivityItem";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
-import { IoCash, IoTrendingUp, IoWater, IoCloseCircle } from "react-icons/io5";
+import { IoSend, IoTrendingUp, IoWater, IoCloseCircle } from "react-icons/io5";
 
 interface Activity {
   date: string;
@@ -107,7 +107,7 @@ const Home: React.FC<Props> = ({ setSelectedActivity }) => {
             className="p-2 bg-white/10 rounded-lg flex flex-col items-center gap-1 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200"
             onClick={() => navigate("/send")}
           >
-            <IoCash className="text-2xl text-primary" />
+            <IoSend className="text-2xl text-primary" />
             <p className="text-white text-xs font-semibold">Send</p>
           </div>
           <div
