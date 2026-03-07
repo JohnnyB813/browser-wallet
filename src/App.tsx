@@ -22,10 +22,8 @@ import SelectNode from "./pages/SelectNode";
 import TransactionTypePage from "./pages/TransactionTypePage";
 import TradePage from "./pages/TradePage";
 import TradeStep2 from "./pages/TradeStep2";
-import AddLiquidityPage from "./pages/AddLiquidityPage";
-import AddLiquidityStep2 from "./pages/AddLiquidityStep2";
-import RemoveLiquidityPage from "./pages/RemoveLiquidityPage";
-import RemoveLiquidityStep2 from "./pages/RemoveLiquidityStep2";
+import LiquidityPage from "./pages/LiquidityPage";
+import LiquidityStep2 from "./pages/LiquidityStep2";
 import CancelOrderPage from "./pages/CancelOrderPage";
 import CancelOrderStep2 from "./pages/CancelOrderStep2";
 import CreateTokenPage from "./pages/CreateTokenPage";
@@ -125,13 +123,8 @@ const App: React.FC = () => {
       <Route path="/transactions" element={<TransactionTypePage />} />
       <Route path="/trade" element={<TradePage />} />
       <Route path="/trade-step2" element={<TradeStep2 />} />
-      <Route path="/add-liquidity" element={<AddLiquidityPage />} />
-      <Route path="/add-liquidity-step2" element={<AddLiquidityStep2 />} />
-      <Route path="/remove-liquidity" element={<RemoveLiquidityPage />} />
-      <Route
-        path="/remove-liquidity-step2"
-        element={<RemoveLiquidityStep2 />}
-      />
+      <Route path="/liquidity" element={<LiquidityPage />} />
+      <Route path="/liquidity-step2" element={<LiquidityStep2 />} />
       <Route path="/cancel-order" element={<CancelOrderPage />} />
       <Route path="/cancel-order-step2" element={<CancelOrderStep2 />} />
       <Route path="/create-token" element={<CreateTokenPage />} />

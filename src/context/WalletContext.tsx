@@ -33,6 +33,7 @@ interface WalletContextProps {
   tmpTokenName: string | null;
   tmpTransferType: "wart" | "token" | "liquidity";
   tmpTradeType: "buy" | "sell";
+  tmpLiquidityType: "add" | "remove";
   inputWordsBackup: string[];
   setName: (name: string) => void;
   setSeedPhrase: (seedPhrase: string) => void;
@@ -75,6 +76,7 @@ interface WalletContextProps {
   ) => void;
   refreshTokenExpiration: () => void;
   setTmpTradeTypeState: (tmpTradeType: "buy" | "sell") => void;
+  setTmpLiquidityTypeState: (tmpLiquidityType: "add" | "remove") => void;
   getAccountFromIndex: (index: number) => Account;
 }
 
@@ -136,6 +138,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     "wart" | "token" | "liquidity"
   >("wart");
   const [tmpTradeType, setTmpTradeTypeState] = useState<"buy" | "sell">("buy");
+  const [tmpLiquidityType, setTmpLiquidityTypeState] = useState<
+    "add" | "remove"
+  >("add");
   const [inputWordsBackup, setInputWordsBackupState] = useState<string[]>([]);
 
   const arrayBufferToHex = (buffer: ArrayBuffer): string => {
@@ -471,6 +476,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         tmpTokenName,
         tmpTransferType,
         tmpTradeType,
+        tmpLiquidityType,
         inputWordsBackup,
         accountPath,
         setSeedPhrase,
@@ -508,6 +514,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setTmpTransferTypeState,
         refreshTokenExpiration,
         setTmpTradeTypeState,
+        setTmpLiquidityTypeState,
         getAccountFromIndex,
         importWallet,
         setInputWordsBackup,

@@ -10,9 +10,11 @@ import {
   Funds,
   TokenPrecision,
   Wart,
+  Liquidity,
   RoundedFee,
   NonceId,
   HDWallet,
+  TransactionContext,
 } from "warthog-ts";
 
 interface AccountType {
@@ -24,7 +26,7 @@ interface AccountType {
   visible: boolean;
 }
 
-function AddLiquidityStep2() {
+function LiquidityStep2() {
   const {
     password,
     selectedWalletIndex,
@@ -35,6 +37,7 @@ function AddLiquidityStep2() {
     tmpAssetHash,
     tmpTokenAmount,
     tmpWartAmount,
+    tmpLiquidityType,
     visibleWalletList,
     setSelectedWalletIndex,
     setName,
@@ -60,12 +63,15 @@ function AddLiquidityStep2() {
     setWallet(walletList[id]);
     setSelectedWalletIndex(id);
   };
-  const getAccountFromIndex = (index: number) =>
-    HDWallet.fromMnemonic(seedPhrase!).deriveAccountAtIndex(index);
+
+  const getAccountFromIndex = (index: number) => {
+    return HDWallet.fromMnemonic(seedPhrase!).deriveAccountAtIndex(index);
+  };
 
   useEffect(() => {
-    if (nameList.length !== walletList.length) console.log(`error`);
-    else
+    if (nameList.length !== walletList.length) {
+      console.log(`**** error:`, nameList.length, walletList.length);
+    } else {
       setAccounts(
         nameList.map((name, index) => ({
           id: index,
@@ -76,20 +82,35 @@ function AddLiquidityStep2() {
           visible: visibleWalletList[index],
         })),
       );
+    }
   }, [walletList, nameList, visibleWalletList]);
+
+  const getTitle = () => {
+    return tmpLiquidityType === "add" ? "Add Liquidity" : "Remove Liquidity";
+  };
+
+  const getDisplayAmount = () => {
+    if (tmpLiquidityType === "add") {
+      return `${tmpTokenAmount || 0} tokens + ${tmpWartAmount || 0} WART`;
+    }
+    return `${tmpTokenAmount || 0} liquidity units`;
+  };
 
   const handleTransaction = async () => {
     if (confirmPassword !== password) {
       setPasswordError("Incorrect password.");
       return;
     }
-    if (!tmpAssetHash || !tmpTokenAmount || !tmpWartAmount) {
+
+    if (!tmpAssetHash || !tmpTokenAmount) {
       setTransactionError("Missing data");
       setTransactionStatus("error");
       return;
     }
+
     setIsProcessing(true);
     setTransactionStatus("processing");
+
     try {
       const headResponse = (
         await axios.get(`${nodeList[selectedNodeIndex]}/chain/head`)
@@ -98,6 +119,7 @@ function AddLiquidityStep2() {
       const pinHeight = headResponse.data.pinHeight as number;
       const nonceId = nonce + 1;
       setNonce(nonceId);
+
       const rawFeeE8 = "9999";
       const result = (
         await axios.get(
@@ -105,31 +127,49 @@ function AddLiquidityStep2() {
         )
       ).data;
       const feeE8 = result.data.roundedE8;
+
       const account = getAccountFromIndex(selectedWalletIndex);
       const chainPin = { pinHash, pinHeight };
       const fee = RoundedFee.fromE8(BigInt(feeE8), false)!;
       const nonceIdObj = NonceId.fromNumber(nonceId)!;
-      const { TransactionContext } = await import("warthog-ts");
+
       const context = new TransactionContext(chainPin, fee, nonceIdObj);
-      const tokenParsed = Funds.parse(tmpTokenAmount, TokenPrecision.WART);
-      const wartParsed = Wart.parse(tmpWartAmount);
-      if (!tokenParsed || !wartParsed) throw new Error("Parse failed");
-      const tx = context.depositLiquidity(
-        account,
-        tmpAssetHash,
-        tokenParsed,
-        wartParsed,
-      );
+
+      let tx;
+
+      if (tmpLiquidityType === "add") {
+        const tokenParsed = Funds.parse(tmpTokenAmount, TokenPrecision.WART);
+        const wartParsed = Wart.parse(tmpWartAmount || "0");
+        if (!tokenParsed || !wartParsed) throw new Error("Parse failed");
+        tx = context.depositLiquidity(
+          account,
+          tmpAssetHash,
+          tokenParsed,
+          wartParsed,
+        );
+      } else {
+        const liquidityParsed = Liquidity.parse(tmpTokenAmount);
+        if (!liquidityParsed) throw new Error("Parse failed");
+        tx = context.withdrawLiquidity(account, tmpAssetHash, liquidityParsed);
+      }
+
       const postdata = {
         type: tx.type,
         pinHeight: tx.pinHeight,
         nonceId: tx.nonceId,
         feeE8: tx.feeE8,
         assetHash: tx.assetHash,
-        amountU64: Number(tx.amountU64),
-        wartE8: Number(tx.wartE8),
+        ...(tmpLiquidityType === "add"
+          ? {
+              amountU64: Number(tx.amountU64),
+              wartE8: Number(tx.wartE8),
+            }
+          : {
+              amountE8: Number(tx.amountE8),
+            }),
         signature65: tx.signature65,
       };
+
       axios
         .post(`${nodeList[selectedNodeIndex]}/transaction/add`, postdata)
         .then((res) => {
@@ -157,7 +197,7 @@ function AddLiquidityStep2() {
 
   return (
     <div className="min-h-screen container relative">
-      <Header title="Add Liquidity" />
+      <Header title={getTitle()} />
       <div className="flex flex-col gap-1">
         <p className="text-white text-sm">From</p>
         <UserDropdown
@@ -178,18 +218,12 @@ function AddLiquidityStep2() {
         </div>
         <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md mt-3">
           <div>
-            <p className="text-white text-lg font-semibold">Token Amount</p>
+            <p className="text-white text-lg font-semibold">
+              {tmpLiquidityType === "add" ? "Depositing" : "Withdrawing"}
+            </p>
           </div>
           <div className="text-right">
-            <p className="text-white text-lg">{tmpTokenAmount || 0} tokens</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md mt-3">
-          <div>
-            <p className="text-white text-lg font-semibold">WART Amount</p>
-          </div>
-          <div className="text-right">
-            <p className="text-white text-lg">{tmpWartAmount || 0} WART</p>
+            <p className="text-white text-lg">{getDisplayAmount()}</p>
           </div>
         </div>
       </div>
@@ -197,7 +231,7 @@ function AddLiquidityStep2() {
         <Button
           variant="outline"
           className="w-full mt-5 hover:bg-primary/10"
-          onClick={() => navigate("/add-liquidity")}
+          onClick={() => navigate("/liquidity")}
         >
           Back
         </Button>
@@ -219,9 +253,13 @@ function AddLiquidityStep2() {
                 </h3>
                 <div className="space-y-4 mb-6">
                   <div className="bg-[#2A2A2A] p-4 rounded-lg">
-                    <p className="text-white/70 text-sm">Depositing</p>
+                    <p className="text-white/70 text-sm">
+                      {tmpLiquidityType === "add"
+                        ? "Depositing"
+                        : "Withdrawing"}
+                    </p>
                     <p className="text-white text-lg font-semibold">
-                      {tmpTokenAmount} tokens + {tmpWartAmount} WART
+                      {getDisplayAmount()}
                     </p>
                   </div>
                   <div>
@@ -359,4 +397,5 @@ function AddLiquidityStep2() {
     </div>
   );
 }
-export default AddLiquidityStep2;
+
+export default LiquidityStep2;

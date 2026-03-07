@@ -77,6 +77,7 @@ function SendPage() {
 
   const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    console.log("Address input:", value);
     setPublicAddress(value);
     if (!Address.validate(value)) {
       setAddressError("Invalid address format");
@@ -87,9 +88,12 @@ function SendPage() {
 
   const handleWartAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    console.log("WART input:", value);
     setWartAmount(value);
     const parsed = Wart.parse(value);
+    console.log("WART parsed:", parsed);
     if (parsed === null) {
+      console.log("Setting WART error");
       setWartAmountError("Invalid WART amount");
     } else {
       setWartAmountError(null);

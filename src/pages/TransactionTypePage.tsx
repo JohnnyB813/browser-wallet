@@ -1,8 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import {
-  IoAddCircle,
-  IoRemoveCircle,
+  IoWater,
   IoCloseCircle,
   IoCreate,
   IoTrendingUp,
@@ -33,18 +32,11 @@ const transactionTypes: TransactionType[] = [
     route: "/trade",
   },
   {
-    id: "add-liquidity",
-    title: "Add Liquidity",
-    description: "Deposit tokens + WART to pool",
-    icon: <IoAddCircle className="text-3xl text-primary" />,
-    route: "/add-liquidity",
-  },
-  {
-    id: "remove-liquidity",
-    title: "Remove Liquidity",
-    description: "Withdraw tokens + WART from pool",
-    icon: <IoRemoveCircle className="text-3xl text-primary" />,
-    route: "/remove-liquidity",
+    id: "liquidity",
+    title: "Liquidity",
+    description: "Add or remove liquidity from pools",
+    icon: <IoWater className="text-3xl text-primary" />,
+    route: "/liquidity",
   },
   {
     id: "cancel",
