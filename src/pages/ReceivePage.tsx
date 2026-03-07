@@ -27,7 +27,7 @@ function IconButton({
 }
 
 function ReceivePage() {
-  const { wallet } = useWallet();
+  const { wallet, selectedWalletIndex, accountPath } = useWallet();
   const [copyLabel, setCopyLabel] = useState("Copy");
 
   const handleCopyAddress = () => {
@@ -68,6 +68,9 @@ function ReceivePage() {
           >
             {wallet || "No wallet connected"}
           </span>
+          <p className="text-white/30 text-xs font-normal">
+            {accountPath(selectedWalletIndex)}
+          </p>
         </div>
       </div>
       <div className="mt-8 flex flex-col items-center gap-8">

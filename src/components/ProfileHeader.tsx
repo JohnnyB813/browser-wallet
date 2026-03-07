@@ -9,7 +9,7 @@ interface ProfileHeaderProps {
 }
 
 const ProfileHeader: React.FC<ProfileHeaderProps> = ({ wallet }) => {
-  const { selectedWalletIndex, accountPath } = useWallet();
+  const { selectedWalletIndex } = useWallet();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { name, clearToken } = useWallet();
   const navigate = useNavigate();
@@ -59,7 +59,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({ wallet }) => {
         <div className="grid gap-1">
           <h1 className="text-white text-xl font-semibold">{name}</h1>
           <p className="text-white/30 text-xs font-normal">
-            {accountPath(selectedWalletIndex)} · {formatAddress(wallet || "")}
+            {formatAddress(wallet || "")}
           </p>
         </div>
       </div>
