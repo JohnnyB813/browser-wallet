@@ -6,22 +6,14 @@ const ActionButtons: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="flex justify-between w-full gap-5">
+    <div className="flex justify-center w-full">
       <Button
         variant="primary"
         ariaLabel="Send"
-        className="w-full"
+        className="w-1/2"
         onClick={() => navigate("/transactions")}
       >
         Send
-      </Button>
-      <Button
-        variant="white"
-        ariaLabel="Receive"
-        className="w-full"
-        onClick={() => navigate("/receive")}
-      >
-        Receive
       </Button>
     </div>
   );

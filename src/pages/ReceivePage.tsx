@@ -72,7 +72,7 @@ function ReceivePage() {
       <div className="mt-8 flex flex-col items-center gap-8">
         <div>
           <p className="text-center text-white text-sm font-light">
-            Send only Warthog (WART) to this address.
+            Send only Warthog tokens to this address.
           </p>
           <p className="w-96 text-center text-white text-sm font-light">
             Sending any other coins may result in permanent loss.

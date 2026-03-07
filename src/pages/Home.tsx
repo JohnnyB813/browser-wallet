@@ -113,11 +113,21 @@ const Home: React.FC<Props> = ({ setSelectedActivity }) => {
       </div>
       <TabNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
       {activeTab === Tab.Tokens ? (
-        <TokenItem
-          token="WART"
-          balance={balance ? parseFloat(balance.toFixed(2)) : 0}
-          usdValue={balanceUSD ? parseFloat(balanceUSD.toFixed(2)) : 0}
-        />
+        <>
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={() => navigate("/create-token")}
+              className="text-primary text-sm hover:underline"
+            >
+              + create asset
+            </button>
+          </div>
+          <TokenItem
+            token="WART"
+            balance={balance ? parseFloat(balance.toFixed(2)) : 0}
+            usdValue={balanceUSD ? parseFloat(balanceUSD.toFixed(2)) : 0}
+          />
+        </>
       ) : (
         <ActivityItem
           activities={activities}

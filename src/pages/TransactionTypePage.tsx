@@ -1,12 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
-import {
-  IoWater,
-  IoCloseCircle,
-  IoCreate,
-  IoTrendingUp,
-  IoCash,
-} from "react-icons/io5";
+import { IoWater, IoCloseCircle, IoTrendingUp, IoCash } from "react-icons/io5";
 
 interface TransactionType {
   id: string;
@@ -44,13 +38,6 @@ const transactionTypes: TransactionType[] = [
     description: "Cancel a pending limit order",
     icon: <IoCloseCircle className="text-3xl text-primary" />,
     route: "/cancel-order",
-  },
-  {
-    id: "create",
-    title: "Create Token",
-    description: "Mint a new token with supply",
-    icon: <IoCreate className="text-3xl text-primary" />,
-    route: "/create-token",
   },
 ];
 
