@@ -169,6 +169,7 @@ function CreateTokenPage() {
         )}
       </div>
       <div className="mt-4">
+          <div>
         <p className="text-white text-sm">Total Supply</p>
         <div className="flex gap-3">
           <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
@@ -180,19 +181,26 @@ function CreateTokenPage() {
               onChange={handleTotalSupplyChange}
             />
           </div>
-          <select
-            className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-none"
-            value={precision}
-            onChange={handlePrecisionChange}
-          >
-            {[
-              0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-            ].map((p) => (
-              <option key={p} value={p} className="bg-black">
-                {p}
-              </option>
-            ))}
-          </select>
+          </div>
+          <div>
+            <p className="text-white text-sm">Decimals</p>
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
+              <select
+                className="bg-transparent text-white outline-none"
+                value={precision}
+                onChange={handlePrecisionChange}
+              >
+                {[
+                  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+                  18,
+                ].map((p) => (
+                  <option key={p} value={p} className="bg-black">
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
         {totalSupplyError && (
           <div className="text-red-500 text-sm mt-2">{totalSupplyError}</div>
