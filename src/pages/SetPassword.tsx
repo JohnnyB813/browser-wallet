@@ -3,12 +3,15 @@ import BackButton from "../components/BackButton";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
+import { IoEye, IoEyeOff } from "react-icons/io5";
 
 const SetPassword: React.FC = () => {
   const { setPassword } = useWallet();
   const navigate = useNavigate();
   const [password, setPass] = useState<string>("");
   const [confirmPassword, setConfirmPassword] = useState<string>("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<{
     password?: string;
     confirmPassword?: string;
@@ -47,13 +50,22 @@ const SetPassword: React.FC = () => {
           <label className="text-white text-sm font-normal">
             Enter Password
           </label>
-          <input
-            type={"password"}
-            className="w-full bg-primary/10 placeholder:text-sm text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus-visible:outline-primary"
-            placeholder="Your password..."
-            value={password}
-            onChange={(e) => setPass(e.target.value)}
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              className="w-full bg-primary/10 placeholder:text-sm text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 pr-10 focus-visible:outline-primary"
+              placeholder="Your password..."
+              value={password}
+              onChange={(e) => setPass(e.target.value)}
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"
+              onClick={() => setShowPassword(!showPassword)}
+            >
+              {showPassword ? <IoEyeOff size={20} /> : <IoEye size={20} />}
+            </button>
+          </div>
           {errors.password && (
             <p className="text-red-500 text-xs mt-1">{errors.password}</p>
           )}
@@ -62,14 +74,23 @@ const SetPassword: React.FC = () => {
           <label className="text-white text-sm font-normal">
             Enter Password Again
           </label>
-          <input
-            type={"password"}
-            className="w-full bg-primary/10 placeholder:text-sm text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus-visible:outline-primary"
-            placeholder="Your password..."
-            value={confirmPassword}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-          />
+          <div className="relative">
+            <input
+              type={showConfirmPassword ? "text" : "password"}
+              className="w-full bg-primary/10 placeholder:text-sm text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 pr-10 focus-visible:outline-primary"
+              placeholder="Your password..."
+              value={confirmPassword}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+            >
+              {showConfirmPassword ? <IoEyeOff size={20} /> : <IoEye size={20} />}
+            </button>
+          </div>
           {errors.confirmPassword && (
             <p className="text-red-500 text-xs mt-1">
               {errors.confirmPassword}

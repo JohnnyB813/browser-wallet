@@ -8,6 +8,10 @@ import ActivityItem from "../components/ActivityItem";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
 import { IoSend, IoTrendingUp, IoWater, IoCloseCircle } from "react-icons/io5";
+import { FaChevronDown } from "react-icons/fa";
+import Jazzicon from "react-jazzicon";
+import { getPendingApproval, approveRequest, rejectRequest, PendingApproval } from "../utils/extensionApi";
+import { addressToSeed } from "../utils";
 
 interface Activity {
   date: string;
@@ -35,11 +39,46 @@ const activities: Activity[] = [
 ];
 
 const Home: React.FC<Props> = ({ setSelectedActivity }) => {
-  const { wallet, selectedNodeIndex, nodeList } = useWallet();
+  const { wallet, selectedNodeIndex, nodeList, walletList, nameList } = useWallet();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Assets);
   const [balance, setBalance] = useState(0);
   const [balanceUSD, setBalanceUSD] = useState(0);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [showApprovalBanner, setShowApprovalBanner] = useState(false);
+  const [approvalWalletIndex, setApprovalWalletIndex] = useState(selectedNodeIndex);
+  const [isDropdownVisible, setDropdownVisible] = useState(false);
+
+  useEffect(() => {
+    const checkPendingApproval = async () => {
+      const pending = await getPendingApproval();
+      if (pending && pending.action) {
+        setPendingApproval(pending);
+        setShowApprovalBanner(true);
+      }
+    };
+    checkPendingApproval();
+  }, []);
+
+  const handleApprove = async () => {
+    if (pendingApproval?.action === 'requestAccounts') {
+      const account = walletList[approvalWalletIndex];
+      await approveRequest([account]);
+      setShowApprovalBanner(false);
+      setPendingApproval(null);
+    } else if (pendingApproval?.action === 'openSendPage') {
+      await approveRequest();
+      setShowApprovalBanner(false);
+      setPendingApproval(null);
+      navigate(`/send?address=${pendingApproval.to}`);
+    }
+  };
+
+  const handleReject = async () => {
+    await rejectRequest();
+    setShowApprovalBanner(false);
+    setPendingApproval(null);
+  };
 
   const handleActivityClick = (activityItem: Activity) => {
     setSelectedActivity(activityItem);
@@ -94,7 +133,87 @@ const Home: React.FC<Props> = ({ setSelectedActivity }) => {
 
   return (
     <div className="container min-h-screen">
-      <div className="p-2.5 bg-white/10 w-full rounded-48 backdrop-blur-[9px] flex-col justify-center items-center gap-4 inline-flex">
+      {showApprovalBanner && pendingApproval && (
+        <div className="p-4 bg-primary/20 border border-primary/50 rounded-lg mb-4">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <p className="text-white font-semibold">
+                {pendingApproval.action === 'requestAccounts' ? 'Connect Wallet Request' : pendingApproval.action === 'openSendPage' ? 'Send Request' : 'Transaction Request'}
+              </p>
+              <p className="text-white/50 text-sm">{pendingApproval.origin}</p>
+            </div>
+            <button
+              onClick={handleReject}
+              className="text-white/50 hover:text-white"
+            >
+              <IoCloseCircle size={24} />
+            </button>
+          </div>
+          {pendingApproval.action === 'requestAccounts' && (
+            <div className="relative mb-2">
+              <div
+                className="flex items-center justify-between gap-3 p-3 rounded-lg border border-primary/25 bg-[#1a1a1a] cursor-pointer"
+                onClick={() => setDropdownVisible((prev) => !prev)}
+              >
+                <div className="flex items-center gap-3">
+                  <Jazzicon diameter={32} seed={addressToSeed(walletList[approvalWalletIndex])} />
+                  <div>
+                    <p className="text-white text-sm font-semibold">
+                      {nameList[approvalWalletIndex] || 'Loading...'}
+                    </p>
+                    <p className="text-white/50 text-xs">
+                      {walletList[approvalWalletIndex] ? `${walletList[approvalWalletIndex].slice(0, 6)}...${walletList[approvalWalletIndex].slice(-4)}` : '...'}
+                    </p>
+                  </div>
+                </div>
+                <FaChevronDown className="text-white" />
+              </div>
+              {isDropdownVisible && walletList.length > 0 && (
+                <div className="absolute z-10 mt-2 left-0 w-full bg-black border border-primary/50 rounded-lg overflow-hidden">
+                  {walletList.map((wallet, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer"
+                      onClick={() => {
+                        setApprovalWalletIndex(idx);
+                        setDropdownVisible(false);
+                      }}
+                    >
+                      <Jazzicon diameter={32} seed={addressToSeed(wallet)} />
+                      <div>
+                        <p className="text-white text-sm font-semibold">
+                          {nameList[idx] || `Account ${idx + 1}`}
+                        </p>
+                        <p className="text-white/50 text-xs">
+                          {`${wallet.slice(0, 6)}...${wallet.slice(-4)}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {pendingApproval.to && (
+            <p className="text-white/70 text-sm mb-2">To: {pendingApproval.to}</p>
+          )}
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={handleReject}
+              className="flex-1 px-4 py-2 border border-white/30 text-white rounded-lg hover:bg-white/10"
+            >
+              Reject
+            </button>
+            <button
+              onClick={handleApprove}
+              className="flex-1 px-4 py-2 bg-primary text-black font-semibold rounded-lg hover:bg-primary/80"
+            >
+              {pendingApproval.action === 'requestAccounts' ? 'Connect' : pendingApproval.action === 'openSendPage' ? 'Send' : 'Approve'}
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="p-2.5 bg-white/10 w-full rounded-48 backdrop-blur-[9px] flex-col justify-center items-center gap-4 inline-flex overflow-visible">
         <ProfileHeader wallet={wallet} />
       </div>
       <div className="p-2.5 bg-white/10 w-full rounded-48 backdrop-blur-[9px] flex-col justify-center items-center gap-4 inline-flex mt-4">

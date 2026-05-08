@@ -3,6 +3,7 @@ import BackButton from "../components/BackButton";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
+import { addressToSeed } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -96,7 +97,7 @@ function AccountDetails() {
                     src="profile-image.png"
                     alt="Profile"
                 /> */}
-        {<Jazzicon diameter={80} seed={selectedWalletIndex} />}
+        {<Jazzicon diameter={80} seed={addressToSeed(wallet || "")} />}
         <div>
           <div className="text-xl font-semibold text-white">
             {isEditing ? (

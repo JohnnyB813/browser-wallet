@@ -5,7 +5,11 @@ import { useNavigate } from "react-router-dom";
 function BackButton() {
   const navigator = useNavigate();
   const handleClick = () => {
-    navigator(-1);
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigator('/');
+    }
   };
 
   return (

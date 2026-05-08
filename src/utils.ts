@@ -8,10 +8,12 @@ const formatWalletAddress = (
   return `${address.slice(0, startLength)}....${address.slice(-endLength)}`;
 };
 
+const addressToSeed = (addr: string) => parseInt(addr.slice(0, 8), 16);
+
 const parsePriceInput = (value: string): Price | null => {
   const num = parseFloat(value);
   if (isNaN(num) || num <= 0) return null;
   return Price.fromNumberPrecision(num, new TokenPrecision(4), false);
 };
 
-export { formatWalletAddress, parsePriceInput };
+export { formatWalletAddress, addressToSeed, parsePriceInput };

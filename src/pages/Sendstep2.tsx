@@ -4,7 +4,7 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
-import { formatWalletAddress } from "../utils";
+import { formatWalletAddress, addressToSeed } from "../utils";
 import axios from "axios";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import {
@@ -227,7 +227,7 @@ function SendFinalStep() {
 
         <p className="text-white text-sm mt-3">To</p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
-          <Jazzicon diameter={48} seed={1000} />
+          <Jazzicon diameter={48} seed={addressToSeed(tmpDestinationWallet || "")} />
           <div>
             <p className="text-white text-lg font-semibold">Receiver</p>
             <p className="text-white/50 text-xs">

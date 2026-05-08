@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
-import { formatWalletAddress } from "../utils";
+import { formatWalletAddress, addressToSeed } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import { Funds, TokenPrecision } from "warthog-ts";
 
@@ -23,7 +23,6 @@ function CreateTokenPage() {
     name,
     wallet,
     nameList,
-    selectedWalletIndex,
     walletList,
     visibleWalletList,
     setSelectedWalletIndex,
@@ -122,7 +121,7 @@ function CreateTokenPage() {
             onClick={toggleDropdown}
           >
             <div className="flex items-center gap-3">
-              <Jazzicon diameter={48} seed={selectedWalletIndex} />
+              <Jazzicon diameter={48} seed={addressToSeed(wallet || "")} />
               <div>
                 <p className="text-white text-lg font-semibold">{name}</p>
                 <p className="text-white/50 text-xs">
@@ -140,7 +139,7 @@ function CreateTokenPage() {
                   className="flex items-center gap-3 p-4 hover:bg-white/10 cursor-pointer"
                   onClick={() => selectUser(account.id)}
                 >
-                  <Jazzicon diameter={40} seed={account.id} />
+                  <Jazzicon diameter={40} seed={addressToSeed(account.address)} />
                   <div>
                     <p className="text-white text-sm font-semibold">
                       {account.name}

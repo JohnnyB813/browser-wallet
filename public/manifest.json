@@ -10,7 +10,6 @@
     "128": "/logo-128.png"
   },
   "action": {
-    "default_popup": "index.html",
     "default_title": "WARTHOG NETWORK",
     "default_icon": {
       "16": "/logo-16.png",
@@ -25,5 +24,22 @@
     "gecko": {
       "id": "contact@warthog.network"
     }
-  }
+  },
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content-script.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

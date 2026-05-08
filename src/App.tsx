@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Routes, Route, useNavigate } from "react-router-dom";
-import Loading from "./pages/loading";
+import React, { useEffect, useState } from "react";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import browser from "webextension-polyfill";
 import Start from "./pages/startedPage";
 import Intro from "./pages/intro";
 import ImportPage from "./pages/importPage";
@@ -44,12 +44,71 @@ const App: React.FC = () => {
     clearToken,
     refreshTokenExpiration,
   } = useWallet();
-  const [progress, setProgress] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(
     null,
   );
   const navigate = useNavigate();
+  const location = useLocation();
+  const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
+
+  const sendMode = new URLSearchParams(initialUrlProcessed ? location.search : window.location.search).get('mode') === 'send';
+  const sendToAddress = new URLSearchParams(initialUrlProcessed ? location.search : window.location.search).get('to') || '';
+
+  useEffect(() => {
+    if (!initialUrlProcessed && window.location.search) {
+      setInitialUrlProcessed(true);
+    }
+  }, [initialUrlProcessed]);
+
+  useEffect(() => {
+    if (sendMode && sendToAddress) {
+      if (!token) {
+        navigate("/locked", { state: { from: `/send?address=${sendToAddress}` } });
+      } else {
+        navigate(`/send?address=${sendToAddress}`);
+      }
+    }
+  }, [sendMode, sendToAddress, token, navigate]);
+
+  useEffect(() => {
+    const checkPendingSend = async () => {
+      try {
+        const result = await browser.storage.local.get('pendingApproval');
+        if (result.pendingApproval) {
+          const data = JSON.parse(result.pendingApproval as string);
+          if (data.action === 'sendTo' && data.to) {
+            await browser.storage.local.remove('pendingApproval');
+            navigate(`/send?address=${data.to}`);
+          }
+        }
+      } catch (e) {
+        console.error('Error checking pending send:', e);
+      }
+    };
+
+    checkPendingSend();
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    const handleStorageChange = async (changes: any) => {
+      if (changes.pendingApproval && changes.pendingApproval.newValue) {
+        try {
+          const data = JSON.parse(changes.pendingApproval.newValue);
+          if (data.action === 'sendTo' && data.to) {
+            await browser.storage.local.remove('pendingApproval');
+            navigate(`/send?address=${data.to}`);
+          }
+        } catch (e) {
+          console.error('Error handling storage change:', e);
+        }
+      }
+    };
+
+    browser.storage.onChanged.addListener(handleStorageChange);
+    return () => {
+      browser.storage.onChanged.removeListener(handleStorageChange);
+    };
+  }, [navigate]);
 
   useEffect(() => {
     const handleActivity = () => {
@@ -65,26 +124,6 @@ const App: React.FC = () => {
     };
   }, [token, refreshTokenExpiration]);
 
-  const startLoading = useCallback(() => {
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => setLoading(false), 100);
-          return 100;
-        }
-        return prev + 5;
-      });
-    }, 10);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const clear = startLoading();
-    return clear;
-  }, [startLoading]);
-
   useEffect(() => {
     if (seedPhrase && wallet && password) {
       if (!token) {
@@ -94,7 +133,11 @@ const App: React.FC = () => {
     }
   }, [token, clearToken, navigate, seedPhrase, wallet, password]);
 
-  if (loading) return <Loading progress={progress} />;
+  // For send mode with address, redirect to send page
+  // (normal routing will handle approval mode by showing Home with pending approval banner)
+  if (sendMode && sendToAddress && token) {
+    // This is handled in a useEffect above
+  }
 
   const AuthenticatedRoutes = () => (
     <Routes>

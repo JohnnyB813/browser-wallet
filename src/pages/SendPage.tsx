@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { FaChevronDown } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Button from "../components/Button";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
-import { formatWalletAddress } from "../utils";
+import { formatWalletAddress, addressToSeed } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import { Address, Wart, Funds, TokenPrecision, Liquidity } from "warthog-ts";
 
@@ -21,12 +21,12 @@ type TransferType = "wart" | "token" | "liquidity";
 
 function SendPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const {
-    name,
+const {
     wallet,
+    name,
     nameList,
-    selectedWalletIndex,
     walletList,
     visibleWalletList,
     setSelectedWalletIndex,
@@ -61,6 +61,8 @@ function SendPage() {
 
   const [liquidityUnits, setLiquidityUnits] = useState<string>("");
   const [liquidityError, setLiquidityError] = useState<string | null>(null);
+
+  const wartAmountRef = useRef<HTMLInputElement>(null);
 
   const toggleDropdown = () => setDropdownVisible((prev) => !prev);
 
@@ -213,6 +215,20 @@ function SendPage() {
     }
   }, [walletList, nameList, visibleWalletList]);
 
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const addressParam = urlParams.get('address');
+    if (addressParam) {
+      setPublicAddress(addressParam);
+      if (Address.validate(addressParam)) {
+        setAddressError(null);
+      } else {
+        setAddressError("Invalid address format");
+      }
+    }
+    wartAmountRef.current?.focus();
+  }, [location]);
+
   const isFormValid = () => {
     if (!publicAddress || addressError) return false;
     if (transferType === "wart") return wartAmount && !wartAmountError;
@@ -272,7 +288,7 @@ function SendPage() {
               onClick={toggleDropdown}
             >
               <div className="flex items-center gap-3">
-                <Jazzicon diameter={48} seed={selectedWalletIndex} />
+                <Jazzicon diameter={48} seed={addressToSeed(wallet || "")} />
                 <div>
                   <p className="text-white text-lg font-semibold">{name}</p>
                   <p className="text-white/50 text-xs">
@@ -290,7 +306,7 @@ function SendPage() {
                     className="flex items-center gap-3 p-4 hover:bg-white/10 cursor-pointer"
                     onClick={() => selectUser(account.id)}
                   >
-                    <Jazzicon diameter={40} seed={account.id} />
+                    <Jazzicon diameter={40} seed={addressToSeed(account.address)} />
                     <div>
                       <p className="text-white text-sm font-semibold">
                         {account.name}
@@ -325,6 +341,7 @@ function SendPage() {
             <p className="text-white text-sm">Amount</p>
             <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
               <input
+                ref={wartAmountRef}
                 className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
                 placeholder="Enter amount to transfer"
                 type="text"

@@ -54,6 +54,13 @@ Follow these steps to install and run the Warthog Wallet Extension:
    npm run build
    ```
 
+6. Reload in Firefox (after code changes, just reload - no need to rebuild unless otherwise mentioned):
+
+   ```bash
+   # In Firefox: about:debugging#/runtime/this-firefox
+   # Click "Reload" on the Warthog extension
+   ```
+
 ---
 
 ## ⚙️ Environment Variables

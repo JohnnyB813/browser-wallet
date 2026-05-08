@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { IoSettingsOutline } from "react-icons/io5";
 import { useNavigate } from "react-router-dom";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
+import { addressToSeed } from "../utils";
 import useWallet from "../hooks/useWallet";
 
 interface ProfileHeaderProps {
@@ -9,7 +10,6 @@ interface ProfileHeaderProps {
 }
 
 const ProfileHeader: React.FC<ProfileHeaderProps> = ({ wallet }) => {
-  const { selectedWalletIndex } = useWallet();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { name, clearToken } = useWallet();
   const navigate = useNavigate();
@@ -51,11 +51,11 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({ wallet }) => {
 
   return (
     <div
-      className="flex justify-between w-full cursor-pointer"
+      className="flex justify-between w-full cursor-pointer relative"
       onClick={() => navigate("/receive")}
     >
       <div className="flex items-center gap-3">
-        <Jazzicon diameter={60} seed={selectedWalletIndex} />
+        <Jazzicon diameter={60} seed={addressToSeed(wallet || "")} />
         <div className="grid gap-1">
           <h1 className="text-white text-xl font-semibold">{name}</h1>
           <p className="text-white/30 text-xs font-normal">
@@ -76,7 +76,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({ wallet }) => {
         </div>
 
         {isMenuOpen && (
-          <div className="p-5 bg-[#272727] rounded-[10px] border border-[#fdb913] absolute right-0 w-[210px] mt-2">
+          <div className="p-5 bg-[#272727] rounded-[10px] border border-[#fdb913] absolute right-0 w-[210px] mt-2 z-50">
             <p
               className="text-white text-lg font-normal cursor-pointer"
               onClick={() => navigate("/account-details")}

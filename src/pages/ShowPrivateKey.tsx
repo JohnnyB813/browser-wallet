@@ -3,6 +3,7 @@ import Button from "../components/Button";
 import Header from "../components/Header";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
+import { addressToSeed } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 
 function ShowPrivateKey() {
@@ -10,6 +11,7 @@ function ShowPrivateKey() {
     password,
     seedPhrase,
     name,
+    wallet,
     selectedWalletIndex,
     getAccountFromIndex,
   } = useWallet();
@@ -54,7 +56,7 @@ function ShowPrivateKey() {
                     src="profile-image.png"
                     alt="Profile"
                 /> */}
-        {<Jazzicon diameter={80} seed={selectedWalletIndex} />}
+        {<Jazzicon diameter={80} seed={addressToSeed(wallet || "")} />}
         <div>
           <div className="text-xl font-semibold text-white">{name}</div>
           <div className="text-xs text-white/50">Connected Wallet</div>
