@@ -1,8 +1,9 @@
 import React from "react";
 
 enum Tab {
-  Assets,
-  Activity,
+  Actions,
+  History,
+  Pending,
 }
 
 interface TabNavigationProps {
@@ -16,7 +17,7 @@ const TabNavigation: React.FC<TabNavigationProps> = ({
 }) => (
   <div className="text-sm font-medium text-center text-gray-500 border-b border-white/20 mt-5">
     <ul className="flex -mb-px">
-      {[Tab.Assets, Tab.Activity].map((tab) => (
+      {[Tab.Actions, Tab.History, Tab.Pending].map((tab) => (
         <li key={tab} className="w-full">
           <button
             onClick={() => setActiveTab(tab)}
@@ -30,4 +31,5 @@ const TabNavigation: React.FC<TabNavigationProps> = ({
   </div>
 );
 
+export { Tab };
 export default TabNavigation;

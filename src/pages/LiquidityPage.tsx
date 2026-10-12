@@ -6,7 +6,7 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, addressToSeed } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
-import { Funds, TokenPrecision, Wart, Liquidity } from "warthog-ts";
+import { Funds, TokenDecimals, Wart, Liquidity } from "warthog-ts";
 
 interface AccountType {
   id: number;
@@ -83,7 +83,7 @@ function LiquidityPage() {
   const handleTokenAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setTokenAmount(value);
-    const parsed = Funds.parse(value, new TokenPrecision(precision));
+    const parsed = Funds.parse(value, new TokenDecimals(precision));
     if (parsed === null) {
       setTokenAmountError("Invalid amount");
     } else {
@@ -118,7 +118,7 @@ function LiquidityPage() {
   const handlePrecisionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = parseInt(e.target.value);
     setPrecision(value);
-    const parsed = Funds.parse(tokenAmount, new TokenPrecision(value));
+    const parsed = Funds.parse(tokenAmount, new TokenDecimals(value));
     if (parsed === null && tokenAmount !== "") {
       setTokenAmountError("Invalid amount for precision");
     } else {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
+import { explorerBaseUrl } from "../config/nodes";
 import { QRCodeSVG } from "qrcode.react";
 import { IoOpenOutline } from "react-icons/io5";
 
@@ -90,7 +91,7 @@ function ReceivePage() {
             onClick={handleCopyAddress}
           />
           <a
-            href={`https://wartscan.io/account/${wallet}`}
+            href={`${explorerBaseUrl}/account/${wallet}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex flex-col items-center gap-2 cursor-pointer"

@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@erebos/secp256k1": "^0.10.0",
     "@noble/hashes": "^1.6.1",
     "@types/crypto-js": "^4.2.2",
     "@vitejs/plugin-react-refresh": "^1.3.6",
@@ -18,7 +17,6 @@
     "bip39": "^3.1.0",
     "crypto-js": "^4.2.0",
     "dha-encryption": "^3.3.1",
-    "elliptic": "^6.6.1",
     "ethers": "^6.13.4",
     "qrcode.react": "^4.1.0",
     "react": "^18.3.1",
@@ -27,10 +25,9 @@
     "react-jazzicon": "^1.0.4",
     "react-router-dom": "^6.28.0",
     "ripemd160": "^2.0.2",
-    "secp256k1": "^5.0.1",
     "vite-plugin-static-copy": "^2.1.0",
-    "webextension-polyfill": "^0.12.0",
-    "warthog-ts": "github:warthog-network/warthog-ts#dev"
+    "warthog-ts": "^0.1.25",
+    "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
@@ -39,13 +36,13 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/ripemd160": "^2.0.3",
-    "@types/secp256k1": "^4.0.6",
     "@types/webextension-polyfill": "^0.12.1",
     "@vitejs/plugin-react-swc": "^3.5.0",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.13.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.14",
+    "esbuild": "^0.21.5",
     "globals": "^15.11.0",
     "node-fetch": "^3.3.2",
     "nyc": "^17.1.0",

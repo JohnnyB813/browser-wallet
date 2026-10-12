@@ -213,6 +213,13 @@
     });
 
     window.warthog = new WarthogProvider();
+
+    sendMessage('getConnectionState').then(function(result) {
+      if (result && result.accounts) {
+        connectionState.accounts = result.accounts;
+        connectionState.connected = result.connected;
+      }
+    }).catch(function() {});
   };
 
   var script = document.createElement('script');

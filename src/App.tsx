@@ -9,7 +9,6 @@ import ValidateIntro from "./pages/validateIntro";
 import Validate from "./pages/validate";
 import SetPassword from "./pages/SetPassword";
 import Home from "./pages/Home";
-import ActivityDetailPage from "./pages/ActivityDetailPage";
 import LockScreen from "./pages/LockScreen";
 import ReceivePage from "./pages/ReceivePage";
 import SendPage from "./pages/SendPage";
@@ -28,13 +27,6 @@ import CancelOrderStep2 from "./pages/CancelOrderStep2";
 import CreateTokenPage from "./pages/CreateTokenPage";
 import CreateTokenStep2 from "./pages/CreateTokenStep2";
 
-interface Activity {
-  date: string;
-  action: string;
-  amount: string;
-  usdAmount: string;
-}
-
 const App: React.FC = () => {
   const {
     seedPhrase,
@@ -44,9 +36,6 @@ const App: React.FC = () => {
     clearToken,
     refreshTokenExpiration,
   } = useWallet();
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(
-    null,
-  );
   const navigate = useNavigate();
   const location = useLocation();
   const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
@@ -143,15 +132,11 @@ const App: React.FC = () => {
     <Routes>
       <Route
         path="/"
-        element={<Home setSelectedActivity={setSelectedActivity} />}
+        element={<Home />}
       />
       <Route
         path="/home"
-        element={<Home setSelectedActivity={setSelectedActivity} />}
-      />
-      <Route
-        path="/activity-details"
-        element={<ActivityDetailPage selectedActivity={selectedActivity} />}
+        element={<Home />}
       />
       <Route path="/locked" element={<LockScreen />} />
       {/* <Route path="" element={<LockScreen />} /> */}

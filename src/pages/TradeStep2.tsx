@@ -4,16 +4,17 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
-import { formatWalletAddress, parsePriceInput } from "../utils";
-import axios from "axios";
+import { formatWalletAddress, parsePriceInput, createTransactionContext, submitTransaction } from "../utils";
+import { explorerBaseUrl } from "../config/nodes";
+import { DEFAULT_FEE_WART } from "../config";
 import {
   RoundedFee,
   NonceId,
   HDWallet,
-  TransactionContext,
   Wart,
   Funds,
-  TokenPrecision,
+  TokenDecimals,
+  TransactionJson,
 } from "warthog-ts";
 
 interface AccountType {
@@ -28,6 +29,7 @@ interface AccountType {
 function TradeStep2() {
   const {
     password,
+    token,
     selectedWalletIndex,
     selectedNodeIndex,
     nameList,
@@ -57,7 +59,7 @@ function TradeStep2() {
   >("idle");
   const [transactionHash, setTransactionHash] = useState<string>("");
   const [transactionError, setTransactionError] = useState<string>("");
-  const [nonce, setNonce] = useState<number>(0);
+  const [customFee, setCustomFee] = useState<string>(DEFAULT_FEE_WART);
 
   const selectUser = (id: number) => {
     setName(nameList[id]);
@@ -98,7 +100,7 @@ function TradeStep2() {
   };
 
   const handleTransaction = async () => {
-    if (confirmPassword !== password) {
+    if (!token && confirmPassword !== password) {
       setPasswordError("Incorrect password. Please try again.");
       return;
     }
@@ -113,29 +115,25 @@ function TradeStep2() {
     setTransactionStatus("processing");
 
     try {
-      const headResponse = (
-        await axios.get(`${nodeList[selectedNodeIndex]}/chain/head`)
-      ).data;
-      const pinHash = headResponse.data.pinHash;
-      const pinHeight = headResponse.data.pinHeight as number;
-      const nonceId = nonce + 1;
-      setNonce(nonceId);
-
-      const rawFeeE8 = "9999";
-      const result = (
-        await axios.get(
-          `${nodeList[selectedNodeIndex]}/tools/encode16bit/from_e8/${rawFeeE8}`,
-        )
-      ).data;
-      const feeE8 = result.data.roundedE8;
+      const nonceId = NonceId.random();
 
       const account = getAccountFromIndex(selectedWalletIndex);
 
-      const chainPin = { pinHash, pinHeight };
-      const fee = RoundedFee.fromE8(BigInt(feeE8), false)!;
-      const nonceIdObj = NonceId.fromNumber(nonceId)!;
+      const feeInWart = parseFloat(customFee) * 1e8;
+      if (isNaN(feeInWart) || feeInWart < 0) {
+        throw new Error("Invalid fee");
+      }
+      const fee = RoundedFee.fromE8(BigInt(Math.round(feeInWart)), false);
+      if (!fee) {
+        throw new Error("Invalid fee");
+      }
 
-      const context = new TransactionContext(chainPin, fee, nonceIdObj);
+      const context = await createTransactionContext(
+        nodeList,
+        selectedNodeIndex,
+        fee,
+        nonceId,
+      );
 
       const priceParsed = parsePriceInput(tmpLimitPrice);
       if (!priceParsed) {
@@ -151,41 +149,15 @@ function TradeStep2() {
       } else {
         const fundsParsed = Funds.parse(
           tmpTokenAmount || "0",
-          new TokenPrecision(tmpPrecision || 8),
+          new TokenDecimals(tmpPrecision || 8),
         );
         if (!fundsParsed) throw new Error("Invalid token amount");
         tx = context.sell(account, tmpAssetHash, fundsParsed, priceParsed);
       }
 
-      const postdata = {
-        type: tx.type,
-        pinHeight: tx.pinHeight,
-        nonceId: tx.nonceId,
-        feeE8: tx.feeE8,
-        assetHash: tx.assetHash,
-        isBuy: tmpTradeType === "buy",
-        amountU64: Number(tx.amountU64),
-        limit: tx.limit,
-        signature65: tx.signature65,
-      };
-
-      axios
-        .post(`${nodeList[selectedNodeIndex]}/transaction/add`, postdata)
-        .then((res) => {
-          if (res.data?.error) {
-            setTransactionStatus("error");
-            setTransactionError(res.data.error);
-          } else {
-            setTransactionHash(res?.data?.data?.txHash);
-            setTransactionStatus("success");
-          }
-        })
-        .catch((error) => {
-          setTransactionStatus("error");
-          setTransactionError(
-            error instanceof Error ? error.message : "Transaction failed",
-          );
-        });
+      const txHash = await submitTransaction(nodeList, selectedNodeIndex, tx as TransactionJson);
+      setTransactionHash(txHash);
+      setTransactionStatus("success");
     } catch (error) {
       setTransactionStatus("error");
       setTransactionError(
@@ -291,6 +263,25 @@ function TradeStep2() {
                   </div>
                   <div>
                     <label
+                      htmlFor="fee"
+                      className="block text-white/70 text-sm mb-2"
+                    >
+                      Fee (WART)
+                    </label>
+                    <input
+                      type="number"
+                      id="fee"
+                      step="0.0001"
+                      min="0"
+                      value={customFee}
+                      onChange={(e) => setCustomFee(e.target.value)}
+                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+                      placeholder="Enter fee"
+                    />
+                  </div>
+                  {!token && (
+                  <div>
+                    <label
                       htmlFor="password"
                       className="block text-white/70 text-sm mb-2"
                     >
@@ -313,6 +304,7 @@ function TradeStep2() {
                       </p>
                     )}
                   </div>
+                )}
                 </div>
                 <div className="flex gap-3">
                   <Button
@@ -374,7 +366,7 @@ function TradeStep2() {
                 <p className="text-sm text-white/50 break-all mb-6">
                   Hash:{" "}
                   <a
-                    href={`https://wartscan.io/tx/${transactionHash}`}
+                    href={`${explorerBaseUrl}/tx/${transactionHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline"

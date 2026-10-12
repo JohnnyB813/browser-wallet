@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WARTHOG NETWORK",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "WARTHOG NETWORK A Chrome Extension for managing cryptocurrency wallets and facilitating secure transactions.",
   "icons": {
     "16": "/logo-16.png",
@@ -27,7 +27,7 @@
   },
   "background": {
     "scripts": ["background.js"],
-    "persistent": false
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {

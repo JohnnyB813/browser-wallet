@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { FaChevronDown } from 'react-icons/fa';
 import { useLocation } from 'react-router-dom';
 import browser from 'webextension-polyfill';
 import Jazzicon from 'react-jazzicon/dist/Jazzicon';
 import Button from '../components/Button';
 import Header from '../components/Header';
-import { formatWalletAddress, addressToSeed } from '../utils';
+import { formatWalletAddress, addressToSeed, createTransactionContext, submitTransaction } from '../utils';
 import useWallet from '../hooks/useWallet';
 import { IoEye, IoEyeOff } from 'react-icons/io5';
 import {
@@ -13,10 +13,9 @@ import {
   Wart,
   RoundedFee,
   NonceId,
-  TransactionContext,
   HDWallet,
+  TransactionJson,
 } from 'warthog-ts';
-import axios from 'axios';
 
 interface ApprovalPageProps {
   onApproved: () => void;
@@ -77,54 +76,31 @@ const getAccountFromIndex = (index: number) => {
         return;
       }
 
-      const headResponse = (await axios.get(`${nodeList[selectedNodeIndex]}/chain/head`)).data;
-      const pinHash = headResponse.data.pinHash;
-      const pinHeight = headResponse.data.pinHeight as number;
-
-      const rawFeeE8 = '9999';
-      const feeResult = (
-        await axios.get(`${nodeList[selectedNodeIndex]}/tools/encode16bit/from_e8/${rawFeeE8}`)
-      ).data;
-      const feeE8 = feeResult.data.roundedE8;
-
       const account = getAccountFromIndex(selectedWalletIndex);
       const toAddr = Address.fromHex(to);
       if (!toAddr) {
         throw new Error('Invalid recipient address');
       }
 
-      const chainPin = { pinHash, pinHeight };
-      const fee = RoundedFee.fromE8(BigInt(feeE8), false)!;
+      const fee = RoundedFee.fromE8(1000n, false);
+      if (!fee) {
+        throw new Error('Invalid fee');
+      }
       const nonceId = NonceId.random();
 
-      const context = new TransactionContext(chainPin, fee, nonceId);
+      const context = await createTransactionContext(
+        nodeList,
+        selectedNodeIndex,
+        fee,
+        nonceId,
+      );
       const wartParsed = Wart.parse(amount);
       if (!wartParsed) {
         throw new Error('Invalid amount');
       }
 
       const tx = context.transferWart(account, toAddr, wartParsed);
-
-      const postdata = {
-        type: tx.type,
-        pinHeight: tx.pinHeight,
-        nonceId: tx.nonceId,
-        feeE8: tx.feeE8,
-        toAddr: tx.toAddr,
-        wartE8: Number((tx as any).wartE8 || 0),
-        signature65: tx.signature65,
-      };
-
-      const result = await axios.post(
-        `${nodeList[selectedNodeIndex]}/transaction/add`,
-        postdata
-      );
-
-      if (result.data?.error) {
-        throw new Error(result.data.error);
-      }
-
-      const txHash = result.data?.data?.txHash;
+      const txHash = await submitTransaction(nodeList, selectedNodeIndex, tx as TransactionJson);
 
       await browser.runtime.sendMessage({
         action: 'approvalResult',
@@ -156,13 +132,6 @@ const getAccountFromIndex = (index: number) => {
     }
     window.close();
   };
-
-  useEffect(() => {
-    // Add HDWallet import dynamically since it's used in the function
-    import('warthog-ts').then(({ HDWallet }) => {
-      (window as any).__HDWallet = HDWallet;
-    });
-  }, []);
 
   return (
     <div className="min-h-screen container relative">

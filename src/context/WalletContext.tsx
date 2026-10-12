@@ -9,6 +9,7 @@ import * as bip39 from "bip39";
 import { getKeyFromPassword, encrypt, decrypt } from "dha-encryption";
 import browser from "webextension-polyfill";
 import { HDWallet, Account } from "warthog-ts";
+import { defaultNodeList, defaultNodeNameList } from "../config/nodes";
 
 interface WalletContextProps {
   seedPhrase: string | null;
@@ -79,20 +80,6 @@ interface WalletContextProps {
   setTmpLiquidityTypeState: (tmpLiquidityType: "add" | "remove") => void;
   getAccountFromIndex: (index: number) => Account;
 }
-
-const defaultNodeList = [
-  "http://localhost:3100",
-  "http://51.75.21.134:3001",
-  "http://62.72.44.89:3001",
-  "http://dev.node-s.com:3001",
-];
-
-const defaultNodeNameList = [
-  "localhost",
-  "polaire",
-  "blu & Asia",
-  "johnnyb Us East",
-];
 
 const WalletContext = createContext<WalletContextProps | undefined>(undefined);
 
@@ -326,7 +313,37 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const getAccountFromIndex = (index: number): Account => {
-    return HDWallet.fromMnemonic(seedPhrase!).deriveAccountAtIndex(index);
+    console.log("=== getAccountFromIndex START ===");
+    console.log("  index:", index);
+    console.log("  seedPhrase exists:", !!seedPhrase);
+    console.log("  seedPhrase length:", seedPhrase?.length);
+
+    if (!seedPhrase) {
+      console.error("  ERROR: seedPhrase is NULL or UNDEFINED!");
+      throw new Error("seedPhrase is null/undefined - wallet not properly loaded");
+    }
+
+    try {
+      console.log("  Step 1: Creating HDWallet.fromMnemonic...");
+      const hdWallet = HDWallet.fromMnemonic(seedPhrase);
+      console.log("  Step 2: HDWallet created, calling deriveAccountAtIndex(" + index + ")...");
+
+      const account = hdWallet.deriveAccountAtIndex(index);
+      console.log("  Step 3: Account derived");
+      console.log("  Account.privateKeyHex:", account?.privateKeyHex);
+      console.log("  Account.address.hex:", account?.address?.hex);
+
+      if (!account?.privateKeyHex) {
+        console.error("  ERROR: Account.privateKeyHex is undefined or empty!");
+        console.error("  Full account:", account);
+      }
+
+      console.log("=== getAccountFromIndex END ===");
+      return account;
+    } catch (error) {
+      console.error("  ERROR in getAccountFromIndex:", error);
+      throw error;
+    }
   };
 
   const setSeedPhrase = (seedPhrase: string): void => {
@@ -449,6 +466,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     }, 1000 * 60);
     return () => clearInterval(interval);
   }, [loadFromChromeStorage]);
+
+  useEffect(() => {
+    if (nodeList.length > 0 && selectedNodeIndex >= nodeList.length) {
+      setSelectedNodeIndex(0);
+    }
+  }, [nodeList, selectedNodeIndex]);
 
   return (
     <WalletContext.Provider

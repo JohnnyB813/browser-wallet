@@ -4,6 +4,7 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import NodeCard from "../components/NodeCard";
 import axios from "axios";
+import { defaultNodeList, defaultNodeNameList } from "../config/nodes";
 
 interface NodeType {
   id: number;
@@ -30,26 +31,29 @@ function SelectNode() {
   const [newNodeName, setNewNodeName] = useState("");
   const [warning, setWarning] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const filteredNodes = nodes.filter(
-    (node) =>
-      node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      node.address.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
-
-  useEffect(() => console.log(filteredNodes), [filteredNodes]);
-
   const setPrimaryNode = (id: number) => {
     console.log("Primary Node Set");
     setSelectedNodeIndex(id);
   };
 
   const removeNode = (id: number) => {
-    setNodeList(nodeList.filter((_, index) => index !== id));
+    const newNodeList = nodeList.filter((_, index) => index !== id);
+    setNodeList(newNodeList);
     setNodeNameList(nodeNameList.filter((_, index) => index !== id));
-    if (selectedNodeIndex >= id)
-      setSelectedNodeIndex(Math.max(selectedNodeIndex - 1, 0));
+
+    if (newNodeList.length === 0) {
+      setSelectedNodeIndex(0);
+    } else if (id === selectedNodeIndex) {
+      setSelectedNodeIndex(Math.min(id, newNodeList.length - 1));
+    } else if (selectedNodeIndex >= id) {
+      setSelectedNodeIndex(Math.max(0, selectedNodeIndex - 1));
+    }
+  };
+
+  const resetToFactorySettings = () => {
+    setNodeList(defaultNodeList);
+    setNodeNameList(defaultNodeNameList);
+    setSelectedNodeIndex(0);
   };
 
   const handleAddNode = () => {
@@ -150,22 +154,9 @@ function SelectNode() {
   return (
     <div className="min-h-screen container relative px-4">
       <Header title="Select A Node" />
-      <div className="relative w-full">
-        <input
-          className="h-14 w-full pl-12 pr-4 py-2 bg-primary/10 rounded-full border border-primary focus:outline-none focus:ring-2 focus:ring-primary"
-          placeholder="Search"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <img
-          className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6"
-          src="icons/search-icon.svg"
-          alt="Search Icon"
-        />
-      </div>
-      <div className="h-[63vh] overflow-y-scroll">
-        {filteredNodes.length > 0 ? (
-          filteredNodes.map((node, index) => (
+      <div className="h-[63vh] overflow-y-scroll mt-4 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+        {nodes.length > 0 ? (
+          nodes.map((node, index) => (
             <NodeCard
               key={index}
               {...node}
@@ -174,57 +165,65 @@ function SelectNode() {
             />
           ))
         ) : (
-          <div className="text-center text-white/50 mt-6">No nodes found</div>
+          <div className="text-center text-white/50 mt-12">No nodes found</div>
         )}
       </div>
-      <div className="absolute bottom-3 w-full left-0 px-4">
+      <div className="absolute bottom-6 w-full left-0 px-4 flex gap-3">
         <Button
           variant="primary"
           ariaLabel="Add Node"
           onClick={() => setIsDialogOpen(true)}
-          className="w-full"
+          className="flex-1"
         >
-          + Add more nodes
+          + Add
         </Button>
+        <button
+          onClick={resetToFactorySettings}
+          className="flex-1 py-3 text-sm text-white/40 hover:text-red-400 transition-colors border border-white/10 hover:border-red-400/50 rounded-xl"
+        >
+          Reset
+        </button>
       </div>
       {/* Popup Dialog */}
       {isDialogOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-[#1A1A1A] p-4 rounded shadow-lg w-[300px]">
-            <h3 className="text-white text-xl font-semibold mb-4">
+        <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-50">
+          <div className="bg-[#1A1A1A] p-6 rounded-2xl border border-white/10 shadow-2xl w-[340px]">
+            <h3 className="text-white text-xl font-semibold mb-6">
               Add new Node
             </h3>
-            <input
-              type="text"
-              placeholder="Node Name"
-              value={newNodeName}
-              onChange={(e) => setNewNodeName(e.target.value)}
-              className="w-full min-w-[150px] bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary mb-1"
-            />
-            <input
-              type="text"
-              placeholder="Node Address"
-              value={newNodeAddress}
-              onChange={(e) => setNewNodeAddress(e.target.value)}
-              className="w-full min-w-[150px] bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
-            />
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Node Name"
+                value={newNodeName}
+                onChange={(e) => setNewNodeName(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white placeholder-white/30 focus:outline-none focus:border-primary transition-colors"
+              />
+              <input
+                type="text"
+                placeholder="Node Address (https://...)"
+                value={newNodeAddress}
+                onChange={(e) => setNewNodeAddress(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white placeholder-white/30 focus:outline-none focus:border-primary transition-colors"
+              />
+            </div>
             {warning && (
-              <p className="text-red-500 text-xs mt-1">
-                Please enter a valid node address
+              <p className="text-red-400 text-sm mt-3">
+                Please enter a valid URL (https://...)
               </p>
             )}
-            <div className="flex justify-end mt-4">
+            <div className="flex gap-3 mt-6">
               <Button
-                variant="secondary"
-                onClick={handleCancel} // Close dialog
-                className="mr-2 w-full"
+                variant="outline"
+                onClick={handleCancel}
+                className="flex-1"
               >
                 Cancel
               </Button>
               <Button
                 variant="primary"
-                onClick={handleAddNode} // Add node
-                className="w-full"
+                onClick={handleAddNode}
+                className="flex-1"
               >
                 Add
               </Button>

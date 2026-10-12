@@ -94,6 +94,10 @@ class WarthogBackground {
         this.handleDisconnect(origin, tabId, id);
         break;
 
+      case 'getConnectionState':
+        this.handleGetConnectionState(origin, tabId, id);
+        break;
+
       default:
         break;
     }
@@ -167,6 +171,12 @@ class WarthogBackground {
   private handleDisconnect(origin: string, tabId?: number, requestId?: number): void {
     this.connections.delete(origin);
     this.sendResponse(tabId, requestId, { success: true, data: {} });
+  }
+
+  private handleGetConnectionState(origin: string, tabId?: number, requestId?: number): void {
+    const connection = this.connections.get(origin);
+    const accounts = connection?.accounts || [];
+    this.sendResponse(tabId, requestId, { success: true, data: { accounts, connected: accounts.length > 0 } });
   }
 
   private handleApprovalResult(payload: ApprovalData): void {

@@ -19,39 +19,47 @@ const NodeCard = ({
   removeNode: (id: number) => void;
 }) => {
   const { selectedNodeIndex } = useWallet();
+  const isSelected = selectedNodeIndex === id;
 
   return (
-    <>
-      <div
-        className={`px-2 flex justify-between items-center w-full mt-6 relative border-l-2 cursor-pointer border-[curentColor] hover:bg-orange-400 ${selectedNodeIndex === id ? "bg-[currentColor]" : ""}`}
-        onClick={() => setPrimaryNode(id)}
-      >
-        <div className="items-center gap-4 cursor-pointer">
-          {/* <img
-                        className="w-12 h-12 rounded-full object-cover"
-                        src="profile-image.png"
-                        alt={`${name} Profile`}
-                    /> */}
-          <div>
-            <div className="text-white text-xl font-semibold">{name}</div>
-            <div className="text-white/50 text-xs">{address}</div>
-          </div>
+    <div
+      className={`p-3 flex justify-between items-center w-full mt-2 rounded-lg border backdrop-blur-md transition-all duration-200 cursor-pointer ${
+        isSelected
+          ? "bg-primary/20 border-primary/50"
+          : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20"
+      }`}
+      onClick={() => setPrimaryNode(id)}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${
+            status === "online"
+              ? "bg-green-400"
+              : status === "offline"
+                ? "bg-red-400"
+                : "bg-yellow-400 animate-pulse"
+          }`}
+        />
+        <div className="min-w-0">
+          <div className="text-white text-sm font-medium truncate">{name}</div>
+          <div className="text-white/40 text-xs font-mono truncate">{address.replace(/^https?:\/\//, '')}</div>
         </div>
-        <div className="items-center gap-3 cursor-pointer">
-          <div className="flex flex-col items-end hidden">
-            <div className="text-white text-xl font-medium">{status}</div>
-            <div className="text-white/50 text-lg">${latency}</div>
-          </div>
-          <IoMdTrash
-            onClick={() => removeNode(id)}
-            className="w-6 h-6 cursor-pointer z-10 text-white"
-          />
-        </div>
-        {/* <div className="flex items-center gap-3">
-                    <IoMdTrash />
-                </div> */}
       </div>
-    </>
+      <div className="flex items-center gap-2">
+        {latency > 0 && (
+          <div className="text-white/30 text-xs">{Math.round(latency)}ms</div>
+        )}
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            removeNode(id);
+          }}
+          className="p-1.5 rounded hover:bg-red-500/20 transition-colors"
+        >
+          <IoMdTrash className="w-4 h-4 cursor-pointer text-white/40 hover:text-red-400" />
+        </div>
+      </div>
+    </div>
   );
 };
 

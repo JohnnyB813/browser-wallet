@@ -1,0 +1,25 @@
+{
+  "explorerBaseUrl": "http://localhost:3000",
+  "nodes": [
+    {
+      "url": "http://localhost:3101",
+      "label": "Localhost + CORS Proxy"
+    },
+    {
+      "url": "http://localhost:3100",
+      "label": "localhost"
+    },
+    {
+      "url": "http://51.75.21.134:3001",
+      "label": "polaire"
+    },
+    {
+      "url": "http://62.72.44.89:3001",
+      "label": "blu & Asia"
+    },
+    {
+      "url": "http://dev.node-s.com:3001",
+      "label": "johnnyb Us East"
+    }
+  ]
+}

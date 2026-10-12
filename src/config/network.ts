@@ -1,3 +1,5 @@
+import { explorerBaseUrl } from "./nodes";
+
 export const WARTHOG_NETWORK = {
   chainId: 1337,
   name: "Warthog Network",
@@ -7,7 +9,7 @@ export const WARTHOG_NETWORK = {
     symbol: "WART",
     decimals: 8,
   },
-  explorer: "https://wartscan.io/",
+  explorer: explorerBaseUrl,
 } as const;
 
 export const NETWORKS = {

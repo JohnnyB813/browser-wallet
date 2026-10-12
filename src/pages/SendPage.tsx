@@ -6,7 +6,7 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, addressToSeed } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
-import { Address, Wart, Funds, TokenPrecision, Liquidity } from "warthog-ts";
+import { Address, Wart, Funds, TokenDecimals, Liquidity } from "warthog-ts";
 
 interface AccountType {
   id: number;
@@ -117,7 +117,7 @@ const {
   const handleTokenAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setTokenAmount(value);
-    const parsed = Funds.parse(value, new TokenPrecision(precision));
+    const parsed = Funds.parse(value, new TokenDecimals(precision));
     if (parsed === null) {
       setTokenAmountError("Invalid amount");
     } else {
@@ -129,7 +129,7 @@ const {
     const value = parseInt(e.target.value);
     setPrecision(value);
     setTmpPrecisionState(value);
-    const parsed = Funds.parse(tokenAmount, new TokenPrecision(value));
+    const parsed = Funds.parse(tokenAmount, new TokenDecimals(value));
     if (parsed === null && tokenAmount !== "") {
       setTokenAmountError("Invalid amount for precision");
     } else {
@@ -324,7 +324,7 @@ const {
           <p className="text-white text-sm">To</p>
           <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
             <input
-              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+              className="flex-1 bg-transparent text-white text-sm font-mono placeholder-gray-500 outline-none"
               placeholder="Enter public address"
               value={publicAddress}
               onChange={handleAddressChange}
@@ -342,7 +342,7 @@ const {
             <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
               <input
                 ref={wartAmountRef}
-                className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                className="flex-1 bg-transparent text-white text-sm font-mono placeholder-gray-500 outline-none no-spinner"
                 placeholder="Enter amount to transfer"
                 type="text"
                 inputMode="decimal"
@@ -382,7 +382,7 @@ const {
               <div className="flex gap-3">
                 <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                   <input
-                    className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                    className="flex-1 bg-transparent text-white text-sm font-mono placeholder-gray-500 outline-none no-spinner"
                     placeholder="Enter amount to transfer"
                     type="text"
                     inputMode="decimal"
@@ -439,7 +439,7 @@ const {
               <p className="text-white text-sm">Amount</p>
               <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                 <input
-                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                  className="flex-1 bg-transparent text-white text-sm font-mono placeholder-gray-500 outline-none no-spinner"
                   placeholder="Enter amount to transfer"
                   type="text"
                   inputMode="decimal"

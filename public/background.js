@@ -14,8 +14,31 @@ class WarthogBackground {
     this.pendingRequest = null;
     this.approvalWindowId = null;
     this.pendingPopupPromise = null;
+    this.ready = this.restoreConnections();
     this.setupMessageListener();
     this.setupWindowListeners();
+  }
+
+  // Chrome runs MV3 background code as a service worker, which it terminates
+  // after ~30s idle. Anything held only on `this` dies with it, so connected
+  // dapps would silently fall back to "not connected" after any cold start.
+  // Mirror `connections` into storage.local and rehydrate on every boot.
+  async restoreConnections() {
+    try {
+      const stored = await browser.storage.local.get('connections');
+      const parsed = stored?.connections ? JSON.parse(stored.connections) : {};
+      this.connections = new Map(Object.entries(parsed));
+      console.log('Restored connections:', [...this.connections.keys()]);
+    } catch (error) {
+      console.error('Failed to restore connections:', error);
+      this.connections = new Map();
+    }
+  }
+
+  saveConnections() {
+    browser.storage.local
+      .set({ connections: JSON.stringify(Object.fromEntries(this.connections)) })
+      .catch((error) => console.error('Failed to persist connections:', error));
   }
 
   setupWindowListeners() {
@@ -139,15 +162,26 @@ class WarthogBackground {
       return existing;
     }
     console.log('No existing popup, creating new');
-    const width = 400;
+    const width = 410;
     const height = 600;
+    // Under Chrome MV3 this file runs as a service worker, where neither
+    // `window` nor `screen` exists — reading them unconditionally threw a
+    // ReferenceError on the first approval request. Center the popup only when
+    // a screen global is actually available; otherwise let the OS place it.
+    const position =
+      typeof screen !== 'undefined' && screen.availWidth
+        ? {
+            top: Math.floor((screen.availHeight - height) / 2),
+            left: Math.floor((screen.availWidth - width) / 2),
+          }
+        : {};
+
     this.pendingPopupPromise = browser.windows.create({
       url,
       type: 'popup',
       width,
       height,
-      top: Math.floor((window.screen.availHeight - height) / 2),
-      left: Math.floor((window.screen.availWidth - width) / 2),
+      ...position,
     }).then((win) => {
       this.approvalWindowId = win?.id || null;
       return win;
@@ -157,7 +191,11 @@ class WarthogBackground {
     return this.pendingPopupPromise;
   }
 
-  handleMessage(message, origin, tabId) {
+  async handleMessage(message, origin, tabId) {
+    // Cold-start race: on a freshly woken service worker `connections` is still
+    // being rehydrated from storage. Wait for it before any handler reads it.
+    await this.ready;
+
     const { action, payload, id } = message;
 
     switch (action) {
@@ -179,6 +217,9 @@ class WarthogBackground {
         break;
       case 'disconnect':
         this.handleDisconnect(origin, tabId, id);
+        break;
+      case 'getConnectionState':
+        this.handleGetConnectionState(origin, tabId, id);
         break;
       case 'getPendingApproval':
         this.handleGetPendingApproval(tabId, id);
@@ -213,6 +254,7 @@ class WarthogBackground {
           accounts: result.accounts,
           chainId: CHAIN_ID,
         });
+        this.saveConnections();
         this.sendToTab(tabId, 'accountsChanged', result.accounts);
         this.sendResponse(tabId, requestId, { success: true, data: { accounts: result.accounts } });
       }
@@ -290,7 +332,14 @@ async handleOpenSendPage(payload, origin, tabId, requestId) {
 
   handleDisconnect(origin, tabId, requestId) {
     this.connections.delete(origin);
+    this.saveConnections();
     this.sendResponse(tabId, requestId, { success: true, data: {} });
+  }
+
+  handleGetConnectionState(origin, tabId, requestId) {
+    const connection = this.connections.get(origin);
+    const accounts = connection?.accounts || [];
+    this.sendResponse(tabId, requestId, { success: true, data: { accounts, connected: accounts.length > 0 } });
   }
 
   handleGetPendingApproval() {
