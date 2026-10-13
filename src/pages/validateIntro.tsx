@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Button from "../components/Button";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
@@ -15,24 +15,20 @@ const ValidateIntro: React.FC<ValidateIntroProps> = ({
   onComplete,
 }) => {
   const { inputWordsBackup, setInputWordsBackup } = useWallet();
-  const [inputWords, setInputWords] = useState<string[]>(
-    Array(recoveryPhrase.length).fill(""),
+  // Seeded once, from context, at first render. A mount effect would do the
+  // same thing one paint later; re-seeding on every change to inputWordsBackup
+  // would overwrite what the user has typed, since those edits are not written
+  // back to the backup.
+  const [inputWords, setInputWords] = useState<string[]>(() =>
+    inputWordsBackup.length > 0
+      ? inputWordsBackup
+      : Array(recoveryPhrase.length).fill(""),
   );
   const [errors, setErrors] = useState<boolean[]>(
     Array(recoveryPhrase.length).fill(false),
   );
   const [isCompleted, setIsCompleted] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-
-  // Seed the form from the recovery backup once, on mount. Re-running on every
-  // change to inputWordsBackup would overwrite whatever the user has typed into
-  // the form, since those edits are not written back to the backup.
-  useEffect(() => {
-    if (inputWordsBackup.length > 0) {
-      setInputWords(inputWordsBackup);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleInputChange = (index: number, value: string) => {
     const updatedWords = [...inputWords];

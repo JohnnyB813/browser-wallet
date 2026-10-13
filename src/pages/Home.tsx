@@ -227,44 +227,78 @@ const Home: React.FC = () => {
 
   const historyObserverRef = useRef<HTMLDivElement>(null);
 
-  const loadHistory = useCallback(async (reset = false) => {
+  // One place that talks to the node for history, and owns the loading flag.
+  // Assumes the caller already checked there is a wallet and a node: returning
+  // null here would conflate "not configured" with "empty page", and the two
+  // paths below treat those differently.
+  const fetchHistoryPage = useCallback(
+    async (beforeId: number): Promise<ActionsByBlock> => {
+      setHistoryLoading(true);
+      try {
+        // nodeRead throws on a non-2xx status or a non-zero node error code,
+        // and returns the envelope's `data` already unwrapped.
+        return await nodeRead<ActionsByBlock>(
+          nodeList[selectedNodeIndex],
+          `account/${wallet}/history/${beforeId}`,
+        );
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [wallet, nodeList, selectedNodeIndex],
+  );
+
+  // Reload from the top. Reads neither historyFromId nor historyHasMore, so its
+  // identity does not change when it writes them. That is what makes it safe to
+  // list as an effect dependency, which the combined callback was not.
+  const reloadHistory = useCallback(async () => {
     if (!wallet || !nodeList[selectedNodeIndex]) return;
-
-    const nodeUrl = nodeList[selectedNodeIndex];
-    const beforeId = reset ? Number.MAX_SAFE_INTEGER : (historyFromId > 0 ? historyFromId - 1 : Number.MAX_SAFE_INTEGER);
-
-    if (!reset && !historyHasMore) return;
-
-    setHistoryLoading(true);
     try {
-      // nodeRead throws on a non-2xx status or a non-zero node error code, and
-      // returns the envelope's `data` already unwrapped.
-      const data = await nodeRead<ActionsByBlock>(
-        nodeUrl,
-        `account/${wallet}/history/${beforeId}`,
-      );
+      const data = await fetchHistoryPage(Number.MAX_SAFE_INTEGER);
 
-      if (data && data.perBlock) {
-        if (reset) {
-          setHistoryBlocks(data.perBlock);
-        } else {
-          setHistoryBlocks(prev => [...prev, ...data.perBlock]);
-        }
+      if (data?.perBlock) {
+        setHistoryBlocks(data.perBlock);
         setHistoryFromId(data.fromId);
         setHistoryHasMore(data.fromId > 1);
       } else {
-        if (reset) {
-          setHistoryBlocks([]);
-        }
+        setHistoryBlocks([]);
         setHistoryHasMore(false);
       }
     } catch (err) {
       console.error("Error fetching history:", err);
-      if (reset) setHistoryBlocks([]);
-    } finally {
-      setHistoryLoading(false);
+      setHistoryBlocks([]);
     }
-  }, [wallet, nodeList, selectedNodeIndex, historyFromId, historyHasMore]);
+  }, [wallet, nodeList, selectedNodeIndex, fetchHistoryPage]);
+
+  // Append the next page. Reads the cursor it advances, so it must list
+  // historyFromId and historyHasMore, and is therefore only safe to call from
+  // the scroll observer rather than from an effect that writes them.
+  const loadMoreHistory = useCallback(async () => {
+    if (!wallet || !nodeList[selectedNodeIndex]) return;
+    if (!historyHasMore) return;
+    try {
+      const data = await fetchHistoryPage(
+        historyFromId > 0 ? historyFromId - 1 : Number.MAX_SAFE_INTEGER,
+      );
+
+      if (data?.perBlock) {
+        setHistoryBlocks(prev => [...prev, ...data.perBlock]);
+        setHistoryFromId(data.fromId);
+        setHistoryHasMore(data.fromId > 1);
+      } else {
+        setHistoryHasMore(false);
+      }
+    } catch (err) {
+      console.error("Error fetching history:", err);
+    }
+  }, [
+    wallet,
+    nodeList,
+    selectedNodeIndex,
+    historyFromId,
+    historyHasMore,
+    fetchHistoryPage,
+  ]);
 
   const loadPending = useCallback(async () => {
     if (!wallet || !nodeList[selectedNodeIndex]) return;
@@ -285,15 +319,11 @@ const Home: React.FC = () => {
     }
   }, [wallet, nodeList, selectedNodeIndex]);
 
-  // `loadHistory` is intentionally omitted: it depends on historyFromId and
-  // historyHasMore, which it itself sets. Listing it would make this effect
-  // re-run on every load, refetching history in a loop.
   useEffect(() => {
     if (activeTab === Tab.History) {
-      loadHistory(true);
+      reloadHistory();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, wallet, selectedNodeIndex]);
+  }, [activeTab, wallet, selectedNodeIndex, reloadHistory]);
 
   useEffect(() => {
     if (activeTab === Tab.History && wallet && nodeList[selectedNodeIndex]) {
@@ -309,7 +339,7 @@ const Home: React.FC = () => {
           const headHash = head?.chainHead?.hash;
           if (headHash && headHash !== lastChainHeadHash) {
             setLastChainHeadHash(headHash);
-            loadHistory(true);
+            reloadHistory();
           }
         } catch (err) {
           console.error("Error polling chain head:", err);
@@ -317,7 +347,7 @@ const Home: React.FC = () => {
       }, 5000);
       return () => clearInterval(interval);
     }
-  }, [activeTab, wallet, selectedNodeIndex, lastChainHeadHash, loadHistory, nodeList]);
+  }, [activeTab, wallet, selectedNodeIndex, lastChainHeadHash, reloadHistory, nodeList]);
 
   useEffect(() => {
     if (activeTab === Tab.Pending) {
@@ -331,7 +361,7 @@ const Home: React.FC = () => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && historyHasMore && !historyLoading && activeTab === Tab.History) {
-          loadHistory(false);
+          loadMoreHistory();
         }
       },
       { threshold: 0.1 }
@@ -342,7 +372,7 @@ const Home: React.FC = () => {
     }
 
     return () => observer.disconnect();
-  }, [historyHasMore, historyLoading, activeTab, loadHistory]);
+  }, [historyHasMore, historyLoading, activeTab, loadMoreHistory]);
 
   const handleCancel = (tx: NodeTx, type: string) => {
     setCancelTx(tx);
