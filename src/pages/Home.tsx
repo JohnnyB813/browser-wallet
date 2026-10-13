@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import axios from "axios";
+import { searchAssetsDetailed, type AssetInfo } from "../utils/defiClient";
+import { fetchWartUsdPrice } from "../utils/wartPrice";
+import { nodeRead } from "../utils/warthogNode";
 import ProfileHeader from "../components/ProfileHeader";
 import TabNavigation, { Tab } from "../components/TabNavigation";
 import HistoryTxRow from "../components/HistoryTxRow";
@@ -25,6 +27,13 @@ interface Token {
   name: string;
   hash: string | null;
 }
+
+/** Map a node asset-search match onto the shape the balance UI selects with. */
+const toToken = (match: AssetInfo): Token => ({
+  spec: "asset",
+  name: match.name || match.hash || "?",
+  hash: match.hash ?? null,
+});
 
 const RECENT_TOKENS_KEY = 'recent_tokens';
 const MAX_RECENT = 5;
@@ -65,10 +74,13 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
       setSearchLoading(true);
       try {
         const [byName, byHash] = await Promise.all([
-          axios.get(`${nodeUrl}/asset/complete?namePrefix=${searchQuery}`),
-          axios.get(`${nodeUrl}/asset/complete?hashPrefix=${searchQuery}`),
+          searchAssetsDetailed(nodeUrl, searchQuery),
+          searchAssetsDetailed(nodeUrl, "", searchQuery),
         ]);
-        const merged: Token[] = [...(byName.data?.data?.matches || []), ...(byHash.data?.data?.matches || [])];
+        const merged: Token[] = [
+          ...byName.matches.map(toToken),
+          ...byHash.matches.map(toToken),
+        ];
         const unique = merged.filter((t, i, a) => a.findIndex(x => x.hash === t.hash) === i);
         setSearchResults(unique.slice(0, 20));
       } catch (err) {
@@ -225,10 +237,12 @@ const Home: React.FC = () => {
 
     setHistoryLoading(true);
     try {
-      const response = await axios.get<{
-        data?: ActionsByBlock;
-      }>(`${nodeUrl}/account/${wallet}/history/${beforeId}`);
-      const data = response.data?.data;
+      // nodeRead throws on a non-2xx status or a non-zero node error code, and
+      // returns the envelope's `data` already unwrapped.
+      const data = await nodeRead<ActionsByBlock>(
+        nodeUrl,
+        `account/${wallet}/history/${beforeId}`,
+      );
 
       if (data && data.perBlock) {
         if (reset) {
@@ -258,10 +272,11 @@ const Home: React.FC = () => {
     const nodeUrl = nodeList[selectedNodeIndex];
     setPendingLoading(true);
     try {
-      const response = await axios.get<{
-        data?: NodeMempoolEntry[];
-      }>(`${nodeUrl}/account/${wallet}/mempool`);
-      setPendingTxs(response.data?.data || []);
+      const entries = await nodeRead<NodeMempoolEntry[]>(
+        nodeUrl,
+        `account/${wallet}/mempool`,
+      );
+      setPendingTxs(Array.isArray(entries) ? entries : []);
     } catch (err) {
       console.error("Error fetching pending:", err);
       setPendingTxs([]);
@@ -285,8 +300,13 @@ const Home: React.FC = () => {
       const interval = setInterval(async () => {
         const nodeUrl = nodeList[selectedNodeIndex];
         try {
-          const response = await axios.get(`${nodeUrl}/chain/head`);
-          const headHash = response.data?.data?.chainHead?.hash;
+          const head = await nodeRead<{ chainHead?: { hash?: string } }>(
+            nodeUrl,
+            "chain/head",
+          );
+          // V2 API shape only. A mainnet node returns a flat payload, so this
+          // reads as undefined there and history simply does not auto-reload.
+          const headHash = head?.chainHead?.hash;
           if (headHash && headHash !== lastChainHeadHash) {
             setLastChainHeadHash(headHash);
             loadHistory(true);
@@ -355,10 +375,10 @@ const Home: React.FC = () => {
       const nodeUrl = nodeList[selectedNodeIndex];
       if (selectedToken.hash) {
         const tokenSpec = `asset:${selectedToken.hash}`;
-        axios
-          .get(`${nodeUrl}/account/${wallet}/balance/${tokenSpec}`)
-          .then((response) => {
-            const data = response?.data?.data;
+        nodeRead<{
+          balance?: { total?: { u64?: number; decimals?: number } };
+        }>(nodeUrl, `account/${wallet}/balance/${tokenSpec}`)
+          .then((data) => {
             if (data?.balance?.total?.u64 !== undefined) {
               const decimals = data.balance.total.decimals || 8;
               setBalance(data.balance.total.u64 / Math.pow(10, decimals));
@@ -369,10 +389,11 @@ const Home: React.FC = () => {
             setBalance(0);
           });
       } else {
-        axios
-          .get(`${nodeUrl}/account/${wallet}/wart_balance`)
-          .then((response) => {
-            const data = response?.data?.data;
+        nodeRead<{ wart?: { total?: { E8?: number | string } } }>(
+          nodeUrl,
+          `account/${wallet}/wart_balance`,
+        )
+          .then((data) => {
             setBalance(data?.wart?.total?.E8 ? Number(data.wart.total.E8) / 1e8 : 0);
           })
           .catch((error) => {
@@ -384,11 +405,11 @@ const Home: React.FC = () => {
   }, [wallet, nodeList, selectedNodeIndex, selectedToken]);
 
   const updateBalanceUSD = useCallback(() => {
-    axios
-      .get(`${import.meta.env.VITE_APP_COINGECKO_API_URL}`)
-      .then((response) => {
-        const data = response?.data;
-        setBalanceUSD(data?.warthog?.usd ? parseFloat(data.warthog.usd) : 0);
+    // wartPrice tries CoinGecko, falls back to CoinPaprika, and caches. Home
+    // previously polled CoinGecko alone every 1.5s with no fallback.
+    fetchWartUsdPrice()
+      .then((price) => {
+        setBalanceUSD(price ?? 0);
       })
       .catch((error) => {
         console.error("Error fetching balance:", error);
