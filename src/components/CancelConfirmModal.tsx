@@ -1,9 +1,10 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
+import type { NodeTx } from "../types/nodeTx";
 
 interface CancelConfirmModalProps {
-  tx: any;
+  tx: NodeTx;
   type: string;
   onCancel: () => void;
 }
@@ -16,9 +17,12 @@ const CancelConfirmModal: React.FC<CancelConfirmModalProps> = ({ tx, type, onCan
   const txHash = tx?.hash;
 
   const handleConfirm = () => {
-    if (signedCommon) {
-      setTmpCancelHeightState(signedCommon.pinHeight);
-      setTmpCancelNonceIdState(signedCommon.nonceId);
+    // A cancel targets the order by (pinHeight, nonceId), so without both
+    // there is nothing to submit against.
+    const { pinHeight, nonceId } = signedCommon ?? {};
+    if (pinHeight != null && nonceId != null) {
+      setTmpCancelHeightState(pinHeight);
+      setTmpCancelNonceIdState(nonceId);
       navigate("/cancel-order-step2");
     }
   };

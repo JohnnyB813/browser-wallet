@@ -104,8 +104,8 @@ function SelectNode() {
 
   const handleAddPresets = (network: "mainnet" | "defi-testnet") => {
     const toAdd = PRESET_NODES.filter((p) => p.network === network);
-    let urls = [...nodeList];
-    let names = [...nodeNameList];
+    const urls = [...nodeList];
+    const names = [...nodeNameList];
     for (const p of toAdd) {
       const n = normalizeNodeUrl(p.url);
       if (!urls.some((u) => normalizeNodeUrl(u) === n)) {

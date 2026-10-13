@@ -24,10 +24,14 @@ const ValidateIntro: React.FC<ValidateIntroProps> = ({
   const [isCompleted, setIsCompleted] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Seed the form from the recovery backup once, on mount. Re-running on every
+  // change to inputWordsBackup would overwrite whatever the user has typed into
+  // the form, since those edits are not written back to the backup.
   useEffect(() => {
     if (inputWordsBackup.length > 0) {
       setInputWords(inputWordsBackup);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleInputChange = (index: number, value: string) => {

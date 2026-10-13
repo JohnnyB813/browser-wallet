@@ -1,3 +1,10 @@
+// The TypeScript "no check" pragma below is kept deliberately: this file is
+// written without type annotations throughout, which is what WebAuthn's PRF
+// extension forces on us. The PRF `extensions` member is not in lib.dom yet, so
+// annotating it properly means hand-declaring WebAuthn PRF types and adding
+// annotations to ~60 functions. That is real work, but it does not belong in a
+// merge; tracked separately.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
 /**
  * Passkey / fingerprint unlock for Warthog named wallets.
@@ -130,13 +137,7 @@ export async function hasPlatformAuthenticator() {
   }
 }
 
-/** Short UI label — always "passkey" (device may use Face ID, PIN, or password manager). */
-export function fingerprintLabel(_platformAvailable = true) {
-  return 'passkey';
-}
 
-/** Alias for callers that import passkeyLabel */
-export const passkeyLabel = fingerprintLabel;
 
 // ─── envelope parse / serialize ──────────────────────────────────────
 

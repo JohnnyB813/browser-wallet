@@ -23,6 +23,19 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      // `_`-prefixed bindings are the conventional "intentionally unused"
+      // marker. The codebase relies on it for omit-destructuring
+      // (`const { label: _l, ...rest } = preset`) and for callbacks that
+      // accept a parameter purely to document an interface.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
     },
   },
 )

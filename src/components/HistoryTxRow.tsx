@@ -1,15 +1,17 @@
 import React from "react";
 import { FaGift, FaCoins, FaExchangeAlt, FaPlus, FaMinus, FaTimes, FaClipboardList } from "react-icons/fa";
 import { EXPLORER_URL } from "../config";
+import type { IconType } from "react-icons";
+import type { NodeTx, NodeTxData } from "../types/nodeTx";
 
 interface HistoryTxRowProps {
   type: string;
-  tx: any;
+  tx: NodeTx;
   confirmations: number;
 }
 
 function TxTypeIcon({ type }: { type: string }) {
-  const icons: Record<string, any> = {
+  const icons: Record<string, IconType> = {
     wartTransfer: FaCoins,
     tokenTransfer: FaExchangeAlt,
     assetCreation: FaPlus,
@@ -24,7 +26,7 @@ function TxTypeIcon({ type }: { type: string }) {
   return <Icon size={14} />;
 }
 
-function getTxLabel(type: string, data: any): string {
+function getTxLabel(type: string, data: NodeTxData | undefined): string {
   switch (type) {
     case "wartTransfer":
       return `Send ${data?.amount?.str || "?"} WART`;

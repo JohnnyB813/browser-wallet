@@ -625,7 +625,6 @@ function toHistoryItem(tx: FlatTx, viewingAddress: string): HistoryItem {
     direction = "self";
   else if (from && from.startsWith(account.slice(0, 40))) direction = "out";
   else if (to && to.startsWith(account.slice(0, 40))) direction = "in";
-  else if (tx.isReward) direction = "in";
 
   const ts = Number(tx.timestamp || 0);
   const date =

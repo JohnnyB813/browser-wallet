@@ -2,15 +2,17 @@ import React from "react";
 import { FaGift, FaCoins, FaExchangeAlt, FaPlus, FaMinus, FaTimes, FaClipboardList } from "react-icons/fa";
 import { IoCloseCircle as IoCloseCircleOutline } from "react-icons/io5";
 import { EXPLORER_URL } from "../config";
+import type { IconType } from "react-icons";
+import type { NodeTx, NodeTxData } from "../types/nodeTx";
 
 interface PendingTxRowProps {
   type: string;
-  tx: any;
-  onCancel: (tx: any, type: string) => void;
+  tx: NodeTx;
+  onCancel: (tx: NodeTx, type: string) => void;
 }
 
 function TxTypeIcon({ type }: { type: string }) {
-  const icons: Record<string, any> = {
+  const icons: Record<string, IconType> = {
     wartTransfer: FaCoins,
     tokenTransfer: FaExchangeAlt,
     assetCreation: FaPlus,
@@ -25,7 +27,7 @@ function TxTypeIcon({ type }: { type: string }) {
   return <Icon size={14} />;
 }
 
-function getTxLabel(type: string, data: any): string {
+function getTxLabel(type: string, data: NodeTxData | undefined): string {
   switch (type) {
     case "wartTransfer":
       return `Send ${data?.amount?.str || "?"} WART`;

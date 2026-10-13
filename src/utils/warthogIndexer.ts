@@ -210,12 +210,26 @@ export async function fetchIndexerAccountTransactions(
   const body = (await indexerFetch(
     indexerBase,
     `/accounts/${addr}/transactions?${qs.toString()}`,
-  )) as { code?: number; error?: string; data?: any };
+  )) as {
+    code?: number;
+    error?: string;
+    data?: {
+      total?: number | null;
+      transactions?: IndexerTxRow[];
+    };
+  };
 
   if (body?.code !== 0) {
     throw new Error(body?.error || "Indexer history error");
   }
-  return body.data;
+  return {
+    address: addr,
+    page: p,
+    count: c,
+    total: body.data?.total ?? null,
+    filter: filter ?? undefined,
+    transactions: body.data?.transactions ?? [],
+  };
 }
 
 export function mapIndexerTxType(raw: string | undefined): string {

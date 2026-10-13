@@ -12,6 +12,13 @@ import { FaChevronDown, FaSearch, FaSync } from "react-icons/fa";
 import Jazzicon from "react-jazzicon";
 import { getPendingApproval, approveRequest, rejectRequest, PendingApproval } from "../utils/extensionApi";
 import { addressToSeed, formatAddress } from "../utils";
+import {
+  NODE_TX_TYPES,
+  type ActionsByBlock,
+  type NodeHistoryBlock,
+  type NodeMempoolEntry,
+  type NodeTx,
+} from "../types/nodeTx";
 
 interface Token {
   spec: string;
@@ -195,14 +202,14 @@ const Home: React.FC = () => {
   const [selectedToken, setSelectedToken] = useState<Token>({ spec: 'WART', name: 'WART', hash: null });
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Actions);
-  const [historyBlocks, setHistoryBlocks] = useState<any[]>([]);
+  const [historyBlocks, setHistoryBlocks] = useState<NodeHistoryBlock[]>([]);
   const [historyFromId, setHistoryFromId] = useState<number>(0);
   const [historyHasMore, setHistoryHasMore] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [pendingTxs, setPendingTxs] = useState<any[]>([]);
+  const [pendingTxs, setPendingTxs] = useState<NodeMempoolEntry[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelTx, setCancelTx] = useState<any>(null);
+  const [cancelTx, setCancelTx] = useState<NodeTx | null>(null);
   const [cancelType, setCancelType] = useState<string>("");
   const [lastChainHeadHash, setLastChainHeadHash] = useState<string>("");
 
@@ -218,7 +225,9 @@ const Home: React.FC = () => {
 
     setHistoryLoading(true);
     try {
-      const response = await axios.get(`${nodeUrl}/account/${wallet}/history/${beforeId}`);
+      const response = await axios.get<{
+        data?: ActionsByBlock;
+      }>(`${nodeUrl}/account/${wallet}/history/${beforeId}`);
       const data = response.data?.data;
 
       if (data && data.perBlock) {
@@ -249,7 +258,9 @@ const Home: React.FC = () => {
     const nodeUrl = nodeList[selectedNodeIndex];
     setPendingLoading(true);
     try {
-      const response = await axios.get(`${nodeUrl}/account/${wallet}/mempool`);
+      const response = await axios.get<{
+        data?: NodeMempoolEntry[];
+      }>(`${nodeUrl}/account/${wallet}/mempool`);
       setPendingTxs(response.data?.data || []);
     } catch (err) {
       console.error("Error fetching pending:", err);
@@ -259,10 +270,14 @@ const Home: React.FC = () => {
     }
   }, [wallet, nodeList, selectedNodeIndex]);
 
+  // `loadHistory` is intentionally omitted: it depends on historyFromId and
+  // historyHasMore, which it itself sets. Listing it would make this effect
+  // re-run on every load, refetching history in a loop.
   useEffect(() => {
     if (activeTab === Tab.History) {
       loadHistory(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, wallet, selectedNodeIndex]);
 
   useEffect(() => {
@@ -309,7 +324,7 @@ const Home: React.FC = () => {
     return () => observer.disconnect();
   }, [historyHasMore, historyLoading, activeTab, loadHistory]);
 
-  const handleCancel = (tx: any, type: string) => {
+  const handleCancel = (tx: NodeTx, type: string) => {
     setCancelTx(tx);
     setCancelType(type);
     setShowCancelModal(true);
@@ -335,7 +350,7 @@ const Home: React.FC = () => {
     setPendingApproval(null);
   };
 
-  const updateBalance = () => {
+  const updateBalance = useCallback(() => {
     if (wallet && nodeList[selectedNodeIndex]) {
       const nodeUrl = nodeList[selectedNodeIndex];
       if (selectedToken.hash) {
@@ -366,9 +381,9 @@ const Home: React.FC = () => {
           });
       }
     }
-  };
+  }, [wallet, nodeList, selectedNodeIndex, selectedToken]);
 
-  const updateBalanceUSD = () => {
+  const updateBalanceUSD = useCallback(() => {
     axios
       .get(`${import.meta.env.VITE_APP_COINGECKO_API_URL}`)
       .then((response) => {
@@ -378,7 +393,7 @@ const Home: React.FC = () => {
       .catch((error) => {
         console.error("Error fetching balance:", error);
       });
-  };
+  }, []);
 
   useEffect(() => {
     const checkPendingApproval = async () => {
@@ -401,19 +416,19 @@ const Home: React.FC = () => {
         clearInterval(intervalId);
       };
     }
-  }, [wallet, selectedToken, selectedNodeIndex]);
+  }, [wallet, selectedToken, selectedNodeIndex, updateBalance, updateBalanceUSD]);
 
   const flattenHistoryBlocks = () => {
-    const rows: { type: string; tx: any; confirmations: number }[] = [];
+    const rows: { type: string; tx: NodeTx; confirmations: number }[] = [];
     historyBlocks.forEach(block => {
       const confirmations = block.confirmations || 0;
-      const txTypes = ['wartTransfer', 'tokenTransfer', 'assetCreation', 'cancelation', 'liquidityDeposit', 'liquidityWithdrawal', 'limitSwap', 'reward', 'match'];
-      txTypes.forEach(type => {
-        if (block.body && block.body[type] && Array.isArray(block.body[type])) {
-          block.body[type].forEach((entry: any) => {
+      NODE_TX_TYPES.forEach(type => {
+        const entries = block.body?.[type];
+        if (Array.isArray(entries)) {
+          entries.forEach((entry: { transaction?: NodeTx }) => {
             rows.push({
               type,
-              tx: entry.transaction,
+              tx: entry.transaction ?? {},
               confirmations
             });
           });
@@ -523,7 +538,7 @@ const Home: React.FC = () => {
               <PendingTxRow
                 key={item.transaction?.hash || idx}
                 type={item.type}
-                tx={item.transaction}
+                tx={item.transaction ?? {}}
                 onCancel={handleCancel}
               />
             ))}

@@ -3,6 +3,7 @@ import {
   CHAIN_ID,
   ERRORS,
 } from './provider/messages';
+import type { Runtime } from 'webextension-polyfill/namespaces/runtime';
 
 interface PendingRequest {
   requestId?: number;
@@ -29,6 +30,15 @@ interface ContentMessage {
   payload?: Record<string, unknown>;
 }
 
+/** Runtime narrowing for messages arriving from the content-script trust boundary. */
+function isContentMessage(value: unknown): value is ContentMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { action?: unknown }).action === "string"
+  );
+}
+
 class WarthogBackground {
   private connections: Map<string, { accounts: string[]; chainId: string }> = new Map();
   private pendingRequest: PendingRequest | null = null;
@@ -39,20 +49,32 @@ class WarthogBackground {
   }
 
   private setupMessageListener(): void {
-    browser.runtime.onMessage.addListener((message: any, sender: any, sendResponse: (response: unknown) => void): true => {
+    browser.runtime.onMessage.addListener((
+      message: unknown,
+      sender: Runtime.MessageSender,
+      sendResponse: (response: unknown) => void,
+    ): true => {
       const tabId = sender.tab?.id;
       const url = sender.url || '';
       const origin = this.extractOrigin(url);
 
+      // `message` arrives as `unknown`: the listener is a trust boundary, since
+      // any content script or other extension page can post to it. Narrow it
+      // before reading fields rather than casting.
+      if (!isContentMessage(message)) {
+        sendResponse({ success: false, error: 'Malformed message' });
+        return true;
+      }
+
       // Handle approval result from popup
       if (message.action === 'approvalResult') {
-        this.handleApprovalResult(message.payload as ApprovalData);
+        this.handleApprovalResult(message.payload as unknown as ApprovalData);
         return true;
       }
 
       // Handle requests from content script
       if (message.action) {
-        this.handleMessage(message as ContentMessage, origin, tabId);
+        this.handleMessage(message, origin, tabId);
       }
 
       sendResponse({ success: true });

@@ -240,31 +240,39 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     return bytes.buffer;
   };
 
-  const saveToBrowserStorage = async (
-    key: string,
-    value: string | null,
-  ): Promise<void> => {
-    try {
-      const keyObject = await getKeyFromPassword(ENCRYPTION_KEY);
-      const encryptedValue = value ? await encrypt(value, keyObject) : null;
-      const hexValue = encryptedValue ? arrayBufferToHex(encryptedValue) : null;
-      await browser.storage.local.set({ [key]: hexValue });
-    } catch (error) {
-      console.error(`Error saving ${key} to browser storage:`, error);
-      throw error;
-    }
-  };
+  // Memoized with an empty dep array on purpose: both close only over
+  // module-level ENCRYPTION_KEY and the imported crypto helpers, so their
+  // identity is genuinely constant. That stability is what lets the effects
+  // and callbacks below list them as dependencies without re-running every
+  // render.
+  const saveToBrowserStorage = useCallback(
+    async (key: string, value: string | null): Promise<void> => {
+      try {
+        const keyObject = await getKeyFromPassword(ENCRYPTION_KEY);
+        const encryptedValue = value ? await encrypt(value, keyObject) : null;
+        const hexValue = encryptedValue
+          ? arrayBufferToHex(encryptedValue)
+          : null;
+        await browser.storage.local.set({ [key]: hexValue });
+      } catch (error) {
+        console.error(`Error saving ${key} to browser storage:`, error);
+        throw error;
+      }
+    },
+    [],
+  );
 
-  const decryptValue = async (
-    value: string | undefined,
-  ): Promise<string | null> => {
-    const keyObject = await getKeyFromPassword(ENCRYPTION_KEY);
-    const arrayBuffer = value ? hexToArrayBuffer(value) : null;
-    const decryptedValue = arrayBuffer
-      ? await decrypt(arrayBuffer, keyObject)
-      : null;
-    return decryptedValue;
-  };
+  const decryptValue = useCallback(
+    async (value: string | undefined): Promise<string | null> => {
+      const keyObject = await getKeyFromPassword(ENCRYPTION_KEY);
+      const arrayBuffer = value ? hexToArrayBuffer(value) : null;
+      const decryptedValue = arrayBuffer
+        ? await decrypt(arrayBuffer, keyObject)
+        : null;
+      return decryptedValue;
+    },
+    [],
+  );
 
   const loadFromChromeStorage = useCallback(
     (key: string, callback: (value: string | null) => void): void => {
@@ -290,7 +298,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         console.error(`Error loading ${key} from browser storage:`, error);
       }
     },
-    [],
+    [decryptValue],
   );
 
   const accountPath = (index: number): string => {
@@ -348,10 +356,13 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     saveToBrowserStorage("selectedWalletIndex", idx.toString());
   };
 
-  const setSelectedNodeIndex = (idx: number): void => {
-    setSelectedNodeIndexState(idx);
-    saveToBrowserStorage("selectedNodeIndex", idx.toString());
-  };
+  const setSelectedNodeIndex = useCallback(
+    (idx: number): void => {
+      setSelectedNodeIndexState(idx);
+      saveToBrowserStorage("selectedNodeIndex", idx.toString());
+    },
+    [saveToBrowserStorage],
+  );
 
   const setPassword = (pwd: string): void => {
     setPasswordState(pwd);
@@ -897,7 +908,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     );
     loadFromChromeStorage("name", setNameState);
     loadFromChromeStorage("token", setTokenState);
-  }, [loadFromChromeStorage]);
+  }, [loadFromChromeStorage, saveToBrowserStorage]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -915,7 +926,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     if (nodeList.length > 0 && selectedNodeIndex >= nodeList.length) {
       setSelectedNodeIndex(0);
     }
-  }, [nodeList, selectedNodeIndex]);
+  }, [nodeList, selectedNodeIndex, setSelectedNodeIndex]);
 
   const lockSessionRef = useRef(lockSession);
   lockSessionRef.current = lockSession;

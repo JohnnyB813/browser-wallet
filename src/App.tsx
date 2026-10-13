@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import browser from "webextension-polyfill";
+import type { Storage } from "webextension-polyfill/namespaces/storage";
 import Start from "./pages/startedPage";
 import Intro from "./pages/intro";
 import ImportPage from "./pages/importPage";
@@ -85,10 +86,15 @@ const App: React.FC = () => {
   }, [location.pathname, navigate]);
 
   useEffect(() => {
-    const handleStorageChange = async (changes: any) => {
-      if (changes.pendingApproval && changes.pendingApproval.newValue) {
+    // Params are contextually typed by addListener as
+    // (changes: Record<string, StorageChange>, areaName: string).
+    const handleStorageChange = async (
+      changes: Record<string, Storage.StorageChange>,
+    ) => {
+      const change = changes.pendingApproval;
+      if (change && change.newValue) {
         try {
-          const data = JSON.parse(changes.pendingApproval.newValue);
+          const data = JSON.parse(change.newValue as string);
           if (data.action === 'sendTo' && data.to) {
             await browser.storage.local.remove('pendingApproval');
             navigate(`/send?address=${data.to}`);
