@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import BackButton from "../components/BackButton";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
@@ -6,6 +6,13 @@ import useWallet from "../hooks/useWallet";
 import { addressToSeed } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import { QRCodeSVG } from "qrcode.react";
+import {
+  encryptWallet,
+  loadNamedWalletEncrypted,
+  inspectNamedBlob,
+} from "../utils/warthogWalletCrypto";
+import { isWebAuthnAvailable } from "../utils/passkeyWallet";
+import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
 
 function IconButton({
   iconSrc,
@@ -41,13 +48,134 @@ function useDebounce(value: string | null, delay: number): string | null {
 }
 
 function AccountDetails() {
-  const { wallet, name, nameList, setNameList, selectedWalletIndex, setName } =
-    useWallet();
+  const {
+    wallet,
+    name,
+    nameList,
+    setNameList,
+    selectedWalletIndex,
+    setName,
+    password,
+    saveCurrentAsNamedWallet,
+    enablePasskeyOnCurrentWallet,
+    seedPhrase,
+  } = useWallet();
   const [copyLabel, setCopyLabel] = useState("Copy");
   const [isEditing, setIsEditing] = useState(false);
   const [tempName, setTempName] = useState<string | null>(name);
   const debouncedName = useDebounce(tempName, 1000);
   const navigate = useNavigate();
+  const [saveName, setSaveName] = useState(name || "My Wallet");
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [awaitingPasskey, setAwaitingPasskey] = useState(false);
+  const [hasPasskey, setHasPasskey] = useState(false);
+  const [require2faActive, setRequire2faActive] = useState(false);
+  const [want2fa, setWant2fa] = useState(false);
+  const [passkeysSupported] = useState(() => isWebAuthnAvailable());
+
+  const refreshPasskeyStatus = useCallback(async () => {
+    try {
+      const tag = (saveName || name || "").trim();
+      if (!tag) {
+        setHasPasskey(false);
+        setRequire2faActive(false);
+        return;
+      }
+      const raw = await loadNamedWalletEncrypted(tag);
+      const info = inspectNamedBlob(raw);
+      setHasPasskey(Boolean(info.hasPasskey));
+      setRequire2faActive(Boolean(info.require2fa));
+      if (info.require2fa) setWant2fa(true);
+    } catch {
+      setHasPasskey(false);
+      setRequire2faActive(false);
+    }
+  }, [saveName, name]);
+
+  useEffect(() => {
+    void refreshPasskeyStatus();
+  }, [refreshPasskeyStatus]);
+
+  const handleSaveNamed = async () => {
+    if (!password) {
+      setSaveErr("Unlock password missing — re-open the wallet or set a password");
+      return;
+    }
+    setSaving(true);
+    setSaveErr(null);
+    setSaveMsg(null);
+    try {
+      await saveCurrentAsNamedWallet(saveName.trim(), password);
+      setSaveMsg(`Saved as "${saveName.trim()}" for quick login`);
+      await refreshPasskeyStatus();
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEnablePasskey = async (force2fa?: boolean) => {
+    setSaveErr(null);
+    setSaveMsg(null);
+    const twoFactor = Boolean(force2fa ?? want2fa);
+    if (twoFactor && !password?.trim()) {
+      setSaveErr("2FA needs a password — enter it above");
+      return;
+    }
+    try {
+      await paintPasskeyWaiting(setAwaitingPasskey, setPasskeyBusy);
+      const ok = await enablePasskeyOnCurrentWallet({
+        password: password || null,
+        name: saveName.trim() || name || "Main",
+        preferFingerprint: false,
+        require2fa: twoFactor,
+      });
+      if (ok) {
+        setSaveMsg(
+          twoFactor
+            ? `2FA enabled for “${saveName.trim() || name}” — password + passkey at login`
+            : hasPasskey
+              ? `Passkey re-registered for “${saveName.trim() || name}”`
+              : `Passkey enabled for “${saveName.trim() || name}” — next login: Unlock with passkey`,
+        );
+        await refreshPasskeyStatus();
+      }
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "Could not enable passkey");
+    } finally {
+      clearPasskeyWaiting(setAwaitingPasskey, setPasskeyBusy);
+    }
+  };
+
+  const handleDownloadFile = async () => {
+    if (!password || !wallet) return;
+    try {
+      const { exportWalletFromWorker } = await import("../utils/signingBridge");
+      const exported = await exportWalletFromWorker();
+      const encrypted = await encryptWallet(
+        {
+          privateKey: exported.privateKey,
+          publicKey: exported.publicKey || "",
+          address: exported.address || wallet,
+          mnemonic: exported.mnemonic || seedPhrase || undefined,
+        },
+        password,
+      );
+      const blob = new Blob([encrypted], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "warthog_wallet.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : "Download failed");
+    }
+  };
 
   const handleCopyAddress = () => {
     if (wallet) {
@@ -157,7 +285,87 @@ function AccountDetails() {
         />
       </div>
 
-      <div className="w-full absolute bottom-3 left-0 px-3">
+      <div className="mt-6 px-1 grid gap-2">
+        <p className="text-white text-sm font-medium">Save for quick login</p>
+        <input
+          type="text"
+          value={saveName}
+          onChange={(e) => setSaveName(e.target.value)}
+          placeholder="Wallet name"
+          className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-3 py-2 text-sm"
+        />
+        <Button
+          className="w-full"
+          variant="outline"
+          onClick={() => void handleSaveNamed()}
+          disabled={saving || passkeyBusy || !saveName.trim()}
+        >
+          {saving ? "Saving…" : "Save named wallet (password)"}
+        </Button>
+        {passkeysSupported && (
+          <>
+            <label className="flex items-center gap-2 text-white/70 text-xs cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={want2fa}
+                onChange={(e) => setWant2fa(e.target.checked)}
+                disabled={passkeyBusy || saving}
+              />
+              Require 2FA (password + passkey)
+            </label>
+            <Button
+              className="w-full"
+              variant="outline"
+              onClick={() => void handleEnablePasskey(want2fa)}
+              disabled={passkeyBusy || saving || !saveName.trim()}
+            >
+              {awaitingPasskey
+                ? "Waiting for passkey…"
+                : want2fa
+                  ? hasPasskey
+                    ? "Update passkey + 2FA"
+                    : "Enable passkey with 2FA"
+                  : hasPasskey
+                    ? "Re-register passkey"
+                    : "Enable passkey unlock"}
+            </Button>
+          </>
+        )}
+        {require2faActive ? (
+          <p className="text-sky-300/90 text-xs">
+            2FA active — enter password, then passkey on login.
+          </p>
+        ) : hasPasskey ? (
+          <p className="text-emerald-400/80 text-xs">
+            Passkey unlock is active for this name — use Unlock with passkey on
+            login. Toggle 2FA above and re-enable to require password too.
+          </p>
+        ) : null}
+        <Button className="w-full" variant="outline" onClick={handleDownloadFile}>
+          Download warthog_wallet.txt
+        </Button>
+        {saveMsg && <p className="text-emerald-400 text-xs">{saveMsg}</p>}
+        {saveErr && <p className="text-red-400 text-xs">{saveErr}</p>}
+      </div>
+
+      {awaitingPasskey && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="rounded-xl border border-primary/40 bg-[#1a1a1a] px-6 py-5 max-w-sm text-center">
+            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-white font-medium">Waiting for passkey…</p>
+            <p className="text-white/50 text-xs mt-1">
+              Use your password manager, Face ID, fingerprint, security key, or
+              scan the QR code when prompted.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="w-full mt-4 px-3 pb-4">
         <Button className="w-full" onClick={() => navigate("/private-key")}>
           Show Private Key
         </Button>

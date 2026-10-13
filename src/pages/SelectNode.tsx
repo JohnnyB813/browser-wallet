@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Button from "../components/Button";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import NodeCard from "../components/NodeCard";
-import axios from "axios";
-import { defaultNodeList, defaultNodeNameList } from "../config/nodes";
+import { PRESET_NODES } from "../config/network";
+import {
+  isDefiNode,
+  labelForNodeUrl,
+  normalizeNodeUrl,
+} from "../utils/nodes";
+import { probeNode } from "../utils/warthogNode";
+import { ensureHostPermission } from "../utils/hostAccess";
 
 interface NodeType {
   id: number;
@@ -12,6 +18,7 @@ interface NodeType {
   address: string;
   status: string;
   latency: number;
+  network: "mainnet" | "defi-testnet";
 }
 
 function SelectNode() {
@@ -26,204 +33,283 @@ function SelectNode() {
   } = useWallet();
 
   const [nodes, setNodes] = useState<NodeType[]>([] as NodeType[]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false); // State for dialog visibility
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newNodeAddress, setNewNodeAddress] = useState("");
   const [newNodeName, setNewNodeName] = useState("");
   const [warning, setWarning] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "mainnet" | "defi-testnet">("all");
 
-  const setPrimaryNode = (id: number) => {
-    console.log("Primary Node Set");
+  const filteredNodes = nodes.filter((node) => {
+    if (filter !== "all" && node.network !== filter) return false;
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    return (
+      node.name.toLowerCase().includes(q) ||
+      node.address.toLowerCase().includes(q)
+    );
+  });
+
+  const setPrimaryNode = async (id: number) => {
+    const url = nodeList[id];
+    if (url && !(await ensureHostPermission(url))) {
+      setWarning(true);
+      return;
+    }
     setSelectedNodeIndex(id);
   };
 
   const removeNode = (id: number) => {
-    const newNodeList = nodeList.filter((_, index) => index !== id);
-    setNodeList(newNodeList);
+    // Keep at least one node
+    if (nodeList.length <= 1) return;
+    setNodeList(nodeList.filter((_, index) => index !== id));
     setNodeNameList(nodeNameList.filter((_, index) => index !== id));
-
-    if (newNodeList.length === 0) {
-      setSelectedNodeIndex(0);
-    } else if (id === selectedNodeIndex) {
-      setSelectedNodeIndex(Math.min(id, newNodeList.length - 1));
-    } else if (selectedNodeIndex >= id) {
-      setSelectedNodeIndex(Math.max(0, selectedNodeIndex - 1));
-    }
+    if (selectedNodeIndex >= id)
+      setSelectedNodeIndex(Math.max(selectedNodeIndex - 1, 0));
   };
 
-  const resetToFactorySettings = () => {
-    setNodeList(defaultNodeList);
-    setNodeNameList(defaultNodeNameList);
-    setSelectedNodeIndex(0);
-  };
-
-  const handleAddNode = () => {
-    // Logic to add the new node
-    console.log("Adding node:", newNodeAddress);
-    // Regular expression to validate URL format
+  const handleAddNode = async () => {
     const urlPattern =
       /^(https?:\/\/)(([a-z0-9-]+\.)+[a-z]{2,}|(\d{1,3}\.){3}\d{1,3})(:\d{1,5})?(\/.*)?$/i;
 
-    if (newNodeAddress.length === 0) {
+    const normalized = normalizeNodeUrl(newNodeAddress);
+    if (!normalized || !urlPattern.test(normalized)) {
       setWarning(true);
       return;
     }
 
-    if (!urlPattern.test(newNodeAddress)) {
-      setWarning(true); // Set warning if the address is invalid
+    if (nodeList.some((n) => normalizeNodeUrl(n) === normalized)) {
+      setWarning(true);
+      return;
+    }
+
+    if (!(await ensureHostPermission(normalized))) {
+      setWarning(true);
       return;
     }
 
     const len = nodeList.length;
-    setNodeList([...nodeList, newNodeAddress]);
-    setNodeNameList([...nodeNameList, newNodeName]);
+    const name =
+      newNodeName.trim() ||
+      labelForNodeUrl(normalized) ||
+      (isDefiNode(normalized) ? "Custom DeFi node" : "Custom node");
+    setNodeList([...nodeList, normalized]);
+    setNodeNameList([...nodeNameList, name]);
     setSelectedNodeIndex(len);
-
-    // Reset the input and close the dialog
     setNewNodeName("");
     setNewNodeAddress("");
     setIsDialogOpen(false);
+    setWarning(false);
+  };
+
+  const handleAddPresets = (network: "mainnet" | "defi-testnet") => {
+    const toAdd = PRESET_NODES.filter((p) => p.network === network);
+    let urls = [...nodeList];
+    let names = [...nodeNameList];
+    for (const p of toAdd) {
+      const n = normalizeNodeUrl(p.url);
+      if (!urls.some((u) => normalizeNodeUrl(u) === n)) {
+        urls.push(n);
+        names.push(p.name);
+      }
+    }
+    setNodeList(urls);
+    setNodeNameList(names);
   };
 
   const handleCancel = () => {
     setNewNodeAddress("");
+    setNewNodeName("");
     setIsDialogOpen(false);
+    setWarning(false);
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const measureLatency = async (address: string, index: number) => {
-    const start = performance.now(); // Start time
-    try {
-      await axios.get(`${address}/account/${wallet}/balance`, {
-        timeout: 5000,
-      }); // Replace with the appropriate endpoint
-      const end = performance.now(); // End time
-      const latency = end - start; // Calculate latency
+  const measureLatency = useCallback(
+    async (address: string, index: number) => {
+      const result = await probeNode(address, wallet);
       setNodes((prev) => {
         const newNodes = [...prev];
-        newNodes[index].latency = latency;
-        newNodes[index].status = "online";
+        if (!newNodes[index]) return prev;
+        newNodes[index] = {
+          ...newNodes[index],
+          latency: result.latencyMs,
+          status: result.online ? "online" : "offline",
+        };
         return newNodes;
       });
-    } catch (error) {
-      console.log(error);
-      setNodes((prev) => {
-        const newNodes = [...prev];
-        newNodes[index].status = "offline";
-        return newNodes;
-      });
-    }
-  };
+    },
+    [wallet],
+  );
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    if (nodeList.length == 0) {
-      console.log(`**** no supported nodes:`, nodeList.length);
-    } else {
-      // Initialize node statuses to "Checking"
-      setNodes(
-        nodeList.map((node, index) => ({
-          id: index,
-          name: nodeNameList[index], // Assign a name based on the index
-          address: node, // Use the address from nodeList
-          status: "Checking", // Initialize status as "Checking"
-          latency: 0, // Initialize latency as 0
-        })),
-      );
-      if (isDialogOpen) {
-        nodeList.forEach((node, index) => {
-          measureLatency(node, index); // Measure latency for each node
-        });
-        // Set up an interval to measure latency every 5 seconds (5000 ms)
-        interval = setInterval(() => {
-          nodeList.forEach((node, index) => {
-            measureLatency(node, index); // Measure latency for each node
-          });
-        }, 5000); // Adjust the interval as needed
-      }
+    if (nodeList.length === 0) {
+      setNodes([]);
+      return;
     }
-    console.log("**** ", nodeList);
 
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [isDialogOpen, measureLatency, nodeList, nodeNameList, wallet]);
+    setNodes(
+      nodeList.map((node, index) => ({
+        id: index,
+        name: nodeNameList[index] || labelForNodeUrl(node),
+        address: node,
+        status: "Checking",
+        latency: 0,
+        network: isDefiNode(node) ? "defi-testnet" : "mainnet",
+      })),
+    );
+
+    nodeList.forEach((node, index) => {
+      measureLatency(node, index);
+    });
+
+    const interval = setInterval(() => {
+      nodeList.forEach((node, index) => {
+        measureLatency(node, index);
+      });
+    }, 10_000);
+
+    return () => clearInterval(interval);
+  }, [measureLatency, nodeList, nodeNameList]);
 
   return (
     <div className="min-h-screen container relative px-4">
       <Header title="Select A Node" />
-      <div className="h-[63vh] overflow-y-scroll mt-4 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
-        {nodes.length > 0 ? (
-          nodes.map((node, index) => (
-            <NodeCard
-              key={index}
-              {...node}
-              setPrimaryNode={setPrimaryNode}
-              removeNode={removeNode}
-            />
+
+      <div className="flex gap-2 mb-3 flex-wrap">
+        {(
+          [
+            ["all", "All"],
+            ["mainnet", "Mainnet"],
+            ["defi-testnet", "DeFi Testnet"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setFilter(id)}
+            className={`text-xs px-3 py-1.5 rounded-full border ${
+              filter === id
+                ? "bg-primary/20 border-primary text-primary"
+                : "border-white/20 text-white/60"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative w-full mb-2">
+        <input
+          className="h-14 w-full pl-12 pr-4 py-2 bg-primary/10 rounded-full border border-primary focus:outline-none focus:ring-2 focus:ring-primary"
+          placeholder="Search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <img
+          className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6"
+          src="icons/search-icon.svg"
+          alt="Search Icon"
+        />
+      </div>
+
+      <div className="flex gap-2 mb-3">
+        <button
+          type="button"
+          className="text-xs text-primary underline"
+          onClick={() => handleAddPresets("mainnet")}
+        >
+          + Mainnet presets
+        </button>
+        <button
+          type="button"
+          className="text-xs text-amber-300 underline"
+          onClick={() => handleAddPresets("defi-testnet")}
+        >
+          + DeFi testnet presets
+        </button>
+      </div>
+
+      <div className="h-[55vh] overflow-y-scroll">
+        {filteredNodes.length > 0 ? (
+          filteredNodes.map((node) => (
+            <div key={node.id} className="relative">
+              <span
+                className={`absolute right-3 top-3 z-10 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                  node.network === "defi-testnet"
+                    ? "bg-amber-500/20 text-amber-300"
+                    : "bg-emerald-500/15 text-emerald-300"
+                }`}
+              >
+                {node.network === "defi-testnet" ? "DeFi" : "Mainnet"}
+              </span>
+              <NodeCard
+                {...node}
+                setPrimaryNode={setPrimaryNode}
+                removeNode={removeNode}
+              />
+            </div>
           ))
         ) : (
-          <div className="text-center text-white/50 mt-12">No nodes found</div>
+          <div className="text-center text-white/50 mt-6">No nodes found</div>
         )}
       </div>
-      <div className="absolute bottom-6 w-full left-0 px-4 flex gap-3">
+
+      <div className="absolute bottom-3 w-full left-0 px-4">
         <Button
           variant="primary"
           ariaLabel="Add Node"
           onClick={() => setIsDialogOpen(true)}
-          className="flex-1"
+          className="w-full"
         >
-          + Add
+          + Add more nodes
         </Button>
-        <button
-          onClick={resetToFactorySettings}
-          className="flex-1 py-3 text-sm text-white/40 hover:text-red-400 transition-colors border border-white/10 hover:border-red-400/50 rounded-xl"
-        >
-          Reset
-        </button>
       </div>
-      {/* Popup Dialog */}
+
       {isDialogOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-50">
-          <div className="bg-[#1A1A1A] p-6 rounded-2xl border border-white/10 shadow-2xl w-[340px]">
-            <h3 className="text-white text-xl font-semibold mb-6">
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-[#1A1A1A] p-4 rounded shadow-lg w-[300px]">
+            <h3 className="text-white text-xl font-semibold mb-4">
               Add new Node
             </h3>
-            <div className="space-y-4">
-              <input
-                type="text"
-                placeholder="Node Name"
-                value={newNodeName}
-                onChange={(e) => setNewNodeName(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white placeholder-white/30 focus:outline-none focus:border-primary transition-colors"
-              />
-              <input
-                type="text"
-                placeholder="Node Address (https://...)"
-                value={newNodeAddress}
-                onChange={(e) => setNewNodeAddress(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white placeholder-white/30 focus:outline-none focus:border-primary transition-colors"
-              />
-            </div>
+            <p className="text-white/50 text-xs mb-2">
+              Mainnet example: https://warthognode.duckdns.org
+              <br />
+              DeFi testnet: https://warthog-defitestnet.duckdns.org
+            </p>
+            <input
+              type="text"
+              placeholder="Node Name"
+              value={newNodeName}
+              onChange={(e) => setNewNodeName(e.target.value)}
+              className="w-full min-w-[150px] bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary mb-1"
+            />
+            <input
+              type="text"
+              placeholder="Node Address"
+              value={newNodeAddress}
+              onChange={(e) => {
+                setNewNodeAddress(e.target.value);
+                setWarning(false);
+              }}
+              className="w-full min-w-[150px] bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+            />
             {warning && (
-              <p className="text-red-400 text-sm mt-3">
-                Please enter a valid URL (https://...)
+              <p className="text-red-500 text-xs mt-1">
+                Please enter a valid, unique node URL
               </p>
             )}
-            <div className="flex gap-3 mt-6">
+            <div className="flex justify-end mt-4">
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={handleCancel}
-                className="flex-1"
+                className="mr-2 w-full"
               >
                 Cancel
               </Button>
               <Button
                 variant="primary"
                 onClick={handleAddNode}
-                className="flex-1"
+                className="w-full"
               >
                 Add
               </Button>

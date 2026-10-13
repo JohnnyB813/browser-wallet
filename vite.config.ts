@@ -43,7 +43,7 @@ export default defineConfig({
       ],
     }),
     nodePolyfills({
-      include: ["buffer"],
+      include: ["buffer", "crypto", "stream", "util"],
       globals: {
         Buffer: true,
         process: true,
@@ -51,8 +51,10 @@ export default defineConfig({
       },
     }),
   ],
-  optimizeDeps: {
+optimizeDeps: {
     include: ["ethers"],
+    // warthog-ts bundles elliptic and is consumed as ESM; pre-bundling it
+    // breaks its `type: module` exports.
     exclude: ["warthog-ts", "elliptic"],
   },
   build: {
@@ -61,6 +63,9 @@ export default defineConfig({
       input: {
         main: "./index.html",
       },
+    },
+    commonjsOptions: {
+      transformMixedEsModules: true,
     },
   },
 });

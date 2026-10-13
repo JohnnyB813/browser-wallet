@@ -4,10 +4,14 @@ import browser from "webextension-polyfill";
 import Start from "./pages/startedPage";
 import Intro from "./pages/intro";
 import ImportPage from "./pages/importPage";
+import ImportPrivateKey from "./pages/ImportPrivateKey";
+import LoginSaved from "./pages/LoginSaved";
+import LoginFile from "./pages/LoginFile";
 import RecoveryPhase from "./pages/RecoveryPhase";
 import ValidateIntro from "./pages/validateIntro";
 import Validate from "./pages/validate";
 import SetPassword from "./pages/SetPassword";
+import SecureSetup from "./pages/SecureSetup";
 import Home from "./pages/Home";
 import LockScreen from "./pages/LockScreen";
 import ReceivePage from "./pages/ReceivePage";
@@ -26,6 +30,7 @@ import CancelOrderPage from "./pages/CancelOrderPage";
 import CancelOrderStep2 from "./pages/CancelOrderStep2";
 import CreateTokenPage from "./pages/CreateTokenPage";
 import CreateTokenStep2 from "./pages/CreateTokenStep2";
+import DefiHub from "./pages/DefiHub";
 
 const App: React.FC = () => {
   const {
@@ -36,6 +41,7 @@ const App: React.FC = () => {
     clearToken,
     refreshTokenExpiration,
   } = useWallet();
+  const isAuthenticated = Boolean(seedPhrase && password && token);
   const navigate = useNavigate();
   const location = useLocation();
   const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
@@ -122,12 +128,6 @@ const App: React.FC = () => {
     }
   }, [token, clearToken, navigate, seedPhrase, wallet, password]);
 
-  // For send mode with address, redirect to send page
-  // (normal routing will handle approval mode by showing Home with pending approval banner)
-  if (sendMode && sendToAddress && token) {
-    // This is handled in a useEffect above
-  }
-
   const AuthenticatedRoutes = () => (
     <Routes>
       <Route
@@ -139,12 +139,12 @@ const App: React.FC = () => {
         element={<Home />}
       />
       <Route path="/locked" element={<LockScreen />} />
-      {/* <Route path="" element={<LockScreen />} /> */}
       <Route path="/receive" element={<ReceivePage />} />
       <Route path="/send" element={<SendPage />} />
       <Route path="/sendstep2" element={<SendFinalStep />} />
       <Route path="/manage-account" element={<ManageAccounts />} />
       <Route path="/select-node" element={<SelectNode />} />
+      <Route path="/defi" element={<DefiHub />} />
       <Route path="/account-details" element={<AccountDetails />} />
       <Route path="/private-key" element={<ShowPrivateKey />} />
       <Route path="/trade" element={<TradePage />} />
@@ -155,6 +155,7 @@ const App: React.FC = () => {
       <Route path="/cancel-order-step2" element={<CancelOrderStep2 />} />
       <Route path="/create-token" element={<CreateTokenPage />} />
       <Route path="/create-token-step2" element={<CreateTokenStep2 />} />
+      <Route path="/secure-setup" element={<SecureSetup />} />
     </Routes>
   );
 
@@ -163,27 +164,27 @@ const App: React.FC = () => {
       <Route path="/" element={<Start />} />
       <Route path="/intro" element={<Intro />} />
       <Route path="/import" element={<ImportPage />} />
+      <Route path="/import-key" element={<ImportPrivateKey />} />
+      <Route path="/login-saved" element={<LoginSaved />} />
+      <Route path="/login-file" element={<LoginFile />} />
       <Route path="/recover" element={<RecoveryPhase />} />
       <Route path="/validate" element={<Validate />} />
       <Route
         path="/validate-intro"
         element={
           <ValidateIntro
-            recoveryPhrase={seedPhrase?.split(" ") || []}
+            recoveryPhrase={seedPhrase?.split(/\s+/).filter(Boolean) || []}
             onGoBack={() => navigate(-2)}
             onComplete={() => navigate("/set-password")}
           />
         }
       />
       <Route path="/set-password" element={<SetPassword />} />
+      <Route path="/secure-setup" element={<SecureSetup />} />
     </Routes>
   );
 
-  return seedPhrase && wallet && password ? (
-    <AuthenticatedRoutes />
-  ) : (
-    <UnauthenticatedRoutes />
-  );
+  return isAuthenticated ? <AuthenticatedRoutes /> : <UnauthenticatedRoutes />;
 };
 
 export default App;

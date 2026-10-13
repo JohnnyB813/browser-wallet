@@ -1,20 +1,50 @@
 import React from "react";
+import SpendableBalanceDisplay from "./SpendableBalanceDisplay";
 
 interface BalanceProps {
-  balance: number;
+  /** Free / available balance (preferred primary). Falls back to total if omitted. */
+  balance: number | string;
+  available?: number | string | null;
+  locked?: number | string | null;
+  total?: number | string | null;
   usdValue: number;
+  isTestnet?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  networkLabel?: string;
+  nodeLabel?: string;
 }
 
-const Balance: React.FC<BalanceProps> = ({ balance, usdValue }) => (
-  <div className="grid justify-start w-full px-5">
-    {/* <h3 className="text-white/50 text-lg font-semibold capitalize">Balance</h3> */}
-    <h3 className="text-white text-4xl font-semibold capitalize">
-      {balance} WART
-    </h3>
-    <h3 className="text-white/50 text-lg font-medium capitalize">
-      ${(balance * usdValue).toFixed(2)}
-    </h3>
-  </div>
-);
+const Balance: React.FC<BalanceProps> = ({
+  balance,
+  available,
+  locked,
+  total,
+  usdValue,
+  isTestnet,
+  refreshing = false,
+  onRefresh,
+  networkLabel,
+  nodeLabel,
+}) => {
+  const free = available ?? balance;
+  const totalVal = total ?? balance;
+
+  return (
+    <SpendableBalanceDisplay
+      layout="hero"
+      available={free}
+      locked={locked}
+      total={totalVal}
+      unit="WART"
+      usdValue={usdValue}
+      isTestnet={isTestnet}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      networkLabel={networkLabel}
+      nodeLabel={nodeLabel}
+    />
+  );
+};
 
 export default Balance;

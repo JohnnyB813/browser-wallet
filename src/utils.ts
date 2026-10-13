@@ -1,4 +1,5 @@
-import { Price, TokenDecimals, WarthogApi, RoundedFee, NonceId, TransactionContext, TransactionJson } from "warthog-ts";
+import { Price, TokenDecimals, WarthogApi, RoundedFee, NonceId, TransactionContext, TransactionJson, type WarthogApiVersion } from "warthog-ts";
+import { isDefiNode } from "./utils/nodes";
 
 const formatWalletAddress = (
   address: string,
@@ -21,7 +22,23 @@ const parsePriceInput = (value: string): Price | null => {
   return Price.fromNumberDecimals(num, new TokenDecimals(4), false);
 };
 
-const createApi = (nodeUrl: string): WarthogApi => new WarthogApi(nodeUrl);
+/**
+ * Which `/chain/head` payload shape a node returns.
+ *
+ * V1 (core/master, core/dev) flattens the ChainHead fields to the top level;
+ * V2 (core/defi) nests them under `chainHead`. The two are not
+ * interchangeable, so the client is told which to expect rather than sniffing.
+ *
+ * TODO(nodes-version-field): this still infers the generation from the node URL
+ * via isDefiNode, which guesses on "localhost" and a ":3002" substring. Replace
+ * with an explicit `version` field on each node entry and a one-time
+ * `/chain/head` probe for user-added nodes.
+ */
+const apiVersionForNode = (nodeUrl: string | null | undefined): WarthogApiVersion =>
+  isDefiNode(nodeUrl) ? "v2" : "v1";
+
+const createApi = (nodeUrl: string): WarthogApi =>
+  new WarthogApi(nodeUrl, { version: apiVersionForNode(nodeUrl) });
 
 const createTransactionContext = async (
   nodeList: string[],
@@ -29,7 +46,8 @@ const createTransactionContext = async (
   fee: RoundedFee,
   nonce: NonceId,
 ): Promise<TransactionContext> => {
-  const api = new WarthogApi(nodeList[selectedNodeIndex]);
+  const nodeUrl = nodeList[selectedNodeIndex];
+  const api = new WarthogApi(nodeUrl, { version: apiVersionForNode(nodeUrl) });
   return api.createTransactionContext(fee, nonce);
 };
 
@@ -38,7 +56,8 @@ const submitTransaction = async (
   selectedNodeIndex: number,
   tx: TransactionJson,
 ): Promise<string> => {
-  const api = new WarthogApi(nodeList[selectedNodeIndex]);
+  const nodeUrl = nodeList[selectedNodeIndex];
+  const api = new WarthogApi(nodeUrl, { version: apiVersionForNode(nodeUrl) });
   const result = await api.submitTransaction(tx);
   if (!result.success) {
     throw new Error(result.error);
@@ -51,6 +70,7 @@ export {
   addressToSeed,
   formatAddress,
   parsePriceInput,
+  apiVersionForNode,
   createApi,
   createTransactionContext,
   submitTransaction,

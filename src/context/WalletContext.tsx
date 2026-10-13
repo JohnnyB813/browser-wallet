@@ -2,17 +2,57 @@ import React, {
   createContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
   useCallback,
 } from "react";
-import * as bip39 from "bip39";
 import { getKeyFromPassword, encrypt, decrypt } from "dha-encryption";
 import browser from "webextension-polyfill";
-import { HDWallet, Account } from "warthog-ts";
+import { Account } from "warthog-ts";
 import { defaultNodeList, defaultNodeNameList } from "../config/nodes";
+import { DEFAULT_NODE_INDEX } from "../config/network";
+import { mergeNodeLists, networkLabel, normalizeNodeUrl } from "../utils/nodes";
+import {
+  deriveAccountAtIndex,
+  deriveWallet,
+  generateWallet,
+  importFromPrivateKey,
+  type PathType,
+  type WalletKeyMaterial,
+  type WordCount,
+} from "../utils/walletKeys";
+import {
+  decryptWallet,
+  encryptWallet,
+  loadNamedWalletEncrypted,
+  saveNamedWallet,
+  type EncryptedWalletPayload,
+} from "../utils/warthogWalletCrypto";
+import {
+  buildEnvelopeWithPasskey,
+  decryptWithPasskey,
+  envelopeWithPassword,
+  inspectWalletBlob,
+  isWebAuthnAvailable,
+  serializeEnvelope,
+  setPasskeyProductName,
+  tryParseEnvelope,
+  unlockEnvelopeWith2fa,
+} from "../utils/passkeyWallet";
+import {
+  bumpIdleTimer,
+  exportWalletFromWorker,
+  lockSigningWorker,
+  setIdleLockHandler,
+  unlockSigningWorker,
+} from "../utils/signingBridge";
+
+setPasskeyProductName("Warthog Extension");
 
 interface WalletContextProps {
   seedPhrase: string | null;
+  /** Active account private key (hex). Required for PK-only wallets; also set for seed wallets. */
+  privateKey: string | null;
   wallet: string | null;
   walletList: string[];
   nameList: string[];
@@ -23,6 +63,7 @@ interface WalletContextProps {
   selectedNodeIndex: number;
   password: string | null;
   name: string | null;
+  pathType: PathType;
   tmpDestinationWallet: string | null;
   tmpAssetHash: string | null;
   tmpTokenAmount: string | null;
@@ -36,8 +77,15 @@ interface WalletContextProps {
   tmpTradeType: "buy" | "sell";
   tmpLiquidityType: "add" | "remove";
   inputWordsBackup: string[];
+  selectedNodeUrl: string | null;
+  selectedNetworkLabel: "Mainnet" | "DeFi Testnet";
+  /** True when setup is complete enough to show the home UI. */
+  isAuthenticated: boolean;
+  /** Seed-based wallets can add more accounts; PK-only cannot. */
+  canAddAccounts: boolean;
   setName: (name: string) => void;
-  setSeedPhrase: (seedPhrase: string) => void;
+  setSeedPhrase: (seedPhrase: string | null) => void;
+  setPrivateKey: (privateKey: string | null) => void;
   setWallet: (wallet: string) => void;
   setPassword: (password: string) => void;
   setWalletList: (walletList: string[]) => void;
@@ -48,14 +96,56 @@ interface WalletContextProps {
   setVisibleWalletList: (visibleWalletList: boolean[]) => void;
   setSelectedWalletIndex: (selectedWalletIndex: number) => void;
   setInputWordsBackup: (inputWordsBackup: string[]) => void;
+  setPathType: (pathType: PathType) => void;
   clearWalletData: () => void;
   token: string | null;
   setToken: (token: string) => void;
   clearToken: () => void;
+  /** Wipe in-memory keys and session token. Named encrypted wallets stay on disk. */
+  lockSession: () => Promise<void>;
   accountPath: (index: number) => string;
-  newWallet: () => void;
-  addAccount: (name: string | null) => void;
-  importWallet: (seedPhrase: string) => void;
+  newWallet: (wordCount?: WordCount, pathType?: PathType) => Promise<void>;
+  addAccount: (name: string | null) => Promise<void>;
+  switchActiveAccount: (index: number) => Promise<void>;
+  importWallet: (
+    seedPhrase: string,
+    pathType?: PathType,
+    wordCount?: WordCount,
+  ) => Promise<void>;
+  importPrivateKey: (privateKeyHex: string) => Promise<void>;
+  /** Activate from website-compatible encrypted payload (saved wallet / file). */
+  loginFromEncrypted: (
+    encrypted: string,
+    password: string,
+    walletName?: string | null,
+  ) => Promise<void>;
+  /** Unlock a multi-auth envelope with WebAuthn passkey (optionally + password for 2FA). */
+  loginFromPasskey: (
+    encrypted: string,
+    walletName?: string | null,
+    password?: string | null,
+  ) => Promise<void>;
+  /** Persist current key material as a named wallet (website format). */
+  saveCurrentAsNamedWallet: (
+    walletName: string,
+    password?: string | null,
+    opts?: {
+      withPasskey?: boolean;
+      require2fa?: boolean;
+      preferFingerprint?: boolean;
+    },
+  ) => Promise<void>;
+  /** Add or re-register passkey unlock on the currently open named wallet. */
+  enablePasskeyOnCurrentWallet: (opts?: {
+    password?: string | null;
+    require2fa?: boolean;
+    preferFingerprint?: boolean;
+    name?: string | null;
+  }) => Promise<boolean>;
+  activateKeyMaterial: (
+    data: WalletKeyMaterial,
+    opts?: { password?: string; name?: string },
+  ) => Promise<void>;
   setWalletListState: (walletList: string[]) => void;
   setNodeListState: (nodeList: string[]) => void;
   setNodeNameListState: (nodeNameList: string[]) => void;
@@ -79,6 +169,7 @@ interface WalletContextProps {
   setTmpTradeTypeState: (tmpTradeType: "buy" | "sell") => void;
   setTmpLiquidityTypeState: (tmpLiquidityType: "add" | "remove") => void;
   getAccountFromIndex: (index: number) => Account;
+  signingUnlocked: boolean;
 }
 
 const WalletContext = createContext<WalletContextProps | undefined>(undefined);
@@ -90,17 +181,22 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [seedPhrase, setSeedPhraseState] = useState<string | null>(null);
+  const [privateKey, setPrivateKeyState] = useState<string | null>(null);
   const [wallet, setWalletState] = useState<string | null>(null);
   const [password, setPasswordState] = useState<string | null>(null);
   const [name, setNameState] = useState<string | null>(null);
+  const [pathType, setPathTypeState] = useState<PathType>("hardened");
   const [walletList, setWalletListState] = useState<string[]>([]);
   const [selectedWalletIndex, setSelectedWalletIndexState] =
     useState<number>(0);
-  const [selectedNodeIndex, setSelectedNodeIndexState] = useState<number>(0);
+  const [selectedNodeIndex, setSelectedNodeIndexState] =
+    useState<number>(DEFAULT_NODE_INDEX);
   const [nameList, setNameListState] = useState<string[]>([]);
   const [nodeList, setNodeListState] = useState<string[]>([]);
   const [nodeNameList, setNodeNameListState] = useState<string[]>([]);
   const [token, setTokenState] = useState<string | null>(null);
+  const [signingUnlocked, setSigningUnlocked] = useState(false);
+  const [hasMnemonic, setHasMnemonic] = useState(false);
   const [visibleWalletList, setVisibleWalletListState] = useState<boolean[]>(
     [],
   );
@@ -152,17 +248,10 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       const keyObject = await getKeyFromPassword(ENCRYPTION_KEY);
       const encryptedValue = value ? await encrypt(value, keyObject) : null;
       const hexValue = encryptedValue ? arrayBufferToHex(encryptedValue) : null;
-
-      browser.storage.local
-        .set({ [key]: hexValue })
-        .then(() => {
-          console.log(`${key} saved to browser storage`);
-        })
-        .catch((error: unknown) => {
-          console.error(`Error saving ${key} to browser storage:`, error);
-        });
+      await browser.storage.local.set({ [key]: hexValue });
     } catch (error) {
       console.error(`Error saving ${key} to browser storage:`, error);
+      throw error;
     }
   };
 
@@ -177,18 +266,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     return decryptedValue;
   };
 
-  const setInputWordsBackup = (inputWordsBackup: string[]): void => {
-    setInputWordsBackupState(inputWordsBackup);
-    saveToBrowserStorage("inputWordsBackup", inputWordsBackup.join(","));
-  };
-
   const loadFromChromeStorage = useCallback(
     (key: string, callback: (value: string | null) => void): void => {
       try {
         browser.storage.local
           .get(key)
           .then((result: Record<string, unknown>) => {
-            console.log("***** result", result);
             decryptValue(result[key] as string | undefined)
               .then((decryptedValue) => {
                 callback(decryptedValue);
@@ -211,83 +294,264 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   );
 
   const accountPath = (index: number): string => {
-    const path = `m/44'/2070'/0/0/${index}`;
-    return path;
+    return pathType === "hardened"
+      ? `m/44'/2070'/0'/0/${index}`
+      : `m/44'/2070'/0/0/${index}`;
   };
 
-  const newWallet = async (): Promise<void> => {
+  const ensureDefaultNodes = () => {
+    setNodeList(defaultNodeList);
+    setNodeNameList(defaultNodeNameList);
+    setSelectedNodeIndex(DEFAULT_NODE_INDEX);
+  };
+
+  const setPrivateKey = (pk: string | null): void => {
+    setPrivateKeyState(pk);
+  };
+
+  const setPathType = (pt: PathType): void => {
+    setPathTypeState(pt);
+    saveToBrowserStorage("pathType", pt);
+  };
+
+  const setSeedPhrase = (seed: string | null): void => {
+    setSeedPhraseState(seed);
+  };
+
+  const setWallet = (w: string): void => {
+    setWalletState(w);
+    saveToBrowserStorage("wallet", w);
+  };
+
+  const setWalletList = (list: string[]): void => {
+    setWalletListState(list);
+    saveToBrowserStorage("walletList", list.join(","));
+  };
+
+  const setNodeList = (list: string[]): void => {
+    setNodeListState(list);
+    saveToBrowserStorage("nodeList", list.join(","));
+  };
+
+  const setNodeNameList = (list: string[]): void => {
+    setNodeNameListState(list);
+    saveToBrowserStorage("nodeNameList", list.join(","));
+  };
+
+  const setNameList = (list: string[]): void => {
+    setNameListState(list);
+    saveToBrowserStorage("nameList", list.join(","));
+  };
+
+  const setSelectedWalletIndex = (idx: number): void => {
+    setSelectedWalletIndexState(idx);
+    saveToBrowserStorage("selectedWalletIndex", idx.toString());
+  };
+
+  const setSelectedNodeIndex = (idx: number): void => {
+    setSelectedNodeIndexState(idx);
+    saveToBrowserStorage("selectedNodeIndex", idx.toString());
+  };
+
+  const setPassword = (pwd: string): void => {
+    setPasswordState(pwd);
+  };
+
+  const setName = (n: string): void => {
+    setNameState(n);
+    saveToBrowserStorage("name", n);
+  };
+
+  const setVisibleWalletList = (list: boolean[]): void => {
+    setVisibleWalletListState(list);
+    saveToBrowserStorage("visibleWalletList", list.join(","));
+  };
+
+  const setInputWordsBackup = (words: string[]): void => {
+    setInputWordsBackupState(words);
+  };
+
+  /** Apply key material into session + storage (used by create / import / login). */
+  const activateKeyMaterial = async (
+    data: WalletKeyMaterial,
+    opts?: { password?: string; name?: string },
+  ): Promise<void> => {
+    const accountName = opts?.name || "Account 0";
+    const sessionToken = opts?.password
+      ? opts.password + Date.now().toString()
+      : "session-" + Date.now().toString();
+    const expirationTime = Date.now() + 3600 * 1000;
+
+    await unlockSigningWorker({
+      privateKey: data.privateKey,
+      publicKey: data.publicKey,
+      address: data.address,
+      mnemonic: data.mnemonic,
+    });
+    setPrivateKeyState(null);
+    setSeedPhraseState(null);
+    setSigningUnlocked(true);
+    setHasMnemonic(Boolean(data.mnemonic));
+    setWalletState(data.address);
+    setWalletListState([data.address]);
+    setNameListState([accountName]);
+    setVisibleWalletListState([true]);
+    setSelectedWalletIndexState(0);
+    setNameState(accountName);
+    if (data.pathType) {
+      setPathTypeState(data.pathType);
+    }
+    setNodeListState([...defaultNodeList]);
+    setNodeNameListState([...defaultNodeNameList]);
+    setSelectedNodeIndexState(DEFAULT_NODE_INDEX);
+    if (opts?.password) {
+      setPasswordState(opts.password);
+    }
+    if (sessionToken) {
+      setTokenState(sessionToken);
+    }
+
+    // Persist public session only. Seed / private key / password stay in memory
+    // until lock — they are not wrapped with a bundled storage key.
+    await Promise.all([
+      saveToBrowserStorage("wallet", data.address),
+      saveToBrowserStorage("walletList", data.address),
+      saveToBrowserStorage("nameList", accountName),
+      saveToBrowserStorage("visibleWalletList", "true"),
+      saveToBrowserStorage("selectedWalletIndex", "0"),
+      saveToBrowserStorage("name", accountName),
+      saveToBrowserStorage("pathType", data.pathType || pathType),
+      saveToBrowserStorage("nodeList", defaultNodeList.join(",")),
+      saveToBrowserStorage("nodeNameList", defaultNodeNameList.join(",")),
+      saveToBrowserStorage("selectedNodeIndex", String(DEFAULT_NODE_INDEX)),
+      sessionToken
+        ? saveToBrowserStorage("token", sessionToken)
+        : Promise.resolve(),
+      sessionToken
+        ? saveToBrowserStorage("tokenExpiration", expirationTime.toString())
+        : Promise.resolve(),
+    ]);
+  };
+
+  const newWallet = async (
+    wordCount: WordCount = 12,
+    pt: PathType = "hardened",
+  ): Promise<void> => {
     try {
       console.log("-------------- newWallet --------------");
-      // mnemonic 12 words
-      const mnemonic = bip39.generateMnemonic();
-
-      const address =
-        HDWallet.fromMnemonic(mnemonic).deriveAccountAtIndex(0).address.hex;
-
-      // save to storage
-      setSeedPhrase(mnemonic);
-      setWallet(address);
-      setWalletList([address]);
+      const data = await generateWallet(wordCount, pt);
+      await unlockSigningWorker({
+        privateKey: data.privateKey,
+        publicKey: data.publicKey,
+        address: data.address,
+        mnemonic: data.mnemonic,
+      });
+      setSigningUnlocked(true);
+      setHasMnemonic(Boolean(data.mnemonic));
+      // Seed stays in React only while the recovery screens are showing it.
+      setSeedPhrase(data.mnemonic || null);
+      setPrivateKey(null);
+      setWallet(data.address);
+      setWalletList([data.address]);
       setNameList(["Account 0"]);
       setVisibleWalletList([true]);
       setSelectedWalletIndex(0);
-      setNodeList(defaultNodeList);
-      setNodeNameList(defaultNodeNameList);
       setName("Account 0");
-      console.log("***** walletList length", walletList.length);
-
-      console.log("-------------- End of newWallet --------------");
+      setPathType(pt);
+      ensureDefaultNodes();
     } catch (error) {
       console.log("Error creating new wallet:", error);
+      throw error;
     }
   };
 
-  const addAccount = async (name: string | null): Promise<void> => {
+  const mnemonicFromSession = async (): Promise<string | null> => {
     try {
-      const index = walletList.length;
-      const address = HDWallet.fromMnemonic(seedPhrase!).deriveAccountAtIndex(
-        index,
-      ).address.hex;
+      const exported = await exportWalletFromWorker();
+      const mnemonic = exported.mnemonic || seedPhrase || null;
+      exported.privateKey = "";
+      return mnemonic;
+    } catch {
+      return seedPhrase;
+    }
+  };
 
-      // save to storage
-      setWallet(address);
-      setWalletList([...walletList, address]);
-      setNameList([...nameList, name || `Account ${index}`]);
+  const addAccount = async (accountName: string | null): Promise<void> => {
+    try {
+      const mnemonic = await mnemonicFromSession();
+      if (!mnemonic) {
+        throw new Error("Cannot add accounts to a private-key-only wallet");
+      }
+      const index = walletList.length;
+      const data = deriveAccountAtIndex(mnemonic, pathType, index);
+      await unlockSigningWorker({
+        privateKey: data.privateKey,
+        publicKey: data.publicKey,
+        address: data.address,
+        mnemonic,
+      });
+      setPrivateKeyState(null);
+      setSigningUnlocked(true);
+      setHasMnemonic(true);
+      setWallet(data.address);
+      setWalletList([...walletList, data.address]);
+      setNameList([...nameList, accountName || `Account ${index}`]);
       setVisibleWalletList([...visibleWalletList, true]);
       setSelectedWalletIndex(index);
-      setName(name || `Account ${index}`);
-      console.log("***** walletList length", walletList.length);
-
-      console.log("-------------- End of add account --------------");
+      setName(accountName || `Account ${index}`);
     } catch (error) {
       console.log("Error adding new account:", error);
+      throw error;
     }
   };
 
-  const importWallet = (seedPhrase: string): void => {
-    console.log("-------------- importWallet --------------");
-    // mnemonic 12 words
-    const mnemonic = seedPhrase;
+  const switchActiveAccount = async (index: number): Promise<void> => {
+    const mnemonic = await mnemonicFromSession();
+    if (!mnemonic) {
+      throw new Error("Cannot switch accounts on a private-key-only wallet");
+    }
+    const data = deriveAccountAtIndex(mnemonic, pathType, index);
+    await unlockSigningWorker({
+      privateKey: data.privateKey,
+      publicKey: data.publicKey,
+      address: data.address,
+      mnemonic,
+    });
+    setPrivateKeyState(null);
+    setSigningUnlocked(true);
+    setHasMnemonic(true);
+    setWallet(data.address);
+    setSelectedWalletIndex(index);
+    setName(nameList[index] || `Account ${index}`);
+  };
 
-    // generate key pair
-    const address =
-      HDWallet.fromMnemonic(mnemonic).deriveAccountAtIndex(0).address.hex;
-    console.log("***** address", address);
-
-    // save to storage
-    setSeedPhrase(mnemonic);
-    setWallet(address);
-    setWalletList([address]);
+    const importWallet = async (
+    mnemonic: string,
+    pt: PathType = "hardened",
+    wordCount?: WordCount,
+  ): Promise<void> => {
+    const words = mnemonic.trim().split(/\s+/).filter(Boolean);
+    const wc = (wordCount ||
+      (words.length === 24 ? 24 : 12)) as WordCount;
+    const data = deriveWallet(words.join(" "), wc, pt, 0);
+    await unlockSigningWorker({
+      privateKey: data.privateKey,
+      publicKey: data.publicKey,
+      address: data.address,
+      mnemonic: data.mnemonic,
+    });
+    setSigningUnlocked(true);
+    setHasMnemonic(true);
+    setSeedPhrase(data.mnemonic || null);
+    setPrivateKey(null);
+    setWallet(data.address);
+    setWalletList([data.address]);
     setNameList(["Account 0"]);
     setVisibleWalletList([true]);
     setSelectedWalletIndex(0);
-    setNodeList(defaultNodeList);
-    setNodeNameList(defaultNodeNameList);
-    console.log("defaultNodeList", defaultNodeList);
     setName("Account 0");
-    console.log("***** walletList length", walletList.length);
-
-    console.log("-------------- End of importWallet --------------");
+    setPathType(pt);
+    ensureDefaultNodes();
   };
   const setToken = (token: string): void => {
     setTokenState(token);
@@ -304,153 +568,333 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setTokenState(null);
     browser.storage.local
       .remove(["token", "tokenExpiration"])
-      .then(() => {
-        console.log("Token and token expiration removed");
-      })
       .catch((error: unknown) => {
         console.error("Error removing token and token expiration:", error);
       });
   };
 
-  const getAccountFromIndex = (index: number): Account => {
-    console.log("=== getAccountFromIndex START ===");
-    console.log("  index:", index);
-    console.log("  seedPhrase exists:", !!seedPhrase);
-    console.log("  seedPhrase length:", seedPhrase?.length);
+  const SECRET_STORAGE_KEYS = [
+    "privateKey",
+    "seedPhrase",
+    "password",
+    "inputWordsBackup",
+    "token",
+    "tokenExpiration",
+  ] as const;
 
-    if (!seedPhrase) {
-      console.error("  ERROR: seedPhrase is NULL or UNDEFINED!");
-      throw new Error("seedPhrase is null/undefined - wallet not properly loaded");
-    }
-
+  const lockSession = async (): Promise<void> => {
+    setSeedPhraseState(null);
+    setPrivateKeyState(null);
+    setPasswordState(null);
+    setTokenState(null);
+    setInputWordsBackupState([]);
+    setSigningUnlocked(false);
+    setHasMnemonic(false);
     try {
-      console.log("  Step 1: Creating HDWallet.fromMnemonic...");
-      const hdWallet = HDWallet.fromMnemonic(seedPhrase);
-      console.log("  Step 2: HDWallet created, calling deriveAccountAtIndex(" + index + ")...");
-
-      const account = hdWallet.deriveAccountAtIndex(index);
-      console.log("  Step 3: Account derived");
-      console.log("  Account.privateKeyHex:", account?.privateKeyHex);
-      console.log("  Account.address.hex:", account?.address?.hex);
-
-      if (!account?.privateKeyHex) {
-        console.error("  ERROR: Account.privateKeyHex is undefined or empty!");
-        console.error("  Full account:", account);
-      }
-
-      console.log("=== getAccountFromIndex END ===");
-      return account;
-    } catch (error) {
-      console.error("  ERROR in getAccountFromIndex:", error);
-      throw error;
+      await lockSigningWorker();
+    } catch {
+      /* ignore */
+    }
+    try {
+      await browser.storage.local.remove([...SECRET_STORAGE_KEYS]);
+    } catch (error: unknown) {
+      console.error("Error wiping session secrets:", error);
     }
   };
 
-  const setSeedPhrase = (seedPhrase: string): void => {
-    setSeedPhraseState(seedPhrase);
-    saveToBrowserStorage("seedPhrase", seedPhrase);
+  const getAccountFromIndex = (index: number): Account => {
+    if (seedPhrase) {
+      const data = deriveAccountAtIndex(seedPhrase, pathType, index);
+      return Account.fromPrivateKeyHex(data.privateKey);
+    }
+    if (privateKey) {
+      return Account.fromPrivateKeyHex(privateKey);
+    }
+    throw new Error("No key material available");
   };
 
-  const setWallet = (wallet: string): void => {
-    setWalletState(wallet);
-    saveToBrowserStorage("wallet", wallet);
+  const importPrivateKey = async (privateKeyHex: string): Promise<void> => {
+    const data = importFromPrivateKey(privateKeyHex);
+    await unlockSigningWorker({
+      privateKey: data.privateKey,
+      publicKey: data.publicKey,
+      address: data.address,
+    });
+    setSigningUnlocked(true);
+    setHasMnemonic(false);
+    setSeedPhrase(null);
+    setPrivateKey(null);
+    setWallet(data.address);
+    setWalletList([data.address]);
+    setNameList(["Account 0"]);
+    setVisibleWalletList([true]);
+    setSelectedWalletIndex(0);
+    setName("Account 0");
+    ensureDefaultNodes();
   };
 
-  const setWalletList = (walletList: string[]): void => {
-    setWalletListState(walletList);
-    saveToBrowserStorage("walletList", walletList.join(","));
+  const currentWalletPayload = async (): Promise<EncryptedWalletPayload> => {
+    const exported = await exportWalletFromWorker();
+    if (!exported?.privateKey) {
+      throw new Error("No active wallet to save");
+    }
+    return {
+      privateKey: exported.privateKey,
+      publicKey: exported.publicKey || "",
+      address: exported.address || wallet || "",
+      mnemonic: exported.mnemonic || seedPhrase || undefined,
+    };
   };
 
-  const setNodeList = (nodeList: string[]): void => {
-    setNodeListState(nodeList);
-    saveToBrowserStorage("nodeList", nodeList.join(","));
+  const loginFromEncrypted = async (
+    encrypted: string,
+    pwd: string,
+    walletName?: string | null,
+  ): Promise<void> => {
+    const info = inspectWalletBlob(encrypted);
+    if (info.require2fa) {
+      throw new Error(
+        "This wallet requires password + passkey. Use Unlock with password + passkey.",
+      );
+    }
+    if (!info.hasPassword) {
+      throw new Error(
+        "This wallet has no password unlock — use passkey instead",
+      );
+    }
+    const decrypted = await decryptWallet(encrypted, pwd);
+    const material: WalletKeyMaterial = {
+      privateKey: decrypted.privateKey,
+      publicKey: decrypted.publicKey,
+      address: decrypted.address,
+      mnemonic: decrypted.mnemonic,
+    };
+    await activateKeyMaterial(material, {
+      password: pwd,
+      name: walletName || "Account 0",
+    });
   };
 
-  const setNodeNameList = (nodeNameList: string[]): void => {
-    setNodeNameListState(nodeNameList);
-    saveToBrowserStorage("nodeNameList", nodeNameList.join(","));
+  const loginFromPasskey = async (
+    encrypted: string,
+    walletName?: string | null,
+    pwd?: string | null,
+  ): Promise<void> => {
+    if (!isWebAuthnAvailable()) {
+      throw new Error(
+        "Passkey unlock needs a modern browser with WebAuthn support",
+      );
+    }
+    const info = inspectWalletBlob(encrypted);
+    if (!info.hasPasskey || !info.envelope?.passkey) {
+      throw new Error(
+        "This wallet has no passkey unlock — use password, or enable passkey after unlock",
+      );
+    }
+
+    let decrypted: EncryptedWalletPayload;
+    if (info.require2fa) {
+      if (!pwd) {
+        throw new Error(
+          "2FA wallet: enter password, then confirm with passkey",
+        );
+      }
+      decrypted = (await unlockEnvelopeWith2fa(
+        info.envelope,
+        pwd,
+        decryptWallet,
+      )) as EncryptedWalletPayload;
+    } else {
+      decrypted = (await decryptWithPasskey(
+        info.envelope.passkey,
+      )) as EncryptedWalletPayload;
+    }
+
+    const material: WalletKeyMaterial = {
+      privateKey: decrypted.privateKey,
+      publicKey: decrypted.publicKey,
+      address: decrypted.address,
+      mnemonic: decrypted.mnemonic,
+    };
+    await activateKeyMaterial(material, {
+      password: pwd || undefined,
+      name: walletName || "Account 0",
+    });
   };
 
-  const setNameList = (nameList: string[]): void => {
-    setNameListState(nameList);
-    saveToBrowserStorage("nameList", nameList.join(","));
+  const saveCurrentAsNamedWallet = async (
+    walletName: string,
+    pwd?: string | null,
+    opts?: {
+      withPasskey?: boolean;
+      require2fa?: boolean;
+      preferFingerprint?: boolean;
+    },
+  ): Promise<void> => {
+    const payload = await currentWalletPayload();
+    const trimmed = walletName.trim();
+    if (!trimmed) throw new Error("Wallet name is required");
+
+    const withPasskey = Boolean(opts?.withPasskey);
+    const require2fa = Boolean(opts?.require2fa);
+    const preferFingerprint = Boolean(opts?.preferFingerprint);
+
+    if (!pwd && !withPasskey) {
+      throw new Error("Password or passkey required to save");
+    }
+    if (require2fa && (!pwd || !withPasskey)) {
+      throw new Error("2FA needs both a password and passkey");
+    }
+
+    const existing = await loadNamedWalletEncrypted(trimmed);
+    const prevEnv = existing ? tryParseEnvelope(existing) : null;
+
+    let passwordCipher: string | null = pwd ? await encryptWallet(payload, pwd) : null;
+    if (!passwordCipher && prevEnv?.password) passwordCipher = prevEnv.password;
+    if (!passwordCipher && existing && !prevEnv) passwordCipher = existing;
+
+    if (withPasskey) {
+      if (!isWebAuthnAvailable()) {
+        throw new Error("Passkey unlock needs HTTPS and a modern browser");
+      }
+      // passkeyWallet is a JS port; cast opts to avoid loose default-param inference
+      const { envelope } = (await buildEnvelopeWithPasskey(payload, {
+        displayName: trimmed,
+        existingPasswordCipher: passwordCipher,
+        previousEnvelope: prevEnv,
+        require2fa: require2fa && Boolean(passwordCipher || pwd),
+        preferFingerprint,
+      } as Record<string, unknown>)) as {
+        envelope: {
+          password: string | null;
+          require2fa: boolean;
+          [k: string]: unknown;
+        };
+      };
+      if (require2fa && pwd) {
+        envelope.password = await encryptWallet(payload, pwd);
+        envelope.require2fa = true;
+      }
+      await saveNamedWallet(trimmed, serializeEnvelope(envelope));
+      return;
+    }
+
+    if (pwd) {
+      const cipher = await encryptWallet(payload, pwd);
+      if (prevEnv?.passkey) {
+        const next = envelopeWithPassword(payload, cipher, prevEnv, {
+          require2fa,
+        });
+        await saveNamedWallet(trimmed, serializeEnvelope(next));
+      } else {
+        await saveNamedWallet(trimmed, cipher);
+      }
+    }
   };
 
-  const setSelectedWalletIndex = (selectedWalletIndex: number): void => {
-    setSelectedWalletIndexState(selectedWalletIndex);
-    saveToBrowserStorage("selectedWalletIndex", selectedWalletIndex.toString());
-  };
-
-  const setSelectedNodeIndex = (selectedNodeIndex: number): void => {
-    setSelectedNodeIndexState(selectedNodeIndex);
-    saveToBrowserStorage("selectedNodeIndex", selectedNodeIndex.toString());
-  };
-
-  const setPassword = (password: string): void => {
-    setPasswordState(password);
-    saveToBrowserStorage("password", password);
-  };
-
-  const setName = (name: string): void => {
-    setNameState(name);
-    saveToBrowserStorage("name", name);
-  };
-
-  const setVisibleWalletList = (visibleWalletList: boolean[]): void => {
-    setVisibleWalletListState(visibleWalletList);
-    saveToBrowserStorage("visibleWalletList", visibleWalletList.join(","));
+  const enablePasskeyOnCurrentWallet = async (opts?: {
+    password?: string | null;
+    require2fa?: boolean;
+    preferFingerprint?: boolean;
+    name?: string | null;
+  }): Promise<boolean> => {
+    if (!signingUnlocked || !wallet) {
+      throw new Error("Unlock your wallet first, then enable passkey");
+    }
+    const tag =
+      String(opts?.name || name || "").trim() || "Main";
+    await saveCurrentAsNamedWallet(tag, opts?.password ?? password, {
+      withPasskey: true,
+      require2fa: Boolean(opts?.require2fa),
+      preferFingerprint: Boolean(opts?.preferFingerprint),
+    });
+    if (!name) setName(tag);
+    return true;
   };
 
   const clearWalletData = (): void => {
     setSeedPhraseState(null);
+    setPrivateKeyState(null);
     setWalletState(null);
     setPasswordState(null);
     setNameState(null);
     browser.storage.local
-      .remove(["seedPhrase", "wallet", "password", "name"])
+      .remove([
+        "seedPhrase",
+        "privateKey",
+        "wallet",
+        "password",
+        "name",
+        "pathType",
+        "walletList",
+        "nameList",
+        "visibleWalletList",
+      ])
       .then(() => {
-        console.log("Seed phrase, wallet, password, and name removed");
+        console.log("Wallet data removed");
       })
       .catch((error: unknown) => {
-        console.error(
-          "Error removing seed phrase, wallet, password, and name:",
-          error,
-        );
+        console.error("Error removing wallet data:", error);
       });
   };
 
   useEffect(() => {
-    loadFromChromeStorage("seedPhrase", setSeedPhraseState);
+    // Drop any leftover secrets from older builds that wrapped keys with a
+    // bundled storage password. Named warthogWallet_* envelopes are untouched.
+    void browser.storage.local.remove([
+      "privateKey",
+      "seedPhrase",
+      "password",
+      "inputWordsBackup",
+    ]);
     loadFromChromeStorage("wallet", setWalletState);
-    loadFromChromeStorage("walletList", (walletList) =>
-      setWalletListState(walletList ? walletList.split(",") : []),
+    loadFromChromeStorage("pathType", (pt) => {
+      if (pt === "hardened" || pt === "non-hardened") {
+        setPathTypeState(pt);
+      }
+    });
+    loadFromChromeStorage("walletList", (list) =>
+      setWalletListState(list ? list.split(",").filter(Boolean) : []),
     );
-    loadFromChromeStorage("nameList", (nameList) =>
-      setNameListState(nameList ? nameList.split(",") : []),
+    loadFromChromeStorage("nameList", (list) =>
+      setNameListState(list ? list.split(",") : []),
     );
-    loadFromChromeStorage("nodeList", (nodeList) =>
-      setNodeListState(nodeList ? nodeList.split(",") : []),
-    );
-    loadFromChromeStorage("nodeNameList", (nodeNameList) =>
-      setNodeNameListState(nodeNameList ? nodeNameList.split(",") : []),
-    );
-    loadFromChromeStorage("visibleWalletList", (visibleWalletList) => {
-      const boolArray = visibleWalletList
-        ? visibleWalletList.split(",").map((val) => val === "true")
+    Promise.all([
+      new Promise<string | null>((resolve) =>
+        loadFromChromeStorage("nodeList", resolve),
+      ),
+      new Promise<string | null>((resolve) =>
+        loadFromChromeStorage("nodeNameList", resolve),
+      ),
+      new Promise<string | null>((resolve) =>
+        loadFromChromeStorage("selectedNodeIndex", resolve),
+      ),
+    ]).then(([storedNodes, storedNames, storedIndex]) => {
+      const merged = mergeNodeLists(
+        storedNodes ? storedNodes.split(",").filter(Boolean) : [],
+        storedNames ? storedNames.split(",") : [],
+      );
+      setNodeListState(merged.urls);
+      setNodeNameListState(merged.names);
+      saveToBrowserStorage("nodeList", merged.urls.join(","));
+      saveToBrowserStorage("nodeNameList", merged.names.join(","));
+
+      const idx = storedIndex ? parseInt(storedIndex, 10) : DEFAULT_NODE_INDEX;
+      const safeIdx =
+        Number.isFinite(idx) && idx >= 0 && idx < merged.urls.length
+          ? idx
+          : DEFAULT_NODE_INDEX;
+      setSelectedNodeIndexState(safeIdx);
+    });
+    loadFromChromeStorage("visibleWalletList", (visible) => {
+      const boolArray = visible
+        ? visible.split(",").map((val) => val === "true")
         : [];
       setVisibleWalletListState(boolArray);
     });
-    loadFromChromeStorage("selectedWalletIndex", (selectedWalletIndex) =>
-      setSelectedWalletIndexState(
-        selectedWalletIndex ? parseInt(selectedWalletIndex, 10) : 0,
-      ),
+    loadFromChromeStorage("selectedWalletIndex", (idx) =>
+      setSelectedWalletIndexState(idx ? parseInt(idx, 10) : 0),
     );
-    loadFromChromeStorage("selectedNodeIndex", (selectedNodeIndex) =>
-      setSelectedNodeIndexState(
-        selectedNodeIndex ? parseInt(selectedNodeIndex, 10) : 0,
-      ),
-    );
-    loadFromChromeStorage("password", setPasswordState);
     loadFromChromeStorage("name", setNameState);
     loadFromChromeStorage("token", setTokenState);
   }, [loadFromChromeStorage]);
@@ -473,13 +917,45 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, [nodeList, selectedNodeIndex]);
 
+  const lockSessionRef = useRef(lockSession);
+  lockSessionRef.current = lockSession;
+
+  // Auto-lock after 15 minutes without pointer or key activity. The handler is
+  // registered on the signing bridge so the worker-side timer can call back
+  // into the session state.
+  useEffect(() => {
+    setIdleLockHandler(() => {
+      void lockSessionRef.current();
+    });
+    const bump = () => bumpIdleTimer();
+    window.addEventListener("pointerdown", bump);
+    window.addEventListener("keydown", bump);
+    bumpIdleTimer();
+    return () => {
+      setIdleLockHandler(null);
+      window.removeEventListener("pointerdown", bump);
+      window.removeEventListener("keydown", bump);
+    };
+  }, []);
+
+  const selectedNodeUrl =
+    nodeList.length > 0
+      ? normalizeNodeUrl(nodeList[selectedNodeIndex] || nodeList[0])
+      : null;
+  const selectedNetworkLabel = networkLabel(selectedNodeUrl);
+  // Password or session token (passkey-only unlock sets token without password)
+  const isAuthenticated = Boolean(wallet && signingUnlocked && token);
+  const canAddAccounts = hasMnemonic || Boolean(seedPhrase);
+
   return (
     <WalletContext.Provider
       value={{
         seedPhrase,
+        privateKey,
         wallet,
         password,
         name,
+        pathType,
         token,
         walletList,
         nodeList,
@@ -501,8 +977,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         tmpTradeType,
         tmpLiquidityType,
         inputWordsBackup,
+        selectedNodeUrl,
+        selectedNetworkLabel,
+        isAuthenticated,
+        signingUnlocked,
+        canAddAccounts,
         accountPath,
         setSeedPhrase,
+        setPrivateKey,
         setWallet,
         setPassword,
         setName,
@@ -513,11 +995,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setVisibleWalletList,
         setSelectedWalletIndex,
         setSelectedNodeIndex,
+        setPathType,
         clearWalletData,
         setToken,
         clearToken,
+        lockSession,
         newWallet,
         addAccount,
+        switchActiveAccount,
         setWalletListState,
         setNodeListState,
         setNodeNameListState,
@@ -540,6 +1025,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setTmpLiquidityTypeState,
         getAccountFromIndex,
         importWallet,
+        importPrivateKey,
+        loginFromEncrypted,
+        loginFromPasskey,
+        saveCurrentAsNamedWallet,
+        enablePasskeyOnCurrentWallet,
+        activateKeyMaterial,
         setInputWordsBackup,
       }}
     >

@@ -26,3 +26,6 @@ dist-firefox
 *.sw?
 .env
 build
+
+# release build artifact
+warthog_extension.zip

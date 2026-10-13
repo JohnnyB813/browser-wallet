@@ -23,12 +23,13 @@ function SendPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-const {
+  const {
     wallet,
     name,
     nameList,
     walletList,
     visibleWalletList,
+    selectedNetworkLabel,
     setSelectedWalletIndex,
     setName,
     setWallet,
@@ -242,6 +243,9 @@ const {
   return (
     <div className="flex flex-col min-h-screen container">
       <Header title="Send" />
+      <p className="text-xs text-white/50 mt-1">
+        Network: <span className="text-primary">{selectedNetworkLabel}</span>
+      </p>
 
       <div className="flex-1 overflow-y-auto pb-24">
         <div className="mt-4">

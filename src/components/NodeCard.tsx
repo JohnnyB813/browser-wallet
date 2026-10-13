@@ -44,7 +44,7 @@ const NodeCard = ({
           <div className="text-white text-sm font-medium truncate">{name}</div>
           <div className="text-white/40 text-xs font-mono truncate">{address.replace(/^https?:\/\//, '')}</div>
         </div>
-      </div>
+</div>
       <div className="flex items-center gap-2">
         {latency > 0 && (
           <div className="text-white/30 text-xs">{Math.round(latency)}ms</div>
