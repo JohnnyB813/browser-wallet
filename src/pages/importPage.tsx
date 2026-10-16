@@ -86,7 +86,7 @@ function ImportPage() {
         <div>
           <label className="text-white text-sm">Seed phrase</label>
           <textarea
-            className="w-full min-h-[120px] bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-3 mt-1 focus:outline-none focus:border-primary resize-y"
+            className="w-full min-h-[120px] bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-3 mt-1 focus:outline-hidden focus:border-primary resize-y"
             placeholder={`Paste or type your ${wordCount}-word seed phrase`}
             value={mnemonicText}
             onChange={(e) => setMnemonicText(e.target.value)}

@@ -152,7 +152,7 @@ function CancelOrderPage() {
         <p className="text-white text-sm">Cancel Height (Block Height)</p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
           <input
-            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+            className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden no-spinner"
             placeholder="Enter block height"
             type="number"
             value={cancelHeight}
@@ -167,7 +167,7 @@ function CancelOrderPage() {
         <p className="text-white text-sm">Cancel Nonce ID</p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
           <input
-            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+            className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden no-spinner"
             placeholder="Enter nonce ID"
             type="number"
             value={cancelNonceId}

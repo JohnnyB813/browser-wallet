@@ -1,178 +1,218 @@
-@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap')
+layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-:root {
+@theme {
   --color-primary: #fdb913;
+  /* `bg-gray` is the solid secondary-button color. The numbered scale is
+     declared again because a flat `--color-gray` replaces Tailwind's palette. */
   --color-gray: #aaaaaa;
+  --color-gray-50: oklch(98.5% 0.002 247.839);
+  --color-gray-100: oklch(96.7% 0.003 264.542);
+  --color-gray-200: oklch(92.8% 0.006 264.531);
+  --color-gray-300: oklch(87.2% 0.01 258.338);
+  --color-gray-400: oklch(70.7% 0.022 261.325);
+  --color-gray-500: oklch(55.1% 0.027 264.364);
+  --color-gray-600: oklch(44.6% 0.03 256.802);
+  --color-gray-700: oklch(37.3% 0.034 259.733);
+  --color-gray-800: oklch(27.8% 0.033 256.848);
+  --color-gray-900: oklch(21% 0.034 264.665);
+  --color-gray-950: oklch(13% 0.028 261.692);
   --color-lightPrimary: rgba(253, 185, 19, 0.2);
-  --color-whiteTransparent: rgba(255, 255, 255, 0.3);
+  --color-whiteTransparent: #ffffff4d;
   --color-error: #fd1e1e;
   --color-warning: #fb3333;
-  --color-background-dark: #000;
-  --color-text-dark: #fdb913;
-  --color-link-hover-light: rgba(253, 185, 19, 0.2);
+  --color-black: #000000;
 
-  font-family: "Franklin Gothic Medium", "Arial Narrow", Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color-scheme: light dark;
-  color: var(--color-text-dark);
-  background-color: var(--color-background-dark);
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --radius-48: 48px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility container {
+  width: 100%;
+  max-width: 100%;
+  /* Grow with content so #root can scroll — do not lock to 100% height */
+  min-height: 100%;
+  height: auto;
+  margin: 0 auto;
+  padding: 20px 15px;
+  box-sizing: border-box;
+}
+
+:root {
+    --color-primary: #fdb913;
+    --color-gray: #aaaaaa;
+    --color-lightPrimary: rgba(253, 185, 19, 0.2);
+    --color-whiteTransparent: rgba(255, 255, 255, 0.3);
+    --color-error: #fd1e1e;
+    --color-warning: #fb3333;
+    --color-background-dark: #000;
+    --color-text-dark: #fdb913;
+    --color-link-hover-light: rgba(253, 185, 19, 0.2);
+
+    font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    color-scheme: light dark;
     color: var(--color-text-dark);
     background-color: var(--color-background-dark);
+
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-}
 
-html {
-  background-color: black;
-  min-height: 100%;
-}
+  @media (prefers-color-scheme: light) {
+    :root {
+      color: var(--color-text-dark);
+      background-color: var(--color-background-dark);
+    }
+  }
 
-/* ─── Toolbar popup: fixed card, same size Chrome uses for extension-update ─── */
-html.extension-popup {
-  height: 600px;
-  width: 410px;
-  overflow: hidden;
-}
+  html {
+    background-color: black;
+    min-height: 100%;
+  }
 
-html.extension-popup body {
-  height: 600px;
-  width: 410px;
-  margin: 0;
-  overflow: hidden;
-  background-color: black;
-}
+  /* ─── Toolbar popup: fixed card, same size Chrome uses for extension-update ─── */
+  html.extension-popup {
+    height: 600px;
+    width: 410px;
+    overflow: hidden;
+  }
 
-/* Scroll lives on #root so long pages (DeFi, etc.) work inside the popup */
-html.extension-popup #root {
-  height: 100%;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(253, 185, 19, 0.55) rgba(255, 255, 255, 0.06);
-}
+  html.extension-popup body {
+    height: 600px;
+    width: 410px;
+    margin: 0;
+    overflow: hidden;
+    background-color: black;
+  }
 
-html.extension-popup #root::-webkit-scrollbar {
-  width: 8px;
-  display: block;
-}
-
-html.extension-popup #root::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-html.extension-popup #root::-webkit-scrollbar-thumb {
-  background: rgba(253, 185, 19, 0.55);
-  border-radius: 8px;
-}
-
-/* ─── Full helper tab (file login only): use viewport until login finishes ─── */
-html.extension-tab,
-html.extension-tab body {
-  height: auto;
-  min-height: 100vh;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-html.extension-tab #root {
-  width: 100%;
-  max-width: 440px;
-  min-height: 100vh;
-  margin: 0 auto;
-  overflow: visible;
-}
-
-/* Docked side panel: fill the column the way Backpack does. */
-html.extension-sidepanel,
-html.extension-sidepanel body {
-  width: 100%;
-  max-width: 100%;
-  height: 100%;
-  min-height: 100%;
-  margin: 0;
-  overflow: hidden;
-  background-color: black;
-}
-
-html.extension-sidepanel #root {
-  width: 100%;
-  max-width: 100%;
-  height: 100%;
-  min-height: 100%;
-  margin: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-}
-
-html.extension-sidepanel .min-h-screen {
-  min-height: 100%;
-}
-
-/* Compact shell centered when helper tab couldn't close after login */
-html.extension-popup.extension-centered body {
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  min-height: 100vh;
-  width: 100%;
-  height: auto;
-  background: #0a0a0a;
-}
-
-html.extension-popup.extension-centered {
-  width: 100%;
-  height: auto;
-  min-height: 100vh;
-  overflow: auto;
-}
-
-html.extension-popup.extension-centered #root {
-  width: 410px;
-  height: 600px;
-  max-height: 100vh;
-  margin: 12px auto;
-  border: 1px solid rgba(253, 185, 19, 0.25);
-  border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
-}
-
-body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  background-color: black;
-}
-
-@layer components {
-  .container {
+  /* Scroll lives on #root so long pages (DeFi, etc.) work inside the popup */
+  html.extension-popup #root {
+    height: 100%;
     width: 100%;
     max-width: 100%;
-    /* Grow with content so #root can scroll — do not lock to 100% height */
-    min-height: 100%;
-    height: auto;
-    margin: 0 auto;
-    padding: 20px 15px;
-    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(253, 185, 19, 0.55) rgba(255, 255, 255, 0.06);
   }
+
+  html.extension-popup #root::-webkit-scrollbar {
+    width: 8px;
+    display: block;
+  }
+
+  html.extension-popup #root::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  html.extension-popup #root::-webkit-scrollbar-thumb {
+    background: rgba(253, 185, 19, 0.55);
+    border-radius: 8px;
+  }
+
+  /* ─── Full helper tab (file login only): use viewport until login finishes ─── */
+  html.extension-tab,
+  html.extension-tab body {
+    height: auto;
+    min-height: 100vh;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  html.extension-tab #root {
+    width: 100%;
+    max-width: 440px;
+    min-height: 100vh;
+    margin: 0 auto;
+    overflow: visible;
+  }
+
+  /* Docked side panel: fill the column the way Backpack does. */
+  html.extension-sidepanel,
+  html.extension-sidepanel body {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background-color: black;
+  }
+
+  html.extension-sidepanel #root {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  html.extension-sidepanel .min-h-screen {
+    min-height: 100%;
+  }
+
+  /* Compact shell centered when helper tab couldn't close after login */
+  html.extension-popup.extension-centered body {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    width: 100%;
+    height: auto;
+    background: #0a0a0a;
+  }
+
+  html.extension-popup.extension-centered {
+    width: 100%;
+    height: auto;
+    min-height: 100vh;
+    overflow: auto;
+  }
+
+  html.extension-popup.extension-centered #root {
+    width: 410px;
+    height: 600px;
+    max-height: 100vh;
+    margin: 12px auto;
+    border: 1px solid rgba(253, 185, 19, 0.25);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    background-color: black;
 }
 
 /* Tailwind min-h-screen is 100vh. In an extension popup that can be the

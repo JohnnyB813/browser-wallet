@@ -286,7 +286,7 @@ function TradePage() {
           </p>
           <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
             <input
-              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+              className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden"
               placeholder="Enter asset hash (64 char hex)"
               value={assetHash}
               onChange={handleAssetHashChange}
@@ -304,7 +304,7 @@ function TradePage() {
             <p className="text-white text-sm">WART Amount to Spend</p>
             <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
               <input
-                className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden no-spinner"
                 placeholder="Enter WART amount"
                 type="text"
                 inputMode="decimal"
@@ -325,7 +325,7 @@ function TradePage() {
             <div className="flex gap-3">
               <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                 <input
-                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+                  className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden no-spinner"
                   placeholder="Enter token amount"
                   type="text"
                   inputMode="decimal"
@@ -335,7 +335,7 @@ function TradePage() {
                 />
               </div>
               <select
-                className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-none"
+                className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-hidden"
                 value={precision}
                 onChange={handlePrecisionChange}
               >
@@ -361,7 +361,7 @@ function TradePage() {
           <p className="text-white text-sm">Limit Price</p>
           <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
             <input
-              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+              className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden no-spinner"
               placeholder="Enter limit price (e.g. 0.05)"
               type="text"
               inputMode="decimal"

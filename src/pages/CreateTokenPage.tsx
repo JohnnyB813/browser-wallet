@@ -166,7 +166,7 @@ function CreateTokenPage() {
         <p className="text-white text-sm">Token Name (Max 5 chars)</p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
           <input
-            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none uppercase"
+            className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden uppercase"
             placeholder="e.g. MYCOIN"
             value={tokenName}
             onChange={handleTokenNameChange}
@@ -183,7 +183,7 @@ function CreateTokenPage() {
         <div className="flex gap-3">
           <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
             <input
-              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+              className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden no-spinner"
               placeholder="Enter total supply"
               type="number"
               value={totalSupply}
@@ -195,7 +195,7 @@ function CreateTokenPage() {
             <p className="text-white text-sm">Decimals</p>
             <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
               <select
-                className="bg-transparent text-white outline-none"
+                className="bg-transparent text-white outline-hidden"
                 value={precision}
                 onChange={handlePrecisionChange}
               >

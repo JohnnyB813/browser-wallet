@@ -622,9 +622,9 @@ function DefiHub() {
       <section className="defi-hero">
         <div className="defi-hero-body">
           {name ? (
-            <div className="text-[10px] text-[var(--defi-muted)] mb-1.5">
+            <div className="text-[10px] text-(--defi-muted) mb-1.5">
               Saved as{" "}
-              <span className="text-[var(--defi-gold)] font-mono">{name}</span>
+              <span className="text-(--defi-gold) font-mono">{name}</span>
             </div>
           ) : null}
           <div className="defi-hero-top">
@@ -741,7 +741,7 @@ function DefiHub() {
       {/* ════════ HISTORY — indexer rich cards ════════ */}
       {tab === "history" && (
         <section className="defi-section">
-          <div className="defi-section-body !pt-2">
+          <div className="defi-section-body pt-2!">
             <TransactionHistoryPanel
               wallet={wallet}
               nodeUrl={nodeUrl}

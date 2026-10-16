@@ -48,7 +48,7 @@ const RecoveryPhase = () => {
                   {index + 1}
                 </div>
               </div>
-              <div className="w-[1px] h-10 bg-white/40" />
+              <div className="w-px h-10 bg-white/40" />
               <div className="grow shrink basis-0 justify-center items-center flex">
                 <div className="text-center text-white text-lg font-normal">
                   {word}

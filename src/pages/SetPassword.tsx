@@ -114,7 +114,7 @@ const SetPassword: React.FC = () => {
         <label className="flex items-start gap-2 cursor-pointer">
           <input
             type="checkbox"
-            className="mt-1 accent-[#fdb913]"
+            className="mt-1 accent-primary"
             checked={saveNamed}
             onChange={(e) => setSaveNamed(e.target.checked)}
           />
@@ -139,7 +139,7 @@ const SetPassword: React.FC = () => {
           <label className="flex items-start gap-2 cursor-pointer">
             <input
               type="checkbox"
-              className="mt-1 accent-[#fdb913]"
+              className="mt-1 accent-primary"
               checked={enablePasskey}
               onChange={(e) => {
                 setEnablePasskey(e.target.checked);
@@ -156,7 +156,7 @@ const SetPassword: React.FC = () => {
           <label className="flex items-start gap-2 cursor-pointer">
             <input
               type="checkbox"
-              className="mt-1 accent-[#fdb913]"
+              className="mt-1 accent-primary"
               checked={require2fa}
               onChange={(e) => setRequire2fa(e.target.checked)}
             />

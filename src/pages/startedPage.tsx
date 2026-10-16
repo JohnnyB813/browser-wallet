@@ -334,7 +334,7 @@ function StartedPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && walletName.trim()) void handleCreate();
                 }}
-                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary"
+                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-hidden focus:border-primary"
               />
             </div>
             <div>
@@ -342,7 +342,7 @@ function StartedPage() {
               <select
                 value={wordCount}
                 onChange={(e) => setWordCount(Number(e.target.value) as WordCount)}
-                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary"
+                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-hidden focus:border-primary"
               >
                 <option value={12}>12 words</option>
                 <option value={24}>24 words</option>
@@ -353,7 +353,7 @@ function StartedPage() {
               <select
                 value={pathType}
                 onChange={(e) => setPathType(e.target.value as PathType)}
-                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary"
+                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-hidden focus:border-primary"
               >
                 <option value="hardened">Hardened BIP44</option>
                 <option value="non-hardened">Legacy / non-hardened</option>
@@ -393,7 +393,7 @@ function StartedPage() {
                 rows={3}
                 autoComplete="off"
                 spellCheck={false}
-                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary text-sm"
+                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-hidden focus:border-primary text-sm"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">

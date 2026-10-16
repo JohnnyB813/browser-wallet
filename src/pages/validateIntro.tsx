@@ -100,11 +100,11 @@ const ValidateIntro: React.FC<ValidateIntroProps> = ({
                 {index + 1}
               </span>
             </div>
-            <div className="w-[1px] h-10 bg-white/40" />
-            <div className="flex-grow justify-center items-center flex">
+            <div className="w-px h-10 bg-white/40" />
+            <div className="grow justify-center items-center flex">
               <input
                 type="text"
-                className="text-center text-white text-lg font-normal bg-transparent contrast-more:outline-none focus:outline-none w-32 focus-visible:outline-none"
+                className="text-center text-white text-lg font-normal bg-transparent contrast-more:outline-hidden focus:outline-hidden w-32 focus-visible:outline-hidden"
                 title={`Recovery phrase word ${index + 1}`}
                 placeholder=""
                 value={inputWords[index]}

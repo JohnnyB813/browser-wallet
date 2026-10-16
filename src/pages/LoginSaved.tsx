@@ -302,7 +302,7 @@ function LoginSaved() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") void handleRename();
               }}
-              className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary"
+              className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-hidden focus:border-primary"
               autoComplete="off"
             />
           </div>
@@ -331,7 +331,7 @@ function LoginSaved() {
                     : "No password on this wallet"
                 }
                 disabled={!selectedEntry.hasPassword}
-                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 pr-16 focus:outline-none focus:border-primary disabled:opacity-40"
+                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 pr-16 focus:outline-hidden focus:border-primary disabled:opacity-40"
                 autoComplete="current-password"
               />
               {selectedEntry.hasPassword && (

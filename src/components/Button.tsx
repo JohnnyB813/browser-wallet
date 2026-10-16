@@ -23,10 +23,10 @@ const Button: React.FC<ButtonProps> = ({
     "py-4 rounded-full font-semibold transition-all duration-200";
 
   const variantStyles = {
-    primary: "bg-primary text-black hover:bg-opacity-90 focus:ring-primary",
-    secondary: "bg-gray text-black hover:bg-opacity-90 focus:ring-gray",
-    white: "bg-white text-black hover:bg-opacity-90 focus:ring-white",
-    danger: "bg-error text-white hover:bg-opacity-90 focus:ring-error",
+    primary: "bg-primary text-black hover:bg-primary/90 focus:ring-primary",
+    secondary: "bg-gray text-black hover:bg-gray/90 focus:ring-gray",
+    white: "bg-white text-black hover:bg-white/90 focus:ring-white",
+    danger: "bg-error text-white hover:bg-error/90 focus:ring-error",
     outline:
       "border border-primary text-primary hover:border-primary/80 hover:text-primary/80 focus:ring-primary",
   };

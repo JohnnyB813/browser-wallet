@@ -36,7 +36,7 @@ const ActionButtons: React.FC = () => {
         <Button
           variant="outline"
           ariaLabel="DeFi"
-          className="w-full !py-3"
+          className="w-full py-3!"
           onClick={() => navigate("/defi")}
         >
           DeFi

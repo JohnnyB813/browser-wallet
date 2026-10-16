@@ -237,7 +237,7 @@ function TradeStep2() {
       </div>
 
       {showConfirmation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-[#1A1A1A] rounded-lg p-6 max-w-md w-full border border-primary/25">
             {transactionStatus === "idle" && (
               <>
@@ -281,7 +281,7 @@ function TradeStep2() {
                       min="0"
                       value={customFee}
                       onChange={(e) => setCustomFee(e.target.value)}
-                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden focus:border-primary"
                       placeholder="Enter fee"
                     />
                   </div>
@@ -301,7 +301,7 @@ function TradeStep2() {
                         setConfirmPassword(e.target.value);
                         setPasswordError("");
                       }}
-                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden focus:border-primary"
                       placeholder="Enter your password"
                     />
                     {passwordError && (

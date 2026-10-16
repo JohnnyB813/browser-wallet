@@ -253,7 +253,7 @@ const getAccountFromIndex = (index: number) => {
                   setConfirmPassword(e.target.value);
                   setError('');
                 }}
-                className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 pr-10 text-white focus:outline-none focus:border-primary"
+                className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 pr-10 text-white focus:outline-hidden focus:border-primary"
                 placeholder="Enter your password"
               />
               <button

@@ -274,7 +274,7 @@ function SecureSetup() {
               <label className="flex items-start gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="mt-1 accent-[#fdb913]"
+                  className="mt-1 accent-primary"
                   checked={enablePasskey}
                   onChange={(e) => {
                     setEnablePasskey(e.target.checked);
@@ -291,7 +291,7 @@ function SecureSetup() {
               <label className="flex items-start gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="mt-1 accent-[#fdb913]"
+                  className="mt-1 accent-primary"
                   checked={require2fa}
                   onChange={(e) => {
                     setRequire2fa(e.target.checked);
@@ -392,7 +392,7 @@ function SecureSetup() {
               <p className="text-amber-400 text-xs font-medium mb-1">
                 SEED PHRASE
               </p>
-              <p className="text-white text-sm break-words select-text">
+              <p className="text-white text-sm wrap-break-word select-text">
                 {seedPhrase}
               </p>
             </div>
@@ -422,7 +422,7 @@ function SecureSetup() {
           <label className="flex items-start gap-2 cursor-pointer mt-1">
             <input
               type="checkbox"
-              className="mt-1 accent-[#fdb913]"
+              className="mt-1 accent-primary"
               checked={consentToClose}
               onChange={(e) => setConsentToClose(e.target.checked)}
             />

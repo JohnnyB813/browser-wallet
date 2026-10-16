@@ -723,14 +723,14 @@ export default function SwapDexPanel({
         <div className="swap-card w-full swap-card--soft">
           <div className="flex items-start justify-between gap-3 border-b border-zinc-800/50 px-3 pt-3 pb-2.5">
             <div className="min-w-0">
-              <h2 className="font-semibold tracking-tight text-sm !text-zinc-100 !mb-0.5">
+              <h2 className="font-semibold tracking-tight text-sm text-zinc-100! mb-0.5!">
                 Liquidity pool
               </h2>
               <p className="text-[11px] text-zinc-600 tabular-nums truncate">
                 {poolPairLabel}
               </p>
             </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setLiqMode("deposit")}
@@ -756,7 +756,7 @@ export default function SwapDexPanel({
           )}
 
           <div className="p-2.5 space-y-2.5">
-            <div className="swap-panel !min-h-0">
+            <div className="swap-panel min-h-0!">
               <div className="flex items-center justify-between gap-2 mb-2.5">
                 <span className="text-xs text-zinc-500">Pool token</span>
                 <button
@@ -786,7 +786,7 @@ export default function SwapDexPanel({
                   onChange={(e) => setManualHashInput(e.target.value)}
                   onBlur={applyManualHash}
                   placeholder="Or paste 64-char asset hash"
-                  className="defi-input !mb-0 flex-1 min-w-[10rem] font-mono text-xs"
+                  className="defi-input mb-0! flex-1 min-w-40 font-mono text-xs"
                 />
               </div>
               {lpBalance != null && (
@@ -843,7 +843,7 @@ export default function SwapDexPanel({
                   </div>
                   <div className="swap-legs-flip">
                     <div
-                      className="swap-flip-btn !cursor-default opacity-90"
+                      className="swap-flip-btn cursor-default! opacity-90"
                       aria-hidden
                     >
                       <span className="text-sm font-semibold text-zinc-400">
@@ -941,7 +941,7 @@ export default function SwapDexPanel({
         <div className="swap-card w-full swap-card--soft">
           <div className="flex items-start justify-between gap-3 border-b border-zinc-800/50 px-3 pt-3 pb-2.5">
             <div>
-              <h2 className="font-semibold tracking-tight text-sm !text-zinc-100 !mb-0.5">
+              <h2 className="font-semibold tracking-tight text-sm text-zinc-100! mb-0.5!">
                 {orderMode === "market" ? "Swap" : "Limit order"}
               </h2>
               <p className="text-[11px] text-zinc-600 tabular-nums">
@@ -1236,7 +1236,7 @@ export default function SwapDexPanel({
                   inputMode="decimal"
                   value={fee}
                   onChange={(e) => onFeeChange(e.target.value)}
-                  className="defi-input !mb-0 text-sm"
+                  className="defi-input mb-0! text-sm"
                 />
               </div>
               {orderMode === "market" && (
@@ -1247,7 +1247,7 @@ export default function SwapDexPanel({
                     inputMode="decimal"
                     value={slippagePct}
                     onChange={(e) => setSlippagePct(e.target.value)}
-                    className="defi-input !mb-0 text-sm"
+                    className="defi-input mb-0! text-sm"
                   />
                   <p className="swap-adv-hint">
                     Buy: max price = spot × (1 + slip). Sell: min = spot × (1 −
@@ -1331,7 +1331,7 @@ export default function SwapDexPanel({
             </div>
             <div className="mb-3">
               <input
-                className="defi-input !mb-1 font-mono text-xs"
+                className="defi-input mb-1! font-mono text-xs"
                 value={manualHashInput}
                 onChange={(e) => setManualHashInput(e.target.value)}
                 placeholder="Paste 64-char asset hash"

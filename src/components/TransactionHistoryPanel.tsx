@@ -263,7 +263,7 @@ const TransactionHistoryPanel: React.FC<Props> = ({
       </div>
 
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h3 className="tx-section-title !mt-0.5">Transaction History</h3>
+        <h3 className="tx-section-title mt-0.5!">Transaction History</h3>
         {historySource && (
           <span className="tx-source-pill">
             {historySource === "indexer" ? "Indexer" : "Node"}

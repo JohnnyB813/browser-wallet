@@ -238,7 +238,7 @@ function AccountDetails() {
                 value={tempName || ""}
                 onChange={(e) => setTempName(e.target.value)}
                 onBlur={() => setIsEditing(false)} // Exit edit mode on blur
-                className="text-xl font-semibold text-white bg-transparent border-b border-white focus:outline-none max-w-28"
+                className="text-xl font-semibold text-white bg-transparent border-b border-white focus:outline-hidden max-w-28"
                 autoFocus
                 placeholder="Your Name"
               />

@@ -328,7 +328,7 @@ function SendPage() {
           <p className="text-white text-sm">To</p>
           <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
             <input
-              className="flex-1 bg-transparent text-white text-sm font-mono placeholder-gray-500 outline-none"
+              className="flex-1 bg-transparent text-white text-sm font-mono placeholder:text-gray-500 outline-hidden"
               placeholder="Enter public address"
               value={publicAddress}
               onChange={handleAddressChange}
@@ -346,7 +346,7 @@ function SendPage() {
             <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
               <input
                 ref={wartAmountRef}
-                className="flex-1 bg-transparent text-white text-sm font-mono placeholder-gray-500 outline-none no-spinner"
+                className="flex-1 bg-transparent text-white text-sm font-mono placeholder:text-gray-500 outline-hidden no-spinner"
                 placeholder="Enter amount to transfer"
                 type="text"
                 inputMode="decimal"
@@ -367,7 +367,7 @@ function SendPage() {
               <p className="text-white text-sm">Asset Hash</p>
               <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                 <input
-                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+                  className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden"
                   placeholder="Enter asset hash (64 char hex)"
                   value={assetHash}
                   onChange={handleAssetHashChange}
@@ -386,7 +386,7 @@ function SendPage() {
               <div className="flex gap-3">
                 <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                   <input
-                    className="flex-1 bg-transparent text-white text-sm font-mono placeholder-gray-500 outline-none no-spinner"
+                    className="flex-1 bg-transparent text-white text-sm font-mono placeholder:text-gray-500 outline-hidden no-spinner"
                     placeholder="Enter amount to transfer"
                     type="text"
                     inputMode="decimal"
@@ -396,7 +396,7 @@ function SendPage() {
                   />
                 </div>
                 <select
-                  className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-none"
+                  className="bg-primary/10 border border-primary/50 rounded-lg px-3 text-white outline-hidden"
                   value={precision}
                   onChange={handlePrecisionChange}
                 >
@@ -425,7 +425,7 @@ function SendPage() {
               <p className="text-white text-sm">Asset Hash</p>
               <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                 <input
-                  className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none"
+                  className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden"
                   placeholder="Enter asset hash (64 char hex)"
                   value={assetHash}
                   onChange={handleAssetHashChange}
@@ -443,7 +443,7 @@ function SendPage() {
               <p className="text-white text-sm">Amount</p>
               <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
                 <input
-                  className="flex-1 bg-transparent text-white text-sm font-mono placeholder-gray-500 outline-none no-spinner"
+                  className="flex-1 bg-transparent text-white text-sm font-mono placeholder:text-gray-500 outline-hidden no-spinner"
                   placeholder="Enter amount to transfer"
                   type="text"
                   inputMode="decimal"

@@ -69,7 +69,7 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
   const balanceColor = primaryColor ?? getColorHex(prefs.balanceColor);
 
   const unitEl = unit ? (
-    <span className={unitClassName || "text-[#FDB913] font-semibold"}>{unit}</span>
+    <span className={unitClassName || "text-primary font-semibold"}>{unit}</span>
   ) : null;
 
   if (layout === "hero") {
@@ -232,7 +232,7 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
           {unit ? (
             <>
               {" "}
-              <span className={unitClassName || "text-[#FDB913]"}>{unit}</span>
+              <span className={unitClassName || "text-primary"}>{unit}</span>
             </>
           ) : null}
         </span>

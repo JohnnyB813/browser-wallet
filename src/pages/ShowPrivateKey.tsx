@@ -82,7 +82,7 @@ function ShowPrivateKey() {
           <input
             id="password"
             type="password"
-            className={`w-full bg-primary/10 text-white border rounded-lg px-4 py-2 mt-1 focus:outline-none ${error ? "border-red-500" : "border-primary/50"}`}
+            className={`w-full bg-primary/10 text-white border rounded-lg px-4 py-2 mt-1 focus:outline-hidden ${error ? "border-red-500" : "border-primary/50"}`}
             placeholder="Your password..."
             value={enteredPassword}
             onChange={handlePasswordChange}
@@ -96,8 +96,8 @@ function ShowPrivateKey() {
       {isPrivateKeyVisible && revealedKey && (
         <div className="mt-6">
           <p className="text-white text-sm">Private Key</p>
-          <div className="px-3 py-3 rounded-lg border border-[#fdb913]/25 backdrop-blur-md flex items-center w-[400px]">
-            <div className="text-white text-lg w-full break-words">
+          <div className="px-3 py-3 rounded-lg border border-primary/25 backdrop-blur-md flex items-center w-[400px]">
+            <div className="text-white text-lg w-full wrap-break-word">
 {revealedKey}
             </div>
           </div>

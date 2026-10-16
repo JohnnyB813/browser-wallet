@@ -139,7 +139,7 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search tokens..."
-                className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:border-primary"
+                className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-hidden focus:border-primary"
                 autoFocus
               />
             </div>
@@ -441,7 +441,7 @@ const Home: React.FC = () => {
             <div className="home-wallet-card">
               <div className="min-w-0 flex-1">
                 <p className="text-white/50 text-sm mb-1">Wallet</p>
-                <p className="text-white text-2xl font-semibold break-words">
+                <p className="text-white text-2xl font-semibold wrap-break-word">
                   {balance ? parseFloat(balance.toFixed(2)) : '0.00'} {selectedToken.name}
                 </p>
                 <p className="text-white/50 text-sm">
