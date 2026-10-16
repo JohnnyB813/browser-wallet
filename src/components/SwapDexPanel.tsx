@@ -110,6 +110,8 @@ type Props = {
   /** Called when selected asset changes (for chart parent). */
   onAssetChange?: (hash: string, name: string, decimals: number) => void;
   initialMode?: SwapOrderMode;
+  /** When set, the form stays visible and the submit buttons stay off. */
+  inactiveReason?: string | null;
 };
 
 export default function SwapDexPanel({
@@ -131,6 +133,7 @@ export default function SwapDexPanel({
   onSuccess,
   onAssetChange,
   initialMode = "market",
+  inactiveReason = null,
 }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [orderMode, setOrderMode] = useState<SwapOrderMode>(initialMode);
@@ -467,6 +470,10 @@ export default function SwapDexPanel({
   };
 
   const handleSwap = async (confirmed = false) => {
+    if (inactiveReason) {
+      setError(inactiveReason);
+      return;
+    }
     if (!assetHash || !isValidAssetHash(assetHash)) {
       setError("Select a token to swap");
       return;
@@ -582,6 +589,10 @@ export default function SwapDexPanel({
   };
 
   const handleLiquidityDeposit = async () => {
+    if (inactiveReason) {
+      setError(inactiveReason);
+      return;
+    }
     if (!isValidAssetHash(assetHash)) {
       setError("Select a pool token");
       return;
@@ -613,6 +624,10 @@ export default function SwapDexPanel({
   };
 
   const handleLiquidityWithdraw = async () => {
+    if (inactiveReason) {
+      setError(inactiveReason);
+      return;
+    }
     if (!isValidAssetHash(assetHash)) {
       setError("Select a pool token");
       return;
@@ -640,7 +655,8 @@ export default function SwapDexPanel({
     }
   };
 
-  const swapDisabled = busy || !assetHash;
+  const actionsOff = Boolean(inactiveReason);
+  const swapDisabled = busy || !assetHash || actionsOff;
   const submitLabel = (() => {
     if (busy) return orderMode === "market" ? "Swapping…" : "Placing order…";
     if (!selectedAsset) return "Select a token";
@@ -675,6 +691,9 @@ export default function SwapDexPanel({
 
   return (
     <div className="swap-page swap-page--embedded w-full">
+      {inactiveReason && (
+        <p className="text-amber-200/90 text-xs mb-2 leading-relaxed">{inactiveReason}</p>
+      )}
       <div className="dex-tabs flex w-full gap-1.5 p-1 bg-zinc-950/80 border border-zinc-800/80 rounded-full mb-2.5">
         {(
           [
@@ -860,7 +879,7 @@ export default function SwapDexPanel({
                 <button
                   type="button"
                   onClick={() => void handleLiquidityDeposit()}
-                  disabled={busy || !assetHash}
+                  disabled={busy || !assetHash || actionsOff}
                   className="swap-cta-btn"
                 >
                   {busy ? "Depositing…" : "Deposit liquidity"}
@@ -906,7 +925,7 @@ export default function SwapDexPanel({
                 <button
                   type="button"
                   onClick={() => void handleLiquidityWithdraw()}
-                  disabled={busy || !assetHash}
+                  disabled={busy || !assetHash || actionsOff}
                   className="swap-cta-btn"
                 >
                   {busy ? "Withdrawing…" : "Withdraw liquidity"}

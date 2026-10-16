@@ -3,8 +3,10 @@ import { FaChevronDown } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import Header from "../components/Header";
+import DefiNodeGate from "../components/DefiNodeGate";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, addressToSeed } from "../utils";
+import { defiSubmitHold } from "../utils/nodes";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import { Funds, TokenDecimals, Wart, Liquidity } from "warthog-ts";
 
@@ -27,6 +29,9 @@ function LiquidityPage() {
     nameList,
     walletList,
     visibleWalletList,
+    nodeList,
+    selectedNodeIndex,
+    ledgerAccount,
     setSelectedWalletIndex,
     setName,
     setWallet,
@@ -189,7 +194,13 @@ function LiquidityPage() {
     return liquidityUnits && !liquidityError;
   };
 
+  const submitHold = defiSubmitHold(
+    nodeList[selectedNodeIndex],
+    Boolean(ledgerAccount),
+  );
+
   return (
+    <DefiNodeGate title="Liquidity">
     <div className="flex flex-col min-h-screen container">
       <Header title="Liquidity" />
 
@@ -357,6 +368,9 @@ function LiquidityPage() {
         )}
 
         {error && <div className="text-red-500 text-sm mt-4">{error}</div>}
+        {submitHold && (
+          <p className="text-amber-200/90 text-xs mt-3">{submitHold}</p>
+        )}
       </div>
 
       <div className="flex gap-3 px-3 pb-4 pt-2">
@@ -371,12 +385,13 @@ function LiquidityPage() {
           variant="primary"
           className="w-full"
           onClick={handelSubmit}
-          disabled={!isFormValid()}
+          disabled={!isFormValid() || Boolean(submitHold)}
         >
           Continue
         </Button>
       </div>
     </div>
+    </DefiNodeGate>
   );
 }
 

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
+import DefiNodeGate from "../components/DefiNodeGate";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, parsePriceInput, createTransactionContext, submitTransaction } from "../utils";
+import { defiSubmitHold } from "../utils/nodes";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
 import {
@@ -41,6 +43,7 @@ function TradeStep2() {
     tmpLimitPrice,
     tmpPrecision,
     tmpTradeType,
+    ledgerAccount,
     visibleWalletList,
     setSelectedWalletIndex,
     setName,
@@ -115,6 +118,8 @@ function TradeStep2() {
     setTransactionStatus("processing");
 
     try {
+      const hold = defiSubmitHold(nodeList[selectedNodeIndex], Boolean(ledgerAccount));
+      if (hold) throw new Error(hold);
       const nonceId = NonceId.random();
 
       const account = getAccountFromIndex(selectedWalletIndex);
@@ -169,6 +174,7 @@ function TradeStep2() {
   };
 
   return (
+    <DefiNodeGate title="Trade">
     <div className="min-h-screen container relative">
       <Header title={getTradeTitle()} />
 
@@ -437,6 +443,7 @@ function TradeStep2() {
         </div>
       )}
     </div>
+    </DefiNodeGate>
   );
 }
 

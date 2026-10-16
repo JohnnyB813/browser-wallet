@@ -51,6 +51,23 @@ export function networkLabel(node: string | null | undefined): "Mainnet" | "DeFi
   return isDefiNode(node) ? "DeFi Testnet" : "Mainnet";
 }
 
+/**
+ * Blocks a DeFi submit. Null means the action can be sent.
+ * Home hides these screens until a DeFi testnet node is selected.
+ */
+export function defiSubmitHold(
+  node: string | null | undefined,
+  ledger: boolean,
+): string | null {
+  if (!node || !isDefiNode(node)) {
+    return "Select a DeFi testnet node to submit.";
+  }
+  if (ledger) {
+    return "This Nano signs WART sends on the DeFi testnet. Swap, liquidity, and mint need a software wallet.";
+  }
+  return null;
+}
+
 /** Legacy browser-wallet / website node keys that should map to official mainnet. */
 const LEGACY_MAINNET = new Set([
   "losthymns",

@@ -22,6 +22,22 @@ import {
   type WordCount,
 } from "../utils/walletKeys";
 import {
+  connectLedgerAccount,
+  type LedgerSession,
+} from "../ledger/warthogApp";
+import {
+  clearLedgerSession,
+  consumeLedgerHandoff,
+  consumeLedgerPopupArm,
+  ledgerHandoffPending,
+  readLedgerSession,
+  rememberLedgerBookmark,
+  renameLedgerBookmark,
+  saveLedgerBookmark,
+  saveLedgerSession,
+} from "../ledger/session";
+import { isToolbarActionPopup as isLedgerToolbarPopup } from "../ledger/shell";
+import {
   decryptWallet,
   encryptWallet,
   loadNamedWalletEncrypted,
@@ -46,6 +62,16 @@ import {
   setIdleLockHandler,
   unlockSigningWorker,
 } from "../utils/signingBridge";
+import {
+  askBackgroundToReopenToolbar,
+  clearPasskeyJob,
+  clearToolbarUnlock,
+  handOffPasskeyJob,
+  isToolbarActionPopup,
+  readPasskeyJob,
+  readToolbarUnlock,
+  storeToolbarUnlock,
+} from "../utils/passkeyHandoff";
 
 setPasskeyProductName("Warthog Extension");
 
@@ -81,6 +107,14 @@ interface WalletContextProps {
   selectedNetworkLabel: "Mainnet" | "DeFi Testnet";
   /** True when setup is complete enough to show the home UI. */
   isAuthenticated: boolean;
+  /** Set when the open session is the Nano Warthog app. No private key is stored. */
+  ledgerAccount: LedgerSession | null;
+  loginWithLedger: (
+    pathType?: PathType,
+    accountName?: string,
+    accountIndex?: number,
+    expectedAddress?: string,
+  ) => Promise<void>;
   /** Seed-based wallets can add more accounts; PK-only cannot. */
   canAddAccounts: boolean;
   setName: (name: string) => void;
@@ -119,6 +153,12 @@ interface WalletContextProps {
     password: string,
     walletName?: string | null,
   ) => Promise<void>;
+  /** False until a pending toolbar unlock, if any, has been applied. */
+  sessionReady: boolean;
+  /** Finish a passkey save/unlock that was moved out of the toolbar popup. */
+  resumePasskeyHandoff: () => Promise<void>;
+  /** Open the toolbar dropdown again and close the passkey window. */
+  finishPasskeyInToolbar: () => Promise<boolean>;
   /** Unlock a multi-auth envelope with WebAuthn passkey (optionally + password for 2FA). */
   loginFromPasskey: (
     encrypted: string,
@@ -196,6 +236,16 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const [nodeNameList, setNodeNameListState] = useState<string[]>([]);
   const [token, setTokenState] = useState<string | null>(null);
   const [signingUnlocked, setSigningUnlocked] = useState(false);
+  const [ledgerAccount, setLedgerAccount] = useState<LedgerSession | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
+  const toolbarUnlockRef = useRef<{
+    privateKey: string;
+    publicKey: string;
+    address: string;
+    mnemonic?: string;
+    password: string | null;
+    name: string;
+  } | null>(null);
   const [hasMnemonic, setHasMnemonic] = useState(false);
   const [visibleWalletList, setVisibleWalletListState] = useState<boolean[]>(
     [],
@@ -369,8 +419,18 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const setName = (n: string): void => {
+    const previous = name;
     setNameState(n);
     saveToBrowserStorage("name", n);
+    if (!ledgerAccount) return;
+    const from = (previous || "").trim();
+    const to = n.trim();
+    if (!from || !to || from === to) return;
+    void renameLedgerBookmark(from, to).catch((err) => {
+      console.warn("[warthog] ledger rename failed", err);
+      setNameState(from);
+      saveToBrowserStorage("name", from);
+    });
   };
 
   const setVisibleWalletList = (list: boolean[]): void => {
@@ -399,8 +459,10 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       address: data.address,
       mnemonic: data.mnemonic,
     });
+    setLedgerAccount(null);
+    void clearLedgerSession();
     setPrivateKeyState(null);
-    setSeedPhraseState(null);
+    setSeedPhraseState(data.mnemonic || null);
     setSigningUnlocked(true);
     setHasMnemonic(Boolean(data.mnemonic));
     setWalletState(data.address);
@@ -600,6 +662,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setTokenState(null);
     setInputWordsBackupState([]);
     setSigningUnlocked(false);
+    setLedgerAccount(null);
+    void clearLedgerSession();
     setHasMnemonic(false);
     try {
       await lockSigningWorker();
@@ -624,6 +688,67 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     throw new Error("No key material available");
   };
 
+  const loginWithLedger = async (
+    nextPath: PathType = "hardened",
+    accountName = "Ledger",
+    accountIndex = 0,
+    expectedAddress?: string,
+  ): Promise<void> => {
+    const index =
+      Number.isFinite(accountIndex) && accountIndex >= 0
+        ? Math.floor(accountIndex)
+        : 0;
+    const session = await connectLedgerAccount(nextPath, index);
+    const sessionToken = "ledger-" + Date.now().toString();
+    const expirationTime = Date.now() + 3600 * 1000;
+    const name = accountName.trim() || "Ledger";
+    if (
+      expectedAddress &&
+      session.address.toLowerCase() !== expectedAddress.toLowerCase()
+    ) {
+      throw new Error("This Nano account does not match the saved wallet.");
+    }
+    await saveLedgerBookmark({
+      name,
+      address: session.address,
+      publicKey: session.publicKey,
+      pathType: session.pathType,
+      index: session.index,
+    });
+    try {
+      await lockSigningWorker();
+    } catch {
+      /* a hardware session has no key in the worker */
+    }
+    setSeedPhraseState(null);
+    setPrivateKeyState(null);
+    setHasMnemonic(false);
+    setPasswordState(null);
+    setLedgerAccount(session);
+    await saveLedgerSession(session);
+    setSigningUnlocked(true);
+    setWalletState(session.address);
+    setWalletListState([session.address]);
+    setNameListState([name]);
+    setVisibleWalletListState([true]);
+    setSelectedWalletIndexState(0);
+    setNameState(name);
+    setPathTypeState(nextPath);
+    setTokenState(sessionToken);
+    ensureDefaultNodes();
+    await Promise.all([
+      saveToBrowserStorage("wallet", session.address),
+      saveToBrowserStorage("walletList", session.address),
+      saveToBrowserStorage("nameList", name),
+      saveToBrowserStorage("visibleWalletList", "true"),
+      saveToBrowserStorage("selectedWalletIndex", "0"),
+      saveToBrowserStorage("name", name),
+      saveToBrowserStorage("pathType", nextPath),
+      saveToBrowserStorage("token", sessionToken),
+      saveToBrowserStorage("tokenExpiration", expirationTime.toString()),
+    ]);
+  };
+
   const importPrivateKey = async (privateKeyHex: string): Promise<void> => {
     const data = importFromPrivateKey(privateKeyHex);
     await unlockSigningWorker({
@@ -632,6 +757,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       address: data.address,
     });
     setSigningUnlocked(true);
+    setLedgerAccount(null);
+    void clearLedgerSession();
     setHasMnemonic(false);
     setSeedPhrase(null);
     setPrivateKey(null);
@@ -691,6 +818,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     walletName?: string | null,
     pwd?: string | null,
   ): Promise<void> => {
+    if (isToolbarActionPopup()) {
+      await handOffPasskeyJob({
+        kind: "unlock",
+        name: walletName || "Account 0",
+        password: pwd || null,
+        encrypted,
+      });
+    }
     if (!isWebAuthnAvailable()) {
       throw new Error(
         "Passkey unlock needs a modern browser with WebAuthn support",
@@ -731,6 +866,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       password: pwd || undefined,
       name: walletName || "Account 0",
     });
+    toolbarUnlockRef.current = {
+      privateKey: decrypted.privateKey,
+      publicKey: decrypted.publicKey,
+      address: decrypted.address,
+      mnemonic: decrypted.mnemonic,
+      password: pwd || null,
+      name: walletName || "Account 0",
+    };
   };
 
   const saveCurrentAsNamedWallet = async (
@@ -749,6 +892,17 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     const withPasskey = Boolean(opts?.withPasskey);
     const require2fa = Boolean(opts?.require2fa);
     const preferFingerprint = Boolean(opts?.preferFingerprint);
+
+    if (withPasskey && isToolbarActionPopup()) {
+      await handOffPasskeyJob({
+        kind: "save",
+        name: trimmed,
+        password: pwd || null,
+        require2fa,
+        preferFingerprint,
+        payload,
+      });
+    }
 
     if (!pwd && !withPasskey) {
       throw new Error("Password or passkey required to save");
@@ -803,6 +957,87 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
+  const resumePasskeyHandoff = async (): Promise<void> => {
+    const job = await readPasskeyJob();
+    if (!job) {
+      throw new Error(
+        "This passkey window expired. Close it and try again from the toolbar icon.",
+      );
+    }
+    if (job.kind === "unlock") {
+      await loginFromPasskey(job.encrypted, job.name, job.password);
+      await clearPasskeyJob();
+      return;
+    }
+
+    const payload = job.payload;
+    const trimmed = job.name.trim();
+    const pwd = job.password;
+    const require2fa = job.require2fa;
+    if (!trimmed) throw new Error("Wallet name is required");
+    if (!isWebAuthnAvailable()) {
+      throw new Error("Passkey unlock needs a modern browser");
+    }
+
+    const existing = await loadNamedWalletEncrypted(trimmed);
+    const prevEnv = existing ? tryParseEnvelope(existing) : null;
+    let passwordCipher: string | null = pwd ? await encryptWallet(payload, pwd) : null;
+    if (!passwordCipher && prevEnv?.password) passwordCipher = prevEnv.password;
+    if (!passwordCipher && existing && !prevEnv) passwordCipher = existing;
+
+    const { envelope } = (await buildEnvelopeWithPasskey(payload, {
+      displayName: trimmed,
+      existingPasswordCipher: passwordCipher,
+      previousEnvelope: prevEnv,
+      require2fa: require2fa && Boolean(passwordCipher || pwd),
+      preferFingerprint: job.preferFingerprint,
+    } as Record<string, unknown>)) as {
+      envelope: {
+        password: string | null;
+        require2fa: boolean;
+        [k: string]: unknown;
+      };
+    };
+    if (require2fa && pwd) {
+      envelope.password = await encryptWallet(payload, pwd);
+      envelope.require2fa = true;
+    }
+    await saveNamedWallet(trimmed, serializeEnvelope(envelope));
+    await activateKeyMaterial(
+      {
+        privateKey: payload.privateKey,
+        publicKey: payload.publicKey,
+        address: payload.address,
+        mnemonic: payload.mnemonic,
+      },
+      { password: pwd || undefined, name: trimmed },
+    );
+    toolbarUnlockRef.current = {
+      privateKey: payload.privateKey,
+      publicKey: payload.publicKey,
+      address: payload.address,
+      mnemonic: payload.mnemonic,
+      password: pwd,
+      name: trimmed,
+    };
+    await clearPasskeyJob();
+  };
+
+  const finishPasskeyInToolbar = async (): Promise<boolean> => {
+    const data = toolbarUnlockRef.current;
+    if (!data?.privateKey || !data.address) return false;
+    try {
+      await storeToolbarUnlock(data);
+      const current = await browser.windows.getCurrent();
+      await askBackgroundToReopenToolbar(current?.id);
+      return true;
+    } catch (err) {
+      console.warn("[warthog] could not return to the toolbar", err);
+      await clearToolbarUnlock();
+      return false;
+    }
+  };
+
   const enablePasskeyOnCurrentWallet = async (opts?: {
     password?: string | null;
     require2fa?: boolean;
@@ -826,6 +1061,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const clearWalletData = (): void => {
     setSeedPhraseState(null);
     setPrivateKeyState(null);
+    setLedgerAccount(null);
+    void clearLedgerSession();
     setWalletState(null);
     setPasswordState(null);
     setNameState(null);
@@ -849,6 +1086,98 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       });
   };
 
+  const activateRef = useRef(activateKeyMaterial);
+  activateRef.current = activateKeyMaterial;
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (/passkey-host/.test(location.hash || "")) return;
+        const pending = await readToolbarUnlock();
+        if (!alive) return;
+        if (pending) {
+          await activateRef.current(
+            {
+              privateKey: pending.privateKey,
+              publicKey: pending.publicKey,
+              address: pending.address,
+              mnemonic: pending.mnemonic,
+            },
+            { password: pending.password || undefined, name: pending.name },
+          );
+          await clearToolbarUnlock();
+          return;
+        }
+        const hardware = await readLedgerSession();
+        if (!alive || !hardware) return;
+        // The toolbar dropdown logs a Ledger session out when it closes.
+        // A one-shot arm lets the popup opened right after connect stay in.
+        // A handoff flag means a connect or sign tab still needs the session.
+        if (isLedgerToolbarPopup()) {
+          const armed = await consumeLedgerPopupArm();
+          if (!armed) {
+            const handingOff = await ledgerHandoffPending();
+            if (!handingOff) {
+              const named = await browser.storage.local.get(["token", "name"]);
+              const namedToken = await decryptValue(
+                typeof named.token === "string" ? named.token : undefined,
+              );
+              const namedLabel = await decryptValue(
+                typeof named.name === "string" ? named.name : undefined,
+              );
+              if (namedToken?.startsWith("ledger-")) {
+                await rememberLedgerBookmark({
+                  name: namedLabel?.trim() || "Ledger",
+                  address: hardware.address,
+                  publicKey: hardware.publicKey,
+                  pathType: hardware.pathType,
+                  index: hardware.index,
+                });
+                await browser.storage.local.remove(["token", "tokenExpiration"]);
+              }
+              await clearLedgerSession();
+            }
+            return;
+          }
+        }
+        // token and tokenExpiration are encrypted at rest. Reading the raw
+        // hex never starts with "ledger-", so the dropdown stayed logged out.
+        const stored = await browser.storage.local.get(["token", "tokenExpiration", "name"]);
+        const storedToken = await decryptValue(
+          typeof stored.token === "string" ? stored.token : undefined,
+        );
+        const expText = await decryptValue(
+          typeof stored.tokenExpiration === "string" ? stored.tokenExpiration : undefined,
+        );
+        const exp = parseInt(expText || "0", 10);
+        if (!storedToken?.startsWith("ledger-") || !Number.isFinite(exp) || Date.now() >= exp) {
+          return;
+        }
+        const storedName = await decryptValue(
+          typeof stored.name === "string" ? stored.name : undefined,
+        );
+        if (!alive) return;
+        setLedgerAccount(hardware);
+        setSigningUnlocked(true);
+        setHasMnemonic(false);
+        setTokenState((current) => current || storedToken);
+        setWalletState((current) => current || hardware.address);
+        setPathTypeState(hardware.pathType);
+        setNameState((current) => current || storedName || "Ledger");
+        setWalletListState((current) => (current.length ? current : [hardware.address]));
+        setNameListState((current) => (current.length ? current : [storedName || "Ledger"]));
+      } catch (err) {
+        console.warn("[warthog] toolbar unlock failed", err);
+      } finally {
+        if (alive) setSessionReady(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   useEffect(() => {
     // Drop any leftover secrets from older builds that wrapped keys with a
     // bundled storage password. Named warthogWallet_* envelopes are untouched.
@@ -858,15 +1187,18 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       "password",
       "inputWordsBackup",
     ]);
-    loadFromChromeStorage("wallet", setWalletState);
+    loadFromChromeStorage("wallet", (value) => {
+      if (value) setWalletState((current) => current || value);
+    });
     loadFromChromeStorage("pathType", (pt) => {
       if (pt === "hardened" || pt === "non-hardened") {
         setPathTypeState(pt);
       }
     });
-    loadFromChromeStorage("walletList", (list) =>
-      setWalletListState(list ? list.split(",").filter(Boolean) : []),
-    );
+    loadFromChromeStorage("walletList", (list) => {
+      const next = list ? list.split(",").filter(Boolean) : [];
+      setWalletListState((current) => (current.length ? current : next));
+    });
     loadFromChromeStorage("nameList", (list) =>
       setNameListState(list ? list.split(",") : []),
     );
@@ -906,8 +1238,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     loadFromChromeStorage("selectedWalletIndex", (idx) =>
       setSelectedWalletIndexState(idx ? parseInt(idx, 10) : 0),
     );
-    loadFromChromeStorage("name", setNameState);
-    loadFromChromeStorage("token", setTokenState);
+    loadFromChromeStorage("name", (value) => {
+      if (value) setNameState((current) => current || value);
+    });
+    loadFromChromeStorage("token", (value) => {
+      if (value) setTokenState((current) => current || value);
+    });
   }, [loadFromChromeStorage, saveToBrowserStorage]);
 
   useEffect(() => {
@@ -930,6 +1266,24 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
 
   const lockSessionRef = useRef(lockSession);
   lockSessionRef.current = lockSession;
+  const ledgerAccountRef = useRef(ledgerAccount);
+  ledgerAccountRef.current = ledgerAccount;
+
+  // Closing the toolbar ends a Ledger session. The host tab and a software
+  // password session stay as they are. pagehide can be dropped, so the next
+  // popup also refuses to restore unless it was just armed.
+  useEffect(() => {
+    const onHide = () => {
+      if (!isLedgerToolbarPopup()) return;
+      if (!ledgerAccountRef.current) return;
+      void (async () => {
+        if (await consumeLedgerHandoff()) return;
+        await lockSessionRef.current();
+      })();
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, []);
 
   // Auto-lock after 15 minutes without pointer or key activity. The handler is
   // registered on the signing bridge so the worker-side timer can call back
@@ -991,6 +1345,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         selectedNodeUrl,
         selectedNetworkLabel,
         isAuthenticated,
+        ledgerAccount,
+        loginWithLedger,
+        sessionReady,
         signingUnlocked,
         canAddAccounts,
         accountPath,
@@ -1039,6 +1396,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         importPrivateKey,
         loginFromEncrypted,
         loginFromPasskey,
+        resumePasskeyHandoff,
+        finishPasskeyInToolbar,
         saveCurrentAsNamedWallet,
         enablePasskeyOnCurrentWallet,
         activateKeyMaterial,

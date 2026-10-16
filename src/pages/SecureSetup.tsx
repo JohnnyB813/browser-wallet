@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import useWallet from "../hooks/useWallet";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
+import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
 import { encryptWallet } from "../utils/warthogWalletCrypto";
 
@@ -151,6 +152,7 @@ function SecureSetup() {
       });
       navigate("/home", { replace: true });
     } catch (e) {
+      if (isPasskeyHandedOff(e)) return;
       const msg = e instanceof Error ? e.message : String(e);
       setError(
         /cancel|not allowed|abort/i.test(msg)
@@ -281,6 +283,11 @@ function SecureSetup() {
                 />
                 <span className="text-white text-sm">Enable passkey unlock</span>
               </label>
+              <p className="text-white/40 text-[11px] leading-relaxed -mt-1 pl-6">
+                Google Password Manager or this device can save it. Proton Pass
+                cannot store a passkey for a browser extension. After the
+                prompt, the wallet returns to the toolbar.
+              </p>
               <label className="flex items-start gap-2 cursor-pointer">
                 <input
                   type="checkbox"

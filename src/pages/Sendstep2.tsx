@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Header from "../components/Header";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
@@ -19,6 +19,14 @@ import {
   HDWallet,
   TransactionJson,
 } from "warthog-ts";
+import { ledgerWartSubmitJson, signWartTransferOnLedger } from "../ledger/warthogApp";
+import { readLedgerWindowMode, storeLedgerSignJob, type LedgerWindowMode } from "../ledger/session";
+import {
+  isExtensionSidePanel,
+  isToolbarActionPopup,
+  openLedgerHost,
+  openLedgerInSidePanel,
+} from "../ledger/shell";
 
 interface AccountType {
   id: number;
@@ -49,8 +57,16 @@ function SendFinalStep() {
     setName,
     setWallet,
     seedPhrase,
+    ledgerAccount,
   } = useWallet();
   const navigate = useNavigate();
+  const windowModeRef = useRef<LedgerWindowMode>("dropdown");
+
+  useEffect(() => {
+    void readLedgerWindowMode().then((mode) => {
+      windowModeRef.current = mode;
+    });
+  }, []);
 
   const [accounts, setAccounts] = useState<AccountType[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -141,7 +157,7 @@ function SendFinalStep() {
     try {
       const nonceId = NonceId.random();
 
-      const account = getAccountFromIndex(selectedWalletIndex);
+      const account = ledgerAccount ? null : getAccountFromIndex(selectedWalletIndex);
       const toAddr = Address.fromHex(tmpDestinationWallet!);
       if (!toAddr) {
         throw new Error("Invalid recipient address");
@@ -156,6 +172,12 @@ function SendFinalStep() {
         throw new Error("Invalid fee");
       }
 
+      const handOffPopup =
+        Boolean(ledgerAccount) && isToolbarActionPopup() && !isExtensionSidePanel();
+      const opened =
+        handOffPopup && windowModeRef.current === "sidepanel"
+          ? await openLedgerInSidePanel("/ledger-host?op=sign")
+          : false;
       const context = await createTransactionContext(
         nodeList,
         selectedNodeIndex,
@@ -165,29 +187,67 @@ function SendFinalStep() {
 
       let tx;
 
-      if (tmpTransferType === "wart") {
+      if (ledgerAccount) {
+        if (tmpTransferType !== "wart") {
+          throw new Error("This Ledger app can only sign WART transfers");
+        }
         const wartParsed = Wart.parse(tmpWartAmount || "0");
         if (!wartParsed) throw new Error("Invalid WART amount");
-        tx = context.transferWart(account, toAddr, wartParsed);
+        if (isToolbarActionPopup() && !isExtensionSidePanel()) {
+          await storeLedgerSignJob({
+            pinHash: context.chainPin.pinHash,
+            pinHeight: context.chainPin.pinHeight,
+            nonceId: nonceId.value,
+            feeE8: fee.E8.toString(),
+            toAddress: toAddr.hex,
+            amountE8: wartParsed.E8.toString(),
+            nodeIndex: selectedNodeIndex,
+          });
+          if (opened) {
+            window.close();
+            return;
+          }
+          await openLedgerHost("op=sign");
+          window.close();
+          return;
+        }
+        tx = await signWartTransferOnLedger(ledgerAccount, {
+          pinHash: context.chainPin.pinHash,
+          pinHeight: context.chainPin.pinHeight,
+          nonceId: nonceId.value,
+          feeE8: fee.E8,
+          toAddress: toAddr.hex,
+          amountE8: wartParsed.E8,
+        });
+      } else if (tmpTransferType === "wart") {
+        const wartParsed = Wart.parse(tmpWartAmount || "0");
+        if (!wartParsed) throw new Error("Invalid WART amount");
+        tx = context.transferWart(account!, toAddr, wartParsed);
       } else if (tmpTransferType === "token") {
         const fundsParsed = Funds.parse(
           tmpTokenAmount || "0",
           new TokenDecimals(tmpPrecision || 8),
         );
         if (!fundsParsed) throw new Error("Invalid token amount");
-        tx = context.transferAsset(account, tmpAssetHash!, toAddr, fundsParsed);
+        tx = context.transferAsset(account!, tmpAssetHash!, toAddr, fundsParsed);
       } else if (tmpTransferType === "liquidity") {
         const liquidityParsed = Liquidity.parse(tmpTokenAmount || "0");
         if (!liquidityParsed) throw new Error("Invalid liquidity amount");
         tx = context.transferLiquidity(
-          account,
+          account!,
           tmpAssetHash!,
           toAddr,
           liquidityParsed,
         );
       }
 
-      const txHash = await submitTransaction(nodeList, selectedNodeIndex, tx as TransactionJson);
+      const txHash = await submitTransaction(
+        nodeList,
+        selectedNodeIndex,
+        ledgerAccount
+          ? ledgerWartSubmitJson(tx as TransactionJson, nodeList[selectedNodeIndex])
+          : (tx as TransactionJson),
+      );
       setTransactionHash(txHash);
       setTransactionStatus("success");
     } catch (error) {
@@ -356,7 +416,9 @@ function SendFinalStep() {
                   Processing Transaction
                 </h3>
                 <p className="text-white/70">
-                  Please wait while we process your transaction...
+                  {ledgerAccount
+                    ? "Approve the amount, fee, and recipient on your Ledger."
+                    : "Please wait while we process your transaction..."}
                 </p>
               </div>
             )}

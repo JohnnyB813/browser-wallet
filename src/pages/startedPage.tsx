@@ -7,36 +7,55 @@ import { useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import useWallet from "../hooks/useWallet";
 import {
+  listLedgerBookmarks,
+  readLedgerWindowMode,
+  type LedgerBookmark,
+  type LedgerWindowMode,
+} from "../ledger/session";
+import {
   getSavedWalletEntries,
   type SavedWalletEntry,
 } from "../utils/warthogWalletCrypto";
 import type { PathType, WordCount } from "../utils/walletKeys";
+import LedgerWindowSetting from "../components/LedgerWindowSetting";
+import {
+  finishLedgerDeviceStep,
+  isToolbarActionPopup,
+  openLedgerHost,
+  openLedgerInSidePanel,
+} from "../ledger/shell";
 
-type AccessPath = "hub" | "login" | "create" | "have" | "derive" | "import" | "load";
+type AccessPath = "hub" | "login" | "create" | "have" | "derive" | "import" | "load" | "ledger";
 
 function StartedPage() {
   const navigate = useNavigate();
-  const { newWallet, importWallet, importPrivateKey } = useWallet();
+  const { newWallet, importWallet, importPrivateKey, loginWithLedger } = useWallet();
   const [path, setPath] = useState<AccessPath>("hub");
   const [entries, setEntries] = useState<SavedWalletEntry[]>([]);
+  const [bookmarks, setBookmarks] = useState<LedgerBookmark[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [windowMode, setWindowMode] = useState<LedgerWindowMode>("dropdown");
 
   // Create / derive fields
   const [walletName, setWalletName] = useState("");
+  const [ledgerOrigin, setLedgerOrigin] = useState<"have" | "create">("have");
   const [wordCount, setWordCount] = useState<WordCount>(12);
   const [pathType, setPathType] = useState<PathType>("hardened");
   const [mnemonic, setMnemonic] = useState("");
   const [privateKey, setPrivateKey] = useState("");
 
-  const hasSaved = entries.length > 0;
+  const savedCount = entries.length + bookmarks.length;
+  const hasSaved = savedCount > 0;
 
   const refreshSaved = () => {
     getSavedWalletEntries().then(setEntries).catch(() => setEntries([]));
+    listLedgerBookmarks().then(setBookmarks).catch(() => setBookmarks([]));
   };
 
   useEffect(() => {
     refreshSaved();
+    void readLedgerWindowMode().then(setWindowMode);
   }, []);
 
   const goPath = (next: AccessPath) => {
@@ -55,24 +74,31 @@ function StartedPage() {
     derive: "Seed phrase",
     import: "Private key",
     load: "Wallet file",
+    ledger: "Ledger",
   };
 
   const pathHint: Record<AccessPath, string> = {
     hub: hasSaved
-      ? "Unlock with passkey or password, or start another path."
+      ? bookmarks.length
+        ? "Unlock a saved name. A Ledger name connects the Nano."
+        : "Unlock with passkey or password, or start another path."
       : "Create with passkey (password manager or this device; optional password / 2FA).",
-    login: "Choose a saved wallet, then unlock with passkey or password.",
-    create: "Name the wallet first. Then unlock options, then write down your seed.",
+    login: "Choose a saved wallet, then unlock with passkey, password, or Ledger.",
+    create: "Name the wallet. Then create it from a new seed, or connect the Nano.",
     have: "How do you want to restore access?",
     derive: "Enter the 12 or 24 word phrase for this wallet.",
     import: "Paste the 64-character private key.",
     load: "Open an encrypted warthog_wallet.txt file, then name it to save in this extension.",
+    ledger: "Open the Warthog app on the Nano S+. The address is confirmed on the device.",
   };
 
   const showBack = path !== "hub";
-  const backTarget: AccessPath = ["derive", "import", "load"].includes(path)
-    ? "have"
-    : "hub";
+  const backTarget: AccessPath =
+    path === "ledger" && ledgerOrigin === "create"
+      ? "create"
+      : ["derive", "import", "load", "ledger"].includes(path)
+        ? "have"
+        : "hub";
 
   const handleCreate = async () => {
     const name = walletName.trim();
@@ -108,6 +134,38 @@ function StartedPage() {
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to recover wallet");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLedger = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const accountName = walletName.trim() || "Ledger";
+      const query = new URLSearchParams({
+        op: "connect",
+        path: pathType,
+        name: accountName,
+        index: "0",
+      });
+      if (isToolbarActionPopup()) {
+        if (windowMode === "sidepanel") {
+          const opened = await openLedgerInSidePanel(`/ledger-host?${query.toString()}`);
+          if (opened) {
+            window.close();
+            return;
+          }
+        }
+        await openLedgerHost(query.toString());
+        window.close();
+        return;
+      }
+      await loginWithLedger(pathType, accountName);
+      await finishLedgerDeviceStep(() => navigate("/home"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ledger login failed");
     } finally {
       setBusy(false);
     }
@@ -198,16 +256,16 @@ function StartedPage() {
               <PathButton
                 primary
                 label="Unlock saved wallet"
-                meta={`${entries.length} in this extension${
+                meta={`${savedCount} in this extension${
                   entries.some((e) => e.hasPasskey) ? " · passkey ready" : ""
-                }`}
+                }${bookmarks.length ? " · Ledger" : ""}`}
                 onClick={() => navigate("/login-saved")}
               />
             )}
             <PathButton
               primary={!hasSaved}
               label="Create new wallet"
-              meta="Name → unlock options → seed"
+              meta="Name, then a new seed or Ledger"
               onClick={() => goPath("create")}
             />
             <PathButton
@@ -217,6 +275,7 @@ function StartedPage() {
               meta="Seed, key, or file"
               onClick={() => goPath("have")}
             />
+            <LedgerWindowSetting />
           </div>
         )}
 
@@ -226,7 +285,7 @@ function StartedPage() {
             {hasSaved && (
               <PathButton
                 label="Saved in this extension"
-                meta={`${entries.length} wallet${entries.length === 1 ? "" : "s"}`}
+                meta={`${savedCount} wallet${savedCount === 1 ? "" : "s"}`}
                 onClick={() => navigate("/login-saved")}
               />
             )}
@@ -245,6 +304,14 @@ function StartedPage() {
               meta="warthog_wallet.txt"
               onClick={() => navigate("/login-file")}
             />
+            <PathButton
+              label="Ledger"
+              meta="Nano S+ with the Warthog app open"
+              onClick={() => {
+                setLedgerOrigin("have");
+                goPath("ledger");
+              }}
+            />
           </div>
         )}
 
@@ -252,8 +319,8 @@ function StartedPage() {
         {path === "create" && (
           <div className="flex flex-col gap-3 mt-1">
             <p className="text-white/45 text-xs">
-              Step 1 of 3 — pick a name. Next: passkey/password, then write down
-              your seed.
+              Name it, then create a new seed or connect the Nano. The Ledger
+              keeps the key. You confirm the address on the device.
             </p>
             <div>
               <label className="text-white text-sm">Wallet name</label>
@@ -298,7 +365,18 @@ function StartedPage() {
               disabled={busy || !walletName.trim()}
               onClick={() => void handleCreate()}
             >
-              {busy ? "Generating…" : "Continue — unlock options"}
+              {busy ? "Generating…" : "Create with a new seed"}
+            </Button>
+            <Button
+              variant="primary"
+              className="w-full"
+              disabled={busy || !walletName.trim()}
+              onClick={() => {
+                setLedgerOrigin("create");
+                goPath("ledger");
+              }}
+            >
+              Connect Ledger
             </Button>
           </div>
         )}
@@ -361,6 +439,36 @@ function StartedPage() {
               onClick={() => void handleDerive()}
             >
               {busy ? "Working…" : "Recover wallet"}
+            </Button>
+          </div>
+        )}
+
+        {path === "ledger" && (
+          <div className="flex flex-col gap-3 mt-1">
+            <p className="text-white/45 text-xs">
+              Open the Warthog app on the Nano. Brave lists the device, then the
+              Nano shows the address. This session can send WART. Swaps stay on
+              a software wallet.
+            </p>
+            <LedgerWindowSetting />
+            <div>
+              <label className="text-white text-sm">Path</label>
+              <select
+                value={pathType}
+                onChange={(e) => setPathType(e.target.value as PathType)}
+                className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1"
+              >
+                <option value="hardened">Hardened BIP44</option>
+                <option value="non-hardened">Legacy / non-hardened</option>
+              </select>
+            </div>
+            <Button
+              variant="primary"
+              className="w-full"
+              disabled={busy}
+              onClick={() => void handleLedger()}
+            >
+              {busy ? "Waiting for the Ledger…" : "Connect Ledger"}
             </Button>
           </div>
         )}

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { searchAssetsDetailed, type AssetInfo } from "../utils/defiClient";
 import { fetchWartUsdPrice } from "../utils/wartPrice";
-import { nodeRead } from "../utils/warthogNode";
+import { fetchBalanceAndPin, nodeRead } from "../utils/warthogNode";
 import ProfileHeader from "../components/ProfileHeader";
 import TabNavigation, { Tab } from "../components/TabNavigation";
-import HistoryTxRow from "../components/HistoryTxRow";
+import TransactionHistoryPanel, {
+  type HistoryActivity,
+} from "../components/TransactionHistoryPanel";
 import PendingTxRow from "../components/PendingTxRow";
 import CancelConfirmModal from "../components/CancelConfirmModal";
 import { useNavigate } from "react-router-dom";
@@ -13,11 +15,14 @@ import { IoSend, IoTrendingUp, IoWater, IoDiamond, IoCloseCircleOutline } from "
 import { FaChevronDown, FaSearch, FaSync } from "react-icons/fa";
 import Jazzicon from "react-jazzicon";
 import { getPendingApproval, approveRequest, rejectRequest, PendingApproval } from "../utils/extensionApi";
-import { addressToSeed, formatAddress } from "../utils";
+import { addressToSeed, createTransactionContext, formatAddress, submitTransaction } from "../utils";
+import { Address, NonceId, RoundedFee, Wart } from "warthog-ts";
+import { ledgerWartSubmitJson, signWartTransferOnLedger } from "../ledger/warthogApp";
+import { readLedgerWindowMode, storeLedgerSignJob, takeLedgerLastTx, type LedgerWindowMode } from "../ledger/session";
+import { isToolbarActionPopup, openLedgerHost, openLedgerInSidePanel } from "../ledger/shell";
+import { reloadDocumentOnce } from "../utils/extensionNav";
+import { DEFAULT_FEE_WART } from "../config";
 import {
-  NODE_TX_TYPES,
-  type ActionsByBlock,
-  type NodeHistoryBlock,
   type NodeMempoolEntry,
   type NodeTx,
 } from "../types/nodeTx";
@@ -114,17 +119,17 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
     : 'WART';
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="contents" ref={dropdownRef}>
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-left flex items-center justify-between hover:bg-white/15 transition-colors"
+        className="shrink-0 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-left flex items-center justify-between gap-2 hover:bg-white/15 transition-colors"
       >
         <span className="text-primary font-medium">{displayName}</span>
         <FaChevronDown className={`text-white/50 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
       </button>
 
       {showDropdown && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-black/90 border border-white/20 rounded-xl overflow-hidden z-50 backdrop-blur-md">
+        <div className="home-token-menu">
           <div className="p-2 border-b border-white/10">
             <div className="relative">
               <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
@@ -164,6 +169,7 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
               </div>
             )}
 
+            {searchQuery && (
             <div>
               <div className="px-3 py-1 text-xs text-white/40 uppercase tracking-wider">Search Results</div>
               {searchLoading && (
@@ -185,6 +191,7 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
                 </button>
               ))}
             </div>
+            )}
 
             {!searchQuery && (
               <button
@@ -203,9 +210,10 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
 }
 
 const Home: React.FC = () => {
-  const { wallet, selectedNodeIndex, nodeList, walletList, nameList } = useWallet();
+  const { wallet, selectedNodeIndex, nodeList, walletList, nameList, ledgerAccount } = useWallet();
   const navigate = useNavigate();
   const [balance, setBalance] = useState(0);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
   const [balanceUSD, setBalanceUSD] = useState(0);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [showApprovalBanner, setShowApprovalBanner] = useState(false);
@@ -214,91 +222,26 @@ const Home: React.FC = () => {
   const [selectedToken, setSelectedToken] = useState<Token>({ spec: 'WART', name: 'WART', hash: null });
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Actions);
-  const [historyBlocks, setHistoryBlocks] = useState<NodeHistoryBlock[]>([]);
-  const [historyFromId, setHistoryFromId] = useState<number>(0);
-  const [historyHasMore, setHistoryHasMore] = useState(true);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [ledgerNote, setLedgerNote] = useState<string | null>(null);
+  const windowModeRef = useRef<LedgerWindowMode>("dropdown");
+  const [approvalBusy, setApprovalBusy] = useState(false);
   const [pendingTxs, setPendingTxs] = useState<NodeMempoolEntry[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelTx, setCancelTx] = useState<NodeTx | null>(null);
   const [cancelType, setCancelType] = useState<string>("");
-  const [lastChainHeadHash, setLastChainHeadHash] = useState<string>("");
+  const openActivity = (item: HistoryActivity) => {
+    navigate("/activity-details", { state: item });
+  };
 
-  const historyObserverRef = useRef<HTMLDivElement>(null);
-
-  // One place that talks to the node for history, and owns the loading flag.
-  // Assumes the caller already checked there is a wallet and a node: returning
-  // null here would conflate "not configured" with "empty page", and the two
-  // paths below treat those differently.
-  const fetchHistoryPage = useCallback(
-    async (beforeId: number): Promise<ActionsByBlock> => {
-      setHistoryLoading(true);
-      try {
-        // nodeRead throws on a non-2xx status or a non-zero node error code,
-        // and returns the envelope's `data` already unwrapped.
-        return await nodeRead<ActionsByBlock>(
-          nodeList[selectedNodeIndex],
-          `account/${wallet}/history/${beforeId}`,
-        );
-      } finally {
-        setHistoryLoading(false);
-      }
-    },
-    [wallet, nodeList, selectedNodeIndex],
-  );
-
-  // Reload from the top. Reads neither historyFromId nor historyHasMore, so its
-  // identity does not change when it writes them. That is what makes it safe to
-  // list as an effect dependency, which the combined callback was not.
-  const reloadHistory = useCallback(async () => {
-    if (!wallet || !nodeList[selectedNodeIndex]) return;
-    try {
-      const data = await fetchHistoryPage(Number.MAX_SAFE_INTEGER);
-
-      if (data?.perBlock) {
-        setHistoryBlocks(data.perBlock);
-        setHistoryFromId(data.fromId);
-        setHistoryHasMore(data.fromId > 1);
-      } else {
-        setHistoryBlocks([]);
-        setHistoryHasMore(false);
-      }
-    } catch (err) {
-      console.error("Error fetching history:", err);
-      setHistoryBlocks([]);
-    }
-  }, [wallet, nodeList, selectedNodeIndex, fetchHistoryPage]);
-
-  // Append the next page. Reads the cursor it advances, so it must list
-  // historyFromId and historyHasMore, and is therefore only safe to call from
-  // the scroll observer rather than from an effect that writes them.
-  const loadMoreHistory = useCallback(async () => {
-    if (!wallet || !nodeList[selectedNodeIndex]) return;
-    if (!historyHasMore) return;
-    try {
-      const data = await fetchHistoryPage(
-        historyFromId > 0 ? historyFromId - 1 : Number.MAX_SAFE_INTEGER,
-      );
-
-      if (data?.perBlock) {
-        setHistoryBlocks(prev => [...prev, ...data.perBlock]);
-        setHistoryFromId(data.fromId);
-        setHistoryHasMore(data.fromId > 1);
-      } else {
-        setHistoryHasMore(false);
-      }
-    } catch (err) {
-      console.error("Error fetching history:", err);
-    }
-  }, [
-    wallet,
-    nodeList,
-    selectedNodeIndex,
-    historyFromId,
-    historyHasMore,
-    fetchHistoryPage,
-  ]);
+  useEffect(() => {
+    void readLedgerWindowMode().then((mode) => {
+      windowModeRef.current = mode;
+    });
+    void takeLedgerLastTx().then((hash) => {
+      if (hash) setLedgerNote(`Broadcast ${hash}`);
+    });
+  }, []);
 
   const loadPending = useCallback(async () => {
     if (!wallet || !nodeList[selectedNodeIndex]) return;
@@ -320,59 +263,12 @@ const Home: React.FC = () => {
   }, [wallet, nodeList, selectedNodeIndex]);
 
   useEffect(() => {
-    if (activeTab === Tab.History) {
-      reloadHistory();
-    }
-  }, [activeTab, wallet, selectedNodeIndex, reloadHistory]);
-
-  useEffect(() => {
-    if (activeTab === Tab.History && wallet && nodeList[selectedNodeIndex]) {
-      const interval = setInterval(async () => {
-        const nodeUrl = nodeList[selectedNodeIndex];
-        try {
-          const head = await nodeRead<{ chainHead?: { hash?: string } }>(
-            nodeUrl,
-            "chain/head",
-          );
-          // V2 API shape only. A mainnet node returns a flat payload, so this
-          // reads as undefined there and history simply does not auto-reload.
-          const headHash = head?.chainHead?.hash;
-          if (headHash && headHash !== lastChainHeadHash) {
-            setLastChainHeadHash(headHash);
-            reloadHistory();
-          }
-        } catch (err) {
-          console.error("Error polling chain head:", err);
-        }
-      }, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, wallet, selectedNodeIndex, lastChainHeadHash, reloadHistory, nodeList]);
-
-  useEffect(() => {
     if (activeTab === Tab.Pending) {
       loadPending();
       const interval = setInterval(loadPending, 15000);
       return () => clearInterval(interval);
     }
   }, [activeTab, loadPending]);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && historyHasMore && !historyLoading && activeTab === Tab.History) {
-          loadMoreHistory();
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    if (historyObserverRef.current) {
-      observer.observe(historyObserverRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, [historyHasMore, historyLoading, activeTab, loadMoreHistory]);
 
   const handleCancel = (tx: NodeTx, type: string) => {
     setCancelTx(tx);
@@ -386,11 +282,74 @@ const Home: React.FC = () => {
       await approveRequest([account]);
       setShowApprovalBanner(false);
       setPendingApproval(null);
-    } else if (pendingApproval?.action === 'openSendPage') {
+      return;
+    }
+    if (pendingApproval?.action === 'openSendPage') {
       await approveRequest();
       setShowApprovalBanner(false);
       setPendingApproval(null);
       navigate(`/send?address=${pendingApproval.to}`);
+      return;
+    }
+    if (
+      ledgerAccount &&
+      (pendingApproval?.action === 'sendTransaction' || pendingApproval?.action === 'transferWart')
+    ) {
+      setApprovalBusy(true);
+      setLedgerNote(null);
+      try {
+        const toAddr = Address.fromHex(pendingApproval.to || "");
+        if (!toAddr) throw new Error("Invalid recipient address");
+        const wartParsed = Wart.parse(pendingApproval.amount || "0");
+        if (!wartParsed) throw new Error("Invalid WART amount");
+        const fee = RoundedFee.fromE8(
+          BigInt(Math.round(parseFloat(DEFAULT_FEE_WART) * 1e8)),
+          false,
+        );
+        if (!fee) throw new Error("Invalid fee");
+        const nonceId = NonceId.random();
+        const handOff = isToolbarActionPopup();
+        const opened = handOff && windowModeRef.current === "sidepanel"
+          ? await openLedgerInSidePanel("/ledger-host?op=sign")
+          : false;
+        const context = await createTransactionContext(nodeList, selectedNodeIndex, fee, nonceId);
+        if (handOff) {
+          await storeLedgerSignJob({
+            pinHash: context.chainPin.pinHash,
+            pinHeight: context.chainPin.pinHeight,
+            nonceId: nonceId.value,
+            feeE8: fee.E8.toString(),
+            toAddress: toAddr.hex,
+            amountE8: wartParsed.E8.toString(),
+            nodeIndex: selectedNodeIndex,
+            approveDapp: true,
+          });
+          if (!opened) await openLedgerHost("op=sign");
+          window.close();
+          return;
+        }
+        const tx = await signWartTransferOnLedger(ledgerAccount, {
+          pinHash: context.chainPin.pinHash,
+          pinHeight: context.chainPin.pinHeight,
+          nonceId: nonceId.value,
+          feeE8: fee.E8,
+          toAddress: toAddr.hex,
+          amountE8: wartParsed.E8,
+        });
+        const txHash = await submitTransaction(
+          nodeList,
+          selectedNodeIndex,
+          ledgerWartSubmitJson(tx, nodeList[selectedNodeIndex]),
+        );
+        await approveRequest(undefined, txHash);
+        setShowApprovalBanner(false);
+        setPendingApproval(null);
+        setLedgerNote(`Broadcast ${txHash}`);
+      } catch (error) {
+        setLedgerNote(error instanceof Error ? error.message : "Ledger sign failed");
+      } finally {
+        setApprovalBusy(false);
+      }
     }
   };
 
@@ -412,23 +371,28 @@ const Home: React.FC = () => {
             if (data?.balance?.total?.u64 !== undefined) {
               const decimals = data.balance.total.decimals || 8;
               setBalance(data.balance.total.u64 / Math.pow(10, decimals));
+              setBalanceError(null);
             }
           })
           .catch((error) => {
             console.error("Error fetching token balance:", error);
+            const message = error instanceof Error ? error.message : "Could not load the balance";
+            if (/failed to fetch/i.test(message) && reloadDocumentOnce()) return;
             setBalance(0);
+            setBalanceError(message);
           });
       } else {
-        nodeRead<{ wart?: { total?: { E8?: number | string } } }>(
-          nodeUrl,
-          `account/${wallet}/wart_balance`,
-        )
-          .then((data) => {
-            setBalance(data?.wart?.total?.E8 ? Number(data.wart.total.E8) / 1e8 : 0);
+        fetchBalanceAndPin(nodeUrl, wallet)
+          .then((result) => {
+            setBalance(parseFloat(result.balance) || 0);
+            setBalanceError(null);
           })
           .catch((error) => {
             console.error("Error fetching WART balance:", error);
+            const message = error instanceof Error ? error.message : "Could not load the balance";
+            if (/failed to fetch/i.test(message) && reloadDocumentOnce()) return;
             setBalance(0);
+            setBalanceError(message);
           });
       }
     }
@@ -469,48 +433,29 @@ const Home: React.FC = () => {
     }
   }, [wallet, selectedToken, selectedNodeIndex, updateBalance, updateBalanceUSD]);
 
-  const flattenHistoryBlocks = () => {
-    const rows: { type: string; tx: NodeTx; confirmations: number }[] = [];
-    historyBlocks.forEach(block => {
-      const confirmations = block.confirmations || 0;
-      NODE_TX_TYPES.forEach(type => {
-        const entries = block.body?.[type];
-        if (Array.isArray(entries)) {
-          entries.forEach((entry: { transaction?: NodeTx }) => {
-            rows.push({
-              type,
-              tx: entry.transaction ?? {},
-              confirmations
-            });
-          });
-        }
-      });
-    });
-    return rows;
-  };
-
   const renderTabContent = () => {
     switch (activeTab) {
       case Tab.Actions:
         return (
           <div className="space-y-4">
-            <div className="p-2.5 bg-white/10 w-full rounded-48 backdrop-blur-[9px] flex-col justify-center items-center gap-4 inline-flex">
-              <div className="flex items-center gap-4 w-full">
-                <div className="flex-1">
-                  <p className="text-white/50 text-sm mb-1">Wallet</p>
-                  <p className="text-white text-2xl font-semibold">
-                    {balance ? parseFloat(balance.toFixed(2)) : '0.00'} {selectedToken.name}
-                  </p>
-                  <p className="text-white/50 text-sm">
-                    ${(balance * balanceUSD).toFixed(2)}
-                  </p>
-                </div>
-                <TokenSelector
-                  selectedToken={selectedToken}
-                  onSelect={setSelectedToken}
-                  nodeUrl={nodeList[selectedNodeIndex]}
-                />
+            <div className="home-wallet-card">
+              <div className="min-w-0 flex-1">
+                <p className="text-white/50 text-sm mb-1">Wallet</p>
+                <p className="text-white text-2xl font-semibold break-words">
+                  {balance ? parseFloat(balance.toFixed(2)) : '0.00'} {selectedToken.name}
+                </p>
+                <p className="text-white/50 text-sm">
+                  ${(balance * balanceUSD).toFixed(2)}
+                </p>
+                {balanceError && (
+                  <p className="text-red-300 text-xs mt-1">{balanceError}</p>
+                )}
               </div>
+              <TokenSelector
+                selectedToken={selectedToken}
+                onSelect={setSelectedToken}
+                nodeUrl={nodeList[selectedNodeIndex]}
+              />
             </div>
             <div className="flex flex-row justify-center gap-3 w-full">
               <div
@@ -522,7 +467,7 @@ const Home: React.FC = () => {
               </div>
               <div
                 className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate("/trade")}
+                onClick={() => navigate("/swap")}
               >
                 <IoTrendingUp className="text-2xl text-primary" />
                 <p className="text-white text-sm font-semibold">Swap</p>
@@ -542,39 +487,20 @@ const Home: React.FC = () => {
                 <p className="text-white text-sm font-semibold">Mint</p>
               </div>
             </div>
+            {ledgerNote && (
+              <p className="text-amber-200/90 text-xs text-center px-2">{ledgerNote}</p>
+            )}
           </div>
         );
 
       case Tab.History:
         return (
-          <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-            {historyBlocks.length === 0 && !historyLoading && (
-              <div className="text-center text-white/50 py-8">
-                No transaction history
-              </div>
-            )}
-            {flattenHistoryBlocks().map((item, idx) => (
-              <HistoryTxRow
-                key={`${item.tx?.hash}-${idx}`}
-                type={item.type}
-                tx={item.tx}
-                confirmations={item.confirmations}
-              />
-            ))}
-            {historyLoading && (
-              <div className="flex justify-center py-4">
-                <FaSync className="animate-spin text-white/50" size={20} />
-              </div>
-            )}
-            {historyHasMore && !historyLoading && (
-              <div ref={historyObserverRef} className="h-10" />
-            )}
-            {!historyHasMore && historyBlocks.length > 0 && (
-              <div className="text-center text-white/30 text-sm py-4">
-                No more transactions
-              </div>
-            )}
-          </div>
+          <TransactionHistoryPanel
+            wallet={wallet}
+            nodeUrl={nodeList[selectedNodeIndex] || null}
+            active
+            onActivityClick={openActivity}
+          />
         );
 
       case Tab.Pending:
@@ -672,6 +598,9 @@ const Home: React.FC = () => {
           {pendingApproval.to && (
             <p className="text-white/70 text-sm mb-2">To: {pendingApproval.to}</p>
           )}
+          {pendingApproval.amount && (
+            <p className="text-white/70 text-sm mb-2">Amount: {pendingApproval.amount} WART</p>
+          )}
           <div className="flex gap-2 mt-3">
             <button
               onClick={handleReject}
@@ -681,7 +610,8 @@ const Home: React.FC = () => {
             </button>
             <button
               onClick={handleApprove}
-              className="flex-1 px-4 py-2 bg-primary text-black font-semibold rounded-lg hover:bg-primary/80"
+              disabled={approvalBusy}
+              className="flex-1 px-4 py-2 bg-primary text-black font-semibold rounded-lg hover:bg-primary/80 disabled:opacity-60"
             >
               {pendingApproval.action === 'requestAccounts' ? 'Connect' : pendingApproval.action === 'openSendPage' ? 'Send' : 'Approve'}
             </button>

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
+import DefiNodeGate from "../components/DefiNodeGate";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, createTransactionContext, submitTransaction } from "../utils";
+import { defiSubmitHold } from "../utils/nodes";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
 import {
@@ -40,6 +42,7 @@ function LiquidityStep2() {
     tmpTokenAmount,
     tmpWartAmount,
     tmpLiquidityType,
+    ledgerAccount,
     visibleWalletList,
     setSelectedWalletIndex,
     setName,
@@ -114,6 +117,8 @@ function LiquidityStep2() {
     setTransactionStatus("processing");
 
     try {
+      const hold = defiSubmitHold(nodeList[selectedNodeIndex], Boolean(ledgerAccount));
+      if (hold) throw new Error(hold);
       const nonceId = NonceId.random();
 
       const account = getAccountFromIndex(selectedWalletIndex);
@@ -163,6 +168,7 @@ function LiquidityStep2() {
   };
 
   return (
+    <DefiNodeGate title="Liquidity">
     <div className="min-h-screen container relative">
       <Header title={getTitle()} />
       <div className="flex flex-col gap-1">
@@ -382,6 +388,7 @@ function LiquidityStep2() {
         </div>
       )}
     </div>
+    </DefiNodeGate>
   );
 }
 

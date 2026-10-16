@@ -4,45 +4,106 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
 import {
+  listLedgerBookmarks,
+  readLedgerWindowMode,
+  renameLedgerBookmark,
+  type LedgerBookmark,
+  type LedgerWindowMode,
+} from "../ledger/session";
+import {
+  finishLedgerDeviceStep,
+  isToolbarActionPopup,
+  openLedgerHost,
+  openLedgerInSidePanel,
+} from "../ledger/shell";
+import {
   getSavedWalletEntries,
   loadNamedWalletEncrypted,
   type SavedWalletEntry,
 } from "../utils/warthogWalletCrypto";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
+import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
 
+type LoginChoice =
+  | { id: string; kind: "saved"; entry: SavedWalletEntry }
+  | { id: string; kind: "ledger"; bookmark: LedgerBookmark };
+
+function shortAddress(address: string): string {
+  if (address.length < 12) return address;
+  return `${address.slice(0, 8)}…${address.slice(-4)}`;
+}
+
 function LoginSaved() {
-  const { loginFromEncrypted, loginFromPasskey } = useWallet();
+  const { loginFromEncrypted, loginFromPasskey, loginWithLedger } = useWallet();
   const navigate = useNavigate();
   const [entries, setEntries] = useState<SavedWalletEntry[]>([]);
+  const [bookmarks, setBookmarks] = useState<LedgerBookmark[]>([]);
   const [selected, setSelected] = useState("");
   const [password, setPassword] = useState("");
+  const [draftName, setDraftName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [awaitingPasskey, setAwaitingPasskey] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [passkeysSupported, setPasskeysSupported] = useState(false);
+  const [windowMode, setWindowMode] = useState<LedgerWindowMode>("dropdown");
 
   useEffect(() => {
     setPasskeysSupported(isWebAuthnAvailable());
-    getSavedWalletEntries()
-      .then((list) => {
-        setEntries(list);
-        if (list.length === 1) setSelected(list[0].name);
+    void readLedgerWindowMode().then(setWindowMode);
+    Promise.all([
+      getSavedWalletEntries().catch(() => [] as SavedWalletEntry[]),
+      listLedgerBookmarks().catch(() => [] as LedgerBookmark[]),
+    ])
+      .then(([saved, ledger]) => {
+        setEntries(saved);
+        setBookmarks(ledger);
+        if (saved.length + ledger.length === 1) {
+          setSelected(
+            ledger.length === 1
+              ? `ledger:${ledger[0].name}`
+              : `saved:${saved[0].name}`,
+          );
+        }
       })
       .finally(() => setLoadingList(false));
   }, []);
 
-  const selectedEntry = entries.find((e) => e.name === selected) || null;
+  const choices: LoginChoice[] = [
+    ...entries.map((entry) => ({
+      id: `saved:${entry.name}`,
+      kind: "saved" as const,
+      entry,
+    })),
+    ...bookmarks.map((bookmark) => ({
+      id: `ledger:${bookmark.name}`,
+      kind: "ledger" as const,
+      bookmark,
+    })),
+  ].sort((a, b) => {
+    const left = a.kind === "saved" ? a.entry.name : a.bookmark.name;
+    const right = b.kind === "saved" ? b.entry.name : b.bookmark.name;
+    return left.localeCompare(right);
+  });
+
+  const selectedChoice = choices.find((choice) => choice.id === selected) || null;
+  const selectedEntry = selectedChoice?.kind === "saved" ? selectedChoice.entry : null;
+  const selectedLedger =
+    selectedChoice?.kind === "ledger" ? selectedChoice.bookmark : null;
+
+  useEffect(() => {
+    setDraftName(selectedLedger?.name || "");
+  }, [selectedLedger?.name]);
 
   const handlePasswordLogin = async () => {
     setBusy(true);
     setError(null);
     try {
-      if (!selected) throw new Error("Please select a saved wallet");
+      if (!selectedEntry) throw new Error("Please select a saved wallet");
       if (!password) throw new Error("Please enter password");
-      const encrypted = await loadNamedWalletEncrypted(selected);
+      const encrypted = await loadNamedWalletEncrypted(selectedEntry.name);
       if (!encrypted) throw new Error("Selected wallet not found");
       if (selectedEntry?.require2fa) {
         throw new Error(
@@ -62,7 +123,7 @@ function LoginSaved() {
   const handlePasskeyLogin = async (withPassword: boolean) => {
     setError(null);
     try {
-      if (!selected) throw new Error("Please select a saved wallet");
+      if (!selectedEntry) throw new Error("Please select a saved wallet");
       if (!passkeysSupported) {
         throw new Error("Passkeys are not available in this browser");
       }
@@ -74,21 +135,85 @@ function LoginSaved() {
           "This wallet requires password + passkey. Enter password, then tap Unlock (2FA).",
         );
       }
-      const encrypted = await loadNamedWalletEncrypted(selected);
+      const encrypted = await loadNamedWalletEncrypted(selectedEntry.name);
       if (!encrypted) throw new Error("Selected wallet not found");
 
       await paintPasskeyWaiting(setAwaitingPasskey, setBusy);
       await loginFromPasskey(
         encrypted,
-        selected,
+        selectedEntry.name,
         withPassword ? password : null,
       );
       navigate("/home");
     } catch (e) {
+      if (isPasskeyHandedOff(e)) return;
       const msg = e instanceof Error ? e.message : "Passkey unlock failed";
       setError(msg);
     } finally {
       clearPasskeyWaiting(setAwaitingPasskey, setBusy);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!selectedLedger) return;
+    const next = draftName.trim();
+    if (!next) {
+      setError("Enter a name");
+      return;
+    }
+    if (next === selectedLedger.name) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await renameLedgerBookmark(selectedLedger.name, next);
+      const ledger = await listLedgerBookmarks();
+      setBookmarks(ledger);
+      setSelected(`ledger:${next}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not rename");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLedgerLogin = async () => {
+    if (!selectedLedger) {
+      setError("Please select a saved wallet");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const query = new URLSearchParams({
+        op: "connect",
+        path: selectedLedger.pathType,
+        name: selectedLedger.name,
+        index: String(selectedLedger.index),
+        address: selectedLedger.address,
+      });
+      if (isToolbarActionPopup()) {
+        if (windowMode === "sidepanel") {
+          const opened = await openLedgerInSidePanel(`/ledger-host?${query.toString()}`);
+          if (opened) {
+            window.close();
+            return;
+          }
+        }
+        await openLedgerHost(query.toString());
+        window.close();
+        return;
+      }
+      await loginWithLedger(
+        selectedLedger.pathType,
+        selectedLedger.name,
+        selectedLedger.index,
+        selectedLedger.address,
+      );
+      await finishLedgerDeviceStep(() => navigate("/home"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ledger login failed");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -114,30 +239,43 @@ function LoginSaved() {
           Unlock wallet
         </h1>
         <p className="text-white/50 text-xs text-center px-2">
-          {entries.some((e) => e.require2fa)
-            ? "2FA: enter password, then confirm with passkey."
-            : entries.some((e) => e.hasPasskey)
-              ? "Tap Unlock with passkey, or use password if you set one."
-              : "Choose a saved wallet and enter its password. You can add a passkey after unlock."}
+          {bookmarks.length > 0 && entries.length === 0
+            ? "Choose the Ledger name. The Nano approves the address. Closing the dropdown ends that session."
+            : bookmarks.length > 0
+              ? "Choose a saved name. A Ledger connects the Nano. A software wallet uses its password or passkey."
+              : entries.some((e) => e.require2fa)
+                ? "2FA: enter password, then confirm with passkey."
+                : entries.some((e) => e.hasPasskey)
+                  ? "Tap Unlock with passkey, or use password if you set one."
+                  : "Choose a saved wallet and enter its password. You can add a passkey after unlock."}
         </p>
 
         {loadingList ? (
           <p className="text-white/50 text-sm text-center">Loading…</p>
-        ) : entries.length === 0 ? (
+        ) : choices.length === 0 ? (
           <p className="text-white/50 text-sm text-center px-4">
             No saved wallets yet. Create or import a wallet, then save it with a
-            password and/or passkey from Account details.
+            password and/or passkey from Account details. A Ledger name is saved
+            when you connect the Nano.
           </p>
         ) : (
           <div className="grid gap-2">
-            {entries.map((entry) => {
-              const isSelected = selected === entry.name;
+            {choices.map((choice) => {
+              const isSelected = selected === choice.id;
+              const label = choice.kind === "saved" ? choice.entry.name : choice.bookmark.name;
+              const meta =
+                choice.kind === "saved"
+                  ? `${choice.entry.badge}${
+                      choice.entry.addressHint ? ` · ${choice.entry.addressHint}` : ""
+                    }`
+                  : `Ledger · ${shortAddress(choice.bookmark.address)}`;
               return (
                 <button
-                  key={entry.name}
+                  key={choice.id}
                   type="button"
                   onClick={() => {
-                    setSelected(entry.name);
+                    setSelected(choice.id);
+                    setPassword("");
                     setError(null);
                   }}
                   className={`text-left rounded-lg border p-3 transition ${
@@ -146,14 +284,27 @@ function LoginSaved() {
                       : "border-primary/25 bg-white/5 hover:bg-white/10"
                   }`}
                 >
-                  <div className="text-white font-medium">{entry.name}</div>
-                  <div className="text-white/40 text-xs mt-0.5">
-                    {entry.badge}
-                    {entry.addressHint ? ` · ${entry.addressHint}` : ""}
-                  </div>
+                  <div className="text-white font-medium">{label}</div>
+                  <div className="text-white/40 text-xs mt-0.5">{meta}</div>
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {selectedLedger && (
+          <div>
+            <label className="text-white text-sm">Saved name</label>
+            <input
+              type="text"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleRename();
+              }}
+              className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary"
+              autoComplete="off"
+            />
           </div>
         )}
 
@@ -200,7 +351,28 @@ function LoginSaved() {
       </div>
 
       <div className="absolute bottom-5 left-0 px-6 w-full grid gap-2">
-        {selectedEntry?.require2fa ? (
+        {selectedLedger ? (
+          <>
+            {draftName.trim() !== selectedLedger.name && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => void handleRename()}
+                disabled={busy || !draftName.trim()}
+              >
+                Save name
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={() => void handleLedgerLogin()}
+              disabled={busy}
+            >
+              {busy ? "Waiting for the Ledger…" : "Connect Ledger"}
+            </Button>
+          </>
+        ) : selectedEntry?.require2fa ? (
           <Button
             variant="primary"
             className="w-full"
@@ -242,7 +414,7 @@ function LoginSaved() {
             )}
           </>
         )}
-        {!selectedEntry && entries.length > 0 && (
+        {!selectedChoice && choices.length > 0 && (
           <Button
             variant="primary"
             className="w-full"
