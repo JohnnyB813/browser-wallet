@@ -18,6 +18,12 @@ const COMPACT_SHELL_FLAG = "warthogCompactShell";
 /** True when this document is the browser action popup (small, temporary). */
 export function isExtensionPopup(): boolean {
   try {
+    if (new URLSearchParams(location.search).get("sidepanel") === "1") return false;
+    if (/ledger-host|passkey-host/.test(location.hash || "")) return false;
+  } catch {
+    // ignore
+  }
+  try {
     const chromeApi = (
       globalThis as {
         chrome?: {
@@ -37,7 +43,7 @@ export function isExtensionPopup(): boolean {
     typeof location !== "undefined" &&
     (location.protocol === "chrome-extension:" ||
       location.protocol === "moz-extension:");
-  return isExt && window.innerWidth <= 450 && window.innerHeight <= 650;
+  return isExt && window.innerWidth <= 500 && window.innerHeight <= 760;
 }
 
 export function isHelperTab(): boolean {
@@ -82,12 +88,28 @@ export function clearCompactShellPreferred(): void {
   }
 }
 
+export function reloadDocumentOnce(): boolean {
+  try {
+    if (isExtensionPopup()) return false;
+    if (sessionStorage.getItem("warthogFetchReload") === "1") return false;
+    sessionStorage.setItem("warthogFetchReload", "1");
+    location.reload();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function applyExtensionShellClass(forceCompact = false): void {
   try {
+    const sidePanel =
+      new URLSearchParams(location.search).get("sidepanel") === "1";
     const compact =
-      forceCompact || isExtensionPopup() || isCompactShellPreferred();
+      !sidePanel &&
+      (forceCompact || isExtensionPopup() || isCompactShellPreferred());
+    document.documentElement.classList.toggle("extension-sidepanel", sidePanel);
     document.documentElement.classList.toggle("extension-popup", compact);
-    document.documentElement.classList.toggle("extension-tab", !compact);
+    document.documentElement.classList.toggle("extension-tab", !compact && !sidePanel);
     if (
       compact &&
       (forceCompact || isCompactShellPreferred()) &&
@@ -153,23 +175,139 @@ export type ReopenResult =
  * Create a normal-size wallet popup window. Returns only after the window exists.
  * Does not close the current tab — caller decides.
  */
-export async function openWalletPopupWindow(): Promise<ReopenResult> {
-  const homeUrl = getWalletHomeUrl();
-  const createOpts = {
-    url: homeUrl,
+async function centeredPopupCreateOptions(url: string) {
+  const width = 440;
+  const height = 680;
+  let left: number | undefined;
+  let top: number | undefined;
+  try {
+    const all = await browser.windows.getAll({ windowTypes: ["normal"] });
+    const base =
+      all.find((w) => w.focused && (w.width ?? 0) > 500) ||
+      [...all].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
+    if (base && typeof base.width === "number" && typeof base.left === "number") {
+      left = Math.max(0, Math.round(base.left + (base.width - width) / 2));
+      top = Math.max(
+        0,
+        Math.round((base.top ?? 0) + ((base.height ?? height) - height) / 2),
+      );
+    }
+  } catch {
+    // ignore
+  }
+  if (
+    left == null &&
+    typeof screen !== "undefined" &&
+    screen.availWidth
+  ) {
+    left = Math.max(0, Math.floor((screen.availWidth - width) / 2));
+    top = Math.max(0, Math.floor((screen.availHeight - height) / 2));
+  }
+  return {
+    url,
     type: "popup" as const,
-    width: 420,
-    height: 660,
+    width,
+    height,
     focused: true,
+    ...(left != null && top != null ? { left, top } : {}),
   };
+}
 
-  // 1) webextension-polyfill
-  // "windows" is deliberately NOT in the manifest: Firefox rejects it outright
-  // and has always allowed browser.windows, while Chrome denies the call
-  // without it. Both cases fall through to the tab fallback below, which only
-  // needs the "tabs" permission we do declare.
+/**
+ * Passkey prompt window. Same size as the toolbar dropdown, tucked into the
+ * top-right of the browser window so it does not open in the middle.
+ */
+async function toolbarCornerCreateOptions(url: string) {
+  const width = 440;
+  const height = 680;
+  let left: number | undefined;
+  let top: number | undefined;
+  try {
+    const all = await browser.windows.getAll({ windowTypes: ["normal"] });
+    const base =
+      all.find((w) => w.focused && (w.width ?? 0) > 500) ||
+      [...all].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
+    if (base && typeof base.width === "number" && typeof base.left === "number") {
+      left = Math.max(0, Math.round(base.left + base.width - width - 8));
+      top = Math.max(0, Math.round((base.top ?? 0) + 56));
+    }
+  } catch {
+    // ignore
+  }
+  if (
+    left == null &&
+    typeof screen !== "undefined" &&
+    screen.availWidth
+  ) {
+    left = Math.max(0, Math.floor(screen.availWidth - width - 8));
+    top = 48;
+  }
+  return {
+    url,
+    type: "popup" as const,
+    width,
+    height,
+    focused: true,
+    ...(left != null && top != null ? { left, top } : {}),
+  };
+}
+
+/** Stays open while a passkey prompt is showing. The toolbar dropdown does not. */
+export async function openStableExtensionWindow(hashPath: string): Promise<void> {
+  const path = hashPath.startsWith("#")
+    ? hashPath
+    : hashPath.startsWith("/")
+      ? `#${hashPath}`
+      : `#/${hashPath}`;
+  const url = `${browser.runtime.getURL("index.html")}${path}`;
+  const createOpts = await toolbarCornerCreateOptions(url);
+  let winId: number | undefined;
   try {
     const win = await browser.windows.create(createOpts);
+    winId = win?.id;
+  } catch (err) {
+    console.warn("[warthog] passkey window create failed:", err);
+  }
+  if (winId == null) {
+    throw new Error("Could not open the passkey window");
+  }
+  if (createOpts.left != null && createOpts.top != null) {
+    try {
+      await browser.windows.update(winId, {
+        left: createOpts.left,
+        top: createOpts.top,
+        width: createOpts.width,
+        height: createOpts.height,
+        focused: true,
+      });
+    } catch {
+      // The window exists; position is best-effort.
+    }
+  }
+}
+
+export async function openWalletPopupWindow(): Promise<ReopenResult> {
+  const homeUrl = getWalletHomeUrl();
+  const createOpts = await centeredPopupCreateOptions(homeUrl);
+
+  // 1) webextension-polyfill. The manifest declares "windows" so Chrome
+  // honors width, height, left, and top. Without it the popup opens at the
+  // top-left corner at a default size and the card is clipped.
+  try {
+    const win = await browser.windows.create(createOpts);
+    if (win?.id != null && createOpts.left != null && createOpts.top != null) {
+      try {
+        await browser.windows.update(win.id, {
+          left: createOpts.left,
+          top: createOpts.top,
+          width: createOpts.width,
+          height: createOpts.height,
+          focused: true,
+        });
+      } catch {
+        // create already succeeded
+      }
+    }
     if (win && (win.id != null || win.tabs?.length)) {
       return { ok: true, mode: "window" };
     }
@@ -216,7 +354,15 @@ export async function openWalletPopupWindow(): Promise<ReopenResult> {
 
   // 3) window.open as popup features
   try {
-    const features = "popup=yes,width=420,height=660,left=80,top=80";
+    const left =
+      typeof screen !== "undefined"
+        ? Math.max(0, Math.floor((screen.availWidth - 440) / 2))
+        : 80;
+    const top =
+      typeof screen !== "undefined"
+        ? Math.max(0, Math.floor((screen.availHeight - 680) / 2))
+        : 80;
+    const features = `popup=yes,width=440,height=680,left=${left},top=${top}`;
     const opened = window.open(homeUrl, "warthog_wallet", features);
     if (opened) {
       try {

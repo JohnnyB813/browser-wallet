@@ -16,6 +16,7 @@ import {
   HDWallet,
   TransactionJson,
 } from 'warthog-ts';
+import { ledgerWartSubmitJson, signWartTransferOnLedger } from '../ledger/warthogApp';
 
 interface ApprovalPageProps {
   onApproved: () => void;
@@ -26,6 +27,7 @@ function ApprovalPage({ onApproved }: ApprovalPageProps) {
   const urlSearchParams = new URLSearchParams(location.search);
   const {
     password,
+    ledgerAccount,
     selectedWalletIndex,
     selectedNodeIndex,
     walletList,
@@ -54,7 +56,7 @@ const getAccountFromIndex = (index: number) => {
 
   const handleApprove = async () => {
     console.log('handleApprove called, action:', action, 'to:', to);
-    if (confirmPassword !== password) {
+    if (!ledgerAccount && confirmPassword !== password) {
       setError('Incorrect password');
       return;
     }
@@ -76,7 +78,6 @@ const getAccountFromIndex = (index: number) => {
         return;
       }
 
-      const account = getAccountFromIndex(selectedWalletIndex);
       const toAddr = Address.fromHex(to);
       if (!toAddr) {
         throw new Error('Invalid recipient address');
@@ -99,8 +100,23 @@ const getAccountFromIndex = (index: number) => {
         throw new Error('Invalid amount');
       }
 
-      const tx = context.transferWart(account, toAddr, wartParsed);
-      const txHash = await submitTransaction(nodeList, selectedNodeIndex, tx as TransactionJson);
+      const tx = ledgerAccount
+        ? await signWartTransferOnLedger(ledgerAccount, {
+            pinHash: context.chainPin.pinHash,
+            pinHeight: context.chainPin.pinHeight,
+            nonceId: nonceId.value,
+            feeE8: fee.E8,
+            toAddress: toAddr.hex,
+            amountE8: wartParsed.E8,
+          })
+        : context.transferWart(getAccountFromIndex(selectedWalletIndex), toAddr, wartParsed);
+      const txHash = await submitTransaction(
+        nodeList,
+        selectedNodeIndex,
+        ledgerAccount
+          ? ledgerWartSubmitJson(tx as TransactionJson, nodeList[selectedNodeIndex])
+          : (tx as TransactionJson),
+      );
 
       await browser.runtime.sendMessage({
         action: 'approvalResult',
@@ -237,7 +253,7 @@ const getAccountFromIndex = (index: number) => {
                   setConfirmPassword(e.target.value);
                   setError('');
                 }}
-                className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 pr-10 text-white focus:outline-none focus:border-primary"
+                className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 pr-10 text-white focus:outline-hidden focus:border-primary"
                 placeholder="Enter your password"
               />
               <button

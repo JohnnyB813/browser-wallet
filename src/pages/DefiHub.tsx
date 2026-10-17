@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
-import { isDefiNode } from "../utils/nodes";
+import { defiSubmitHold, isDefiNode } from "../utils/nodes";
 import { DEFAULT_TX_FEE } from "../config/network";
 import { fetchBalanceAndPin } from "../utils/warthogNode";
 import { fetchWartUsdPrice } from "../utils/wartPrice";
@@ -61,6 +61,7 @@ import {
   isWebAuthnAvailable,
   inspectWalletBlob,
 } from "../utils/passkeyWallet";
+import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
 import { loadNamedWalletEncrypted } from "../utils/warthogWalletCrypto";
 
@@ -139,11 +140,13 @@ function DefiHub() {
     selectedNodeIndex,
     signingUnlocked,
     enablePasskeyOnCurrentWallet,
+    ledgerAccount,
   } = useWallet();
 
   const nodeUrl =
     selectedNodeUrl ||
     (nodeList.length > 0 ? nodeList[selectedNodeIndex] : "");
+  const submitHold = defiSubmitHold(nodeUrl, Boolean(ledgerAccount));
 
   const [tab, setTab] = useState<MainTab>("overview");
   const [status, setStatus] = useState<string | null>(null);
@@ -336,6 +339,7 @@ function DefiHub() {
         await refreshPasskeyStatus();
       }
     } catch (e) {
+      if (isPasskeyHandedOff(e)) return;
       setError(e instanceof Error ? e.message : "Could not enable passkey");
     } finally {
       clearPasskeyWaiting(setAwaitingPasskey, setPasskeyBusy);
@@ -618,9 +622,9 @@ function DefiHub() {
       <section className="defi-hero">
         <div className="defi-hero-body">
           {name ? (
-            <div className="text-[10px] text-[var(--defi-muted)] mb-1.5">
+            <div className="text-[10px] text-(--defi-muted) mb-1.5">
               Saved as{" "}
-              <span className="text-[var(--defi-gold)] font-mono">{name}</span>
+              <span className="text-(--defi-gold) font-mono">{name}</span>
             </div>
           ) : null}
           <div className="defi-hero-top">
@@ -737,7 +741,7 @@ function DefiHub() {
       {/* ════════ HISTORY — indexer rich cards ════════ */}
       {tab === "history" && (
         <section className="defi-section">
-          <div className="defi-section-body !pt-2">
+          <div className="defi-section-body pt-2!">
             <TransactionHistoryPanel
               wallet={wallet}
               nodeUrl={nodeUrl}
@@ -777,6 +781,7 @@ function DefiHub() {
               setDexDecimals(String(decimals));
             }}
             initialMode={dexInitialMode}
+            inactiveReason={submitHold}
           />
 
           {/* Your Assets — collapsible bar (wartbunker / mobile overview) */}
@@ -1642,8 +1647,12 @@ function DefiHub() {
                 <button
                   type="button"
                   className="defi-btn-primary"
-                  disabled={busy}
-                  onClick={() =>
+                  disabled={busy || Boolean(submitHold)}
+                  onClick={() => {
+                    if (submitHold) {
+                      setError(submitHold);
+                      return;
+                    }
                     run(async () => {
                       if (!wallet || !nodeUrl) return;
                       const decRaw = parseInt(createDecimals, 10);
@@ -1657,8 +1666,8 @@ function DefiHub() {
                       setStatus(`Created · ${r.txHash || "ok"}`);
                       setCreateName("");
                       setCreateSupply("");
-                    })
-                  }
+                    });
+                  }}
                 >
                   Create asset
                 </button>

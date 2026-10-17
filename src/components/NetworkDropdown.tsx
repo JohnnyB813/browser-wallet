@@ -56,7 +56,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
                   <input
                     type="number"
                     value={amount}
-                    className="block w-[110px] mr-[3px] no-spinner border-none bg-transparent outline-none text-right"
+                    className="block w-[110px] mr-[3px] no-spinner border-none bg-transparent outline-hidden text-right"
                     onChange={(e) => setAmount(parseFloat(e.target.value))}
                   />{" "}
                   {selectedNetwork?.name}
@@ -68,7 +68,7 @@ const NetworkDropdown: React.FC<NetworkDropdownProps> = ({
                   <input
                     type="number"
                     value={amount}
-                    className="block w-[110px] mr-[3px] no-spinner border-none bg-transparent outline-none text-right"
+                    className="block w-[110px] mr-[3px] no-spinner border-none bg-transparent outline-hidden text-right"
                     onChange={(e) => setAmount(parseFloat(e.target.value))}
                   />{" "}
                   {selectedNetwork?.name}

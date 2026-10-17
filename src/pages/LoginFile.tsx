@@ -136,7 +136,7 @@ function LoginFile() {
             Encrypted wallet data
           </label>
           <textarea
-            className="w-full min-h-[110px] bg-black/40 text-white text-xs font-mono border border-primary/25 rounded-lg px-3 py-2 focus:outline-none focus:border-primary resize-y"
+            className="w-full min-h-[110px] bg-black/40 text-white text-xs font-mono border border-primary/25 rounded-lg px-3 py-2 focus:outline-hidden focus:border-primary resize-y"
             placeholder="Paste the full contents of warthog_wallet.txt here…"
             value={encryptedText}
             onChange={(e) => {
@@ -175,7 +175,7 @@ function LoginFile() {
             type="text"
             value={walletLabel}
             onChange={(e) => setWalletLabel(e.target.value)}
-            className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary text-sm"
+            className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-hidden focus:border-primary text-sm"
             placeholder="My wallet"
           />
         </div>
@@ -189,7 +189,7 @@ function LoginFile() {
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !busy && handleLogin()}
               placeholder="Password used to encrypt the file"
-              className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 pr-16 focus:outline-none focus:border-primary"
+              className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 pr-16 focus:outline-hidden focus:border-primary"
               autoComplete="current-password"
             />
             <button
@@ -202,7 +202,7 @@ function LoginFile() {
           </div>
         </div>
 
-        {error && <p className="text-red-400 text-sm break-words">{error}</p>}
+        {error && <p className="text-red-400 text-sm wrap-break-word">{error}</p>}
       </div>
 
       <div className="mt-6 w-full pb-4">

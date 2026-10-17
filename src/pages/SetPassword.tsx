@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
 import { IoEye, IoEyeOff } from "react-icons/io5";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
+import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
 
 const SetPassword: React.FC = () => {
@@ -85,6 +86,7 @@ const SetPassword: React.FC = () => {
       }
       navigate("/home");
     } catch (e) {
+      if (isPasskeyHandedOff(e)) return;
       setErrors({
         save: e instanceof Error ? e.message : "Failed to save wallet",
       });
@@ -104,15 +106,15 @@ const SetPassword: React.FC = () => {
           Secure your wallet
         </h1>
         <p className="text-center text-white/60 text-sm font-medium leading-tight px-2">
-          Set unlock options for next time. Passkeys work with password managers
-          or this device (Face ID / fingerprint).
+          Set unlock options for next time. Passkeys work with Google Password
+          Manager or this device (Face ID / fingerprint).
         </p>
       </div>
       <div className="mt-5 grid gap-5">
         <label className="flex items-start gap-2 cursor-pointer">
           <input
             type="checkbox"
-            className="mt-1 accent-[#fdb913]"
+            className="mt-1 accent-primary"
             checked={saveNamed}
             onChange={(e) => setSaveNamed(e.target.checked)}
           />
@@ -137,7 +139,7 @@ const SetPassword: React.FC = () => {
           <label className="flex items-start gap-2 cursor-pointer">
             <input
               type="checkbox"
-              className="mt-1 accent-[#fdb913]"
+              className="mt-1 accent-primary"
               checked={enablePasskey}
               onChange={(e) => {
                 setEnablePasskey(e.target.checked);
@@ -154,7 +156,7 @@ const SetPassword: React.FC = () => {
           <label className="flex items-start gap-2 cursor-pointer">
             <input
               type="checkbox"
-              className="mt-1 accent-[#fdb913]"
+              className="mt-1 accent-primary"
               checked={require2fa}
               onChange={(e) => setRequire2fa(e.target.checked)}
             />

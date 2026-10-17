@@ -11,12 +11,16 @@
   },
   "action": {
     "default_title": "WARTHOG NETWORK",
+    "default_popup": "index.html",
     "default_icon": {
       "16": "/logo-16.png",
       "32": "/logo-32.png"
     }
   },
-  "permissions": ["tabs", "storage", "scripting", "activeTab", "cookies"],
+  "side_panel": {
+    "default_path": "index.html?sidepanel=1"
+  },
+  "permissions": ["tabs", "storage", "scripting", "activeTab", "cookies", "windows", "sidePanel"],
   "host_permissions": [
     "https://warthognode.duckdns.org/*",
     "https://warthog-defitestnet.duckdns.org/*",
@@ -39,7 +43,6 @@
     }
   },
   "background": {
-    "scripts": ["background.js"],
     "service_worker": "background.js"
   },
   "content_scripts": [

@@ -47,7 +47,7 @@ function ImportPrivateKey() {
                 setPrivateKey(e.target.value.replace(/\s/g, ""))
               }
               placeholder="Enter 64-character hex private key"
-              className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 pr-16 focus:outline-none focus:border-primary font-mono text-sm"
+              className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 pr-16 focus:outline-hidden focus:border-primary font-mono text-sm"
               autoComplete="off"
               spellCheck={false}
             />

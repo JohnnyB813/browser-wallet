@@ -983,6 +983,31 @@ select.defi-input {
   z-index: 0;
   overflow: hidden;
 }
+/* Home token row. Same card as the extension-update balance hero.
+   overflow stays visible so the token menu can open. A 48px radius
+   on this short row clips the label and the token button. */
+.home-wallet-card {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.85rem 0.9rem;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  position: relative;
+  overflow: visible;
+}
+.home-token-menu {
+  flex: 1 1 100%;
+  background: #09090b;
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  overflow: hidden;
+}
 .main-balance-hero::before {
   content: "";
   position: absolute;

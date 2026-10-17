@@ -360,10 +360,6 @@ export async function createPasskeyCredential({
   const name = String(displayName || 'Warthog wallet').slice(0, 64);
   const salt = prfSalt || randomBytes(32);
 
-  const prfExt = {
-    eval: { first: salt },
-  };
-
   // Default: no authenticatorAttachment → browser can offer password manager
   // (1Password, Bitwarden, Google Password Manager, iCloud Keychain) or device passkey.
   // preferFingerprint=true forces platform only (Face ID / Touch ID / Windows Hello).
@@ -376,6 +372,11 @@ export async function createPasskeyCredential({
     authenticatorSelection.authenticatorAttachment = 'platform';
   }
 
+  // Do not send the PRF / hmac-secret extension on create. Proton Pass on a
+  // phone aborts the whole registration ("Can't save passkey") when the
+  // request asks for it. A normal discoverable passkey still saves. Encryption
+  // falls back to a key kept in this browser; a later assertion can upgrade
+  // to PRF when the authenticator actually returns one.
   const basePublicKey = {
     challenge,
     rp: {
@@ -384,7 +385,7 @@ export async function createPasskeyCredential({
     },
     user: {
       id: userId,
-      name: `${name}@warthog`,
+      name,
       displayName: name,
     },
     pubKeyCredParams: [
@@ -394,9 +395,6 @@ export async function createPasskeyCredential({
     authenticatorSelection,
     timeout: 120_000,
     attestation: 'none',
-    extensions: {
-      prf: prfExt,
-    },
   };
 
   let credential;
@@ -405,7 +403,9 @@ export async function createPasskeyCredential({
   } catch (err) {
     const msg = err?.message || String(err);
     if (/NotAllowedError|timed out|cancel|abort/i.test(err?.name || msg)) {
-      throw new Error('Passkey setup cancelled');
+      throw new Error(
+        "Passkey setup cancelled. If your phone said it can't save the passkey, choose this device or a password. Proton Pass usually will not store a passkey for a browser extension.",
+      );
     }
     // If platform-only failed, retry open so password managers / security keys work
     if (preferFingerprint) {

@@ -32,7 +32,7 @@ const NodeCard = ({
     >
       <div className="flex items-center gap-3">
         <div
-          className={`w-2 h-2 rounded-full flex-shrink-0 ${
+          className={`w-2 h-2 rounded-full shrink-0 ${
             status === "online"
               ? "bg-green-400"
               : status === "offline"
@@ -54,7 +54,7 @@ const NodeCard = ({
             e.stopPropagation();
             removeNode(id);
           }}
-          className="p-1.5 rounded hover:bg-red-500/20 transition-colors"
+          className="p-1.5 rounded-sm hover:bg-red-500/20 transition-colors"
         >
           <IoMdTrash className="w-4 h-4 cursor-pointer text-white/40 hover:text-red-400" />
         </div>

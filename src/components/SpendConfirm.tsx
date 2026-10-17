@@ -19,7 +19,7 @@ export default function SpendConfirm({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/70 p-3">
+    <div className="fixed inset-0 z-80 flex items-end sm:items-center justify-center bg-black/70 p-3">
       <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-4">
         <h2 className="text-white text-base font-semibold mb-3">{title}</h2>
         <dl className="space-y-2 mb-4">

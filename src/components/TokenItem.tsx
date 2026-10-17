@@ -37,7 +37,7 @@ const TokenItem: React.FC<TokenItemProps> = ({
             available={free}
             locked={locked}
             total={totalVal}
-            className="!text-left"
+            className="text-left!"
           />
         </div>
       </div>

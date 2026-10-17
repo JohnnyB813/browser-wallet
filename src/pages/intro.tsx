@@ -43,7 +43,7 @@ const Info: React.FC = () => {
           <select
             value={wordCount}
             onChange={(e) => setWordCount(Number(e.target.value) as WordCount)}
-            className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary"
+            className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-hidden focus:border-primary"
           >
             <option value={12}>12 words</option>
             <option value={24}>24 words</option>
@@ -55,7 +55,7 @@ const Info: React.FC = () => {
           <select
             value={pathType}
             onChange={(e) => setPathType(e.target.value as PathType)}
-            className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-none focus:border-primary"
+            className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-4 py-2 mt-1 focus:outline-hidden focus:border-primary"
           >
             <option value="hardened">Hardened (m/44&apos;/2070&apos;/0&apos;/0/0)</option>
             <option value="non-hardened">

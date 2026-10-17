@@ -3,8 +3,10 @@ import { FaChevronDown } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import Header from "../components/Header";
+import DefiNodeGate from "../components/DefiNodeGate";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, addressToSeed } from "../utils";
+import { defiSubmitHold } from "../utils/nodes";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import { Funds, TokenDecimals } from "warthog-ts";
 
@@ -25,6 +27,9 @@ function CreateTokenPage() {
     nameList,
     walletList,
     visibleWalletList,
+    nodeList,
+    selectedNodeIndex,
+    ledgerAccount,
     setSelectedWalletIndex,
     setName,
     setWallet,
@@ -109,8 +114,13 @@ function CreateTokenPage() {
 
   const isFormValid =
     tokenName && !tokenNameError && totalSupply && !totalSupplyError;
+  const submitHold = defiSubmitHold(
+    nodeList[selectedNodeIndex],
+    Boolean(ledgerAccount),
+  );
 
   return (
+    <DefiNodeGate title="Create Token">
     <div className="min-h-screen container relative">
       <Header title="Create Token" />
       <div className="mt-4">
@@ -156,7 +166,7 @@ function CreateTokenPage() {
         <p className="text-white text-sm">Token Name (Max 5 chars)</p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">
           <input
-            className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none uppercase"
+            className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden uppercase"
             placeholder="e.g. MYCOIN"
             value={tokenName}
             onChange={handleTokenNameChange}
@@ -173,7 +183,7 @@ function CreateTokenPage() {
         <div className="flex gap-3">
           <div className="flex-1 flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
             <input
-              className="flex-1 bg-transparent text-white text-sm placeholder-gray-500 outline-none no-spinner"
+              className="flex-1 bg-transparent text-white text-sm placeholder:text-gray-500 outline-hidden no-spinner"
               placeholder="Enter total supply"
               type="number"
               value={totalSupply}
@@ -185,7 +195,7 @@ function CreateTokenPage() {
             <p className="text-white text-sm">Decimals</p>
             <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300/25 backdrop-blur-md">
               <select
-                className="bg-transparent text-white outline-none"
+                className="bg-transparent text-white outline-hidden"
                 value={precision}
                 onChange={handlePrecisionChange}
               >
@@ -208,6 +218,9 @@ function CreateTokenPage() {
       {generalError && (
         <div className="text-red-500 text-sm mt-4">{generalError}</div>
       )}
+      {submitHold && (
+        <p className="text-amber-200/90 text-xs mt-3">{submitHold}</p>
+      )}
       <div className="flex bottom-3 absolute left-0 px-3 w-full gap-3">
         <Button
           variant="outline"
@@ -220,12 +233,13 @@ function CreateTokenPage() {
           variant="primary"
           className="w-full mt-5"
           onClick={handleSubmit}
-          disabled={!isFormValid}
+          disabled={!isFormValid || Boolean(submitHold)}
         >
           Continue
         </Button>
       </div>
     </div>
+    </DefiNodeGate>
   );
 }
 export default CreateTokenPage;

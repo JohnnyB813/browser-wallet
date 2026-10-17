@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
+import DefiNodeGate from "../components/DefiNodeGate";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
 import { createTransactionContext, submitTransaction } from "../utils";
+import { defiSubmitHold } from "../utils/nodes";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
 import {
@@ -37,6 +39,7 @@ function CreateTokenStep2() {
     tmpTokenName,
     tmpTokenAmount,
     tmpPrecision,
+    ledgerAccount,
     visibleWalletList,
     setSelectedWalletIndex,
     setName,
@@ -93,6 +96,8 @@ function CreateTokenStep2() {
     setIsProcessing(true);
     setTransactionStatus("processing");
     try {
+      const hold = defiSubmitHold(nodeList[selectedNodeIndex], Boolean(ledgerAccount));
+      if (hold) throw new Error(hold);
       const nonceId = NonceId.random();
       const account = getAccountFromIndex(selectedWalletIndex);
       const feeInWart = parseFloat(customFee) * 1e8;
@@ -132,6 +137,7 @@ function CreateTokenStep2() {
   };
 
   return (
+    <DefiNodeGate title="Create Token">
     <div className="min-h-screen container relative">
       <Header title="Create Token" />
       <div className="flex flex-col gap-1">
@@ -178,7 +184,7 @@ function CreateTokenStep2() {
         </Button>
       </div>
       {showConfirmation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-[#1A1A1A] rounded-lg p-6 max-w-md w-full border border-primary/25">
             {transactionStatus === "idle" && (
               <>
@@ -209,7 +215,7 @@ function CreateTokenStep2() {
                       min="0"
                       value={customFee}
                       onChange={(e) => setCustomFee(e.target.value)}
-                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden focus:border-primary"
                       placeholder="Enter fee"
                     />
                   </div>
@@ -229,7 +235,7 @@ function CreateTokenStep2() {
                         setConfirmPassword(e.target.value);
                         setPasswordError("");
                       }}
-                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none"
+                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden"
                       placeholder="Password"
                     />
                     {passwordError && (
@@ -348,6 +354,7 @@ function CreateTokenStep2() {
         </div>
       )}
     </div>
+    </DefiNodeGate>
   );
 }
 export default CreateTokenStep2;

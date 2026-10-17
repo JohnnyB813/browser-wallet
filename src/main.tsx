@@ -6,6 +6,7 @@ import "./index.css";
 import "./styles/defi.css";
 import App from "./App";
 import { WalletProvider } from "./context/WalletContext";
+import { warmDockWindow } from "./ledger/shell";
 import {
   applyExtensionShellClass,
   isCompactShellPreferred,
@@ -21,6 +22,7 @@ import {
 if (isHelperTab()) {
   markHelperTab();
 }
+warmDockWindow();
 // Already logged-in compact shell (file-login success) OR real popup OR full helper tab
 applyExtensionShellClass(isCompactShellPreferred());
 

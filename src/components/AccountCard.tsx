@@ -57,7 +57,7 @@ const AccountCard = ({
           <IoIosCheckmarkCircleOutline className="w-6 h-6 cursor-pointer" />
         )}
       </div>
-      {!isLast && <div className="h-[0px] border border-white/20 my-3" />}
+      {!isLast && <div className="h-0 border border-white/20 my-3" />}
     </>
   );
 };

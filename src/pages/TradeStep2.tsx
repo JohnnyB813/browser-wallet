@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Header from "../components/Header";
+import DefiNodeGate from "../components/DefiNodeGate";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, parsePriceInput, createTransactionContext, submitTransaction } from "../utils";
+import { defiSubmitHold } from "../utils/nodes";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
 import {
@@ -41,6 +43,7 @@ function TradeStep2() {
     tmpLimitPrice,
     tmpPrecision,
     tmpTradeType,
+    ledgerAccount,
     visibleWalletList,
     setSelectedWalletIndex,
     setName,
@@ -115,6 +118,8 @@ function TradeStep2() {
     setTransactionStatus("processing");
 
     try {
+      const hold = defiSubmitHold(nodeList[selectedNodeIndex], Boolean(ledgerAccount));
+      if (hold) throw new Error(hold);
       const nonceId = NonceId.random();
 
       const account = getAccountFromIndex(selectedWalletIndex);
@@ -169,6 +174,7 @@ function TradeStep2() {
   };
 
   return (
+    <DefiNodeGate title="Trade">
     <div className="min-h-screen container relative">
       <Header title={getTradeTitle()} />
 
@@ -231,7 +237,7 @@ function TradeStep2() {
       </div>
 
       {showConfirmation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-[#1A1A1A] rounded-lg p-6 max-w-md w-full border border-primary/25">
             {transactionStatus === "idle" && (
               <>
@@ -275,7 +281,7 @@ function TradeStep2() {
                       min="0"
                       value={customFee}
                       onChange={(e) => setCustomFee(e.target.value)}
-                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden focus:border-primary"
                       placeholder="Enter fee"
                     />
                   </div>
@@ -295,7 +301,7 @@ function TradeStep2() {
                         setConfirmPassword(e.target.value);
                         setPasswordError("");
                       }}
-                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden focus:border-primary"
                       placeholder="Enter your password"
                     />
                     {passwordError && (
@@ -437,6 +443,7 @@ function TradeStep2() {
         </div>
       )}
     </div>
+    </DefiNodeGate>
   );
 }
 

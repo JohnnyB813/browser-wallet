@@ -12,7 +12,9 @@ import {
   inspectNamedBlob,
 } from "../utils/warthogWalletCrypto";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
+import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
+import LedgerWindowSetting from "../components/LedgerWindowSetting";
 
 function IconButton({
   iconSrc,
@@ -59,6 +61,7 @@ function AccountDetails() {
     saveCurrentAsNamedWallet,
     enablePasskeyOnCurrentWallet,
     seedPhrase,
+    ledgerAccount,
   } = useWallet();
   const [copyLabel, setCopyLabel] = useState("Copy");
   const [isEditing, setIsEditing] = useState(false);
@@ -145,6 +148,7 @@ function AccountDetails() {
         await refreshPasskeyStatus();
       }
     } catch (e) {
+      if (isPasskeyHandedOff(e)) return;
       setSaveErr(e instanceof Error ? e.message : "Could not enable passkey");
     } finally {
       clearPasskeyWaiting(setAwaitingPasskey, setPasskeyBusy);
@@ -234,7 +238,7 @@ function AccountDetails() {
                 value={tempName || ""}
                 onChange={(e) => setTempName(e.target.value)}
                 onBlur={() => setIsEditing(false)} // Exit edit mode on blur
-                className="text-xl font-semibold text-white bg-transparent border-b border-white focus:outline-none max-w-28"
+                className="text-xl font-semibold text-white bg-transparent border-b border-white focus:outline-hidden max-w-28"
                 autoFocus
                 placeholder="Your Name"
               />
@@ -285,6 +289,12 @@ function AccountDetails() {
         />
       </div>
 
+      {ledgerAccount ? (
+        <p className="mt-6 px-1 text-white/60 text-sm">
+          This address stays on the Ledger. The pencil changes the name on the
+          login list. The extension keeps no seed or private key for it.
+        </p>
+      ) : (
       <div className="mt-6 px-1 grid gap-2">
         <p className="text-white text-sm font-medium">Save for quick login</p>
         <input
@@ -347,6 +357,7 @@ function AccountDetails() {
         {saveMsg && <p className="text-emerald-400 text-xs">{saveMsg}</p>}
         {saveErr && <p className="text-red-400 text-xs">{saveErr}</p>}
       </div>
+      )}
 
       {awaitingPasskey && (
         <div
@@ -365,11 +376,17 @@ function AccountDetails() {
         </div>
       )}
 
-      <div className="w-full mt-4 px-3 pb-4">
-        <Button className="w-full" onClick={() => navigate("/private-key")}>
-          Show Private Key
-        </Button>
+      <div className="mt-6 px-1">
+        <LedgerWindowSetting />
       </div>
+
+      {!ledgerAccount && (
+        <div className="w-full mt-4 px-3 pb-4">
+          <Button className="w-full" onClick={() => navigate("/private-key")}>
+            Show Private Key
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

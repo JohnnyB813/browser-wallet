@@ -88,7 +88,7 @@ function ManageAccounts() {
       <Header title="Select an Account" />
       <div className="relative w-full">
         <input
-          className="h-14 w-full pl-12 pr-4 py-2 bg-primary/10 rounded-full border border-primary focus:outline-none focus:ring-2 focus:ring-primary"
+          className="h-14 w-full pl-12 pr-4 py-2 bg-primary/10 rounded-full border border-primary focus:outline-hidden focus:ring-2 focus:ring-primary"
           placeholder="Search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -135,8 +135,8 @@ function ManageAccounts() {
 
       {/* Popup Dialog */}
       {isDialogOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-[#1A1A1A] p-4 rounded shadow-lg w-[300px]">
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50">
+          <div className="bg-[#1A1A1A] p-4 rounded-sm shadow-lg w-[300px]">
             <h3 className="text-white text-xl font-semibold mb-4">
               Add new Account
             </h3>
@@ -145,7 +145,7 @@ function ManageAccounts() {
               placeholder="Account Name"
               value={newAccountName}
               onChange={(e) => setNewAccountName(e.target.value)}
-              className="w-full min-w-[150px] bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-none focus:border-primary"
+              className="w-full min-w-[150px] bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden focus:border-primary"
             />
             <div className="flex justify-end mt-4">
               <Button

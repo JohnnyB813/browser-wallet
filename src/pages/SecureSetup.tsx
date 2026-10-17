@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import useWallet from "../hooks/useWallet";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
+import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
 import { encryptWallet } from "../utils/warthogWalletCrypto";
 
@@ -151,6 +152,7 @@ function SecureSetup() {
       });
       navigate("/home", { replace: true });
     } catch (e) {
+      if (isPasskeyHandedOff(e)) return;
       const msg = e instanceof Error ? e.message : String(e);
       setError(
         /cancel|not allowed|abort/i.test(msg)
@@ -272,7 +274,7 @@ function SecureSetup() {
               <label className="flex items-start gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="mt-1 accent-[#fdb913]"
+                  className="mt-1 accent-primary"
                   checked={enablePasskey}
                   onChange={(e) => {
                     setEnablePasskey(e.target.checked);
@@ -281,10 +283,15 @@ function SecureSetup() {
                 />
                 <span className="text-white text-sm">Enable passkey unlock</span>
               </label>
+              <p className="text-white/40 text-[11px] leading-relaxed -mt-1 pl-6">
+                Google Password Manager or this device can save it. Proton Pass
+                cannot store a passkey for a browser extension. After the
+                prompt, the wallet returns to the toolbar.
+              </p>
               <label className="flex items-start gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="mt-1 accent-[#fdb913]"
+                  className="mt-1 accent-primary"
                   checked={require2fa}
                   onChange={(e) => {
                     setRequire2fa(e.target.checked);
@@ -385,7 +392,7 @@ function SecureSetup() {
               <p className="text-amber-400 text-xs font-medium mb-1">
                 SEED PHRASE
               </p>
-              <p className="text-white text-sm break-words select-text">
+              <p className="text-white text-sm wrap-break-word select-text">
                 {seedPhrase}
               </p>
             </div>
@@ -415,7 +422,7 @@ function SecureSetup() {
           <label className="flex items-start gap-2 cursor-pointer mt-1">
             <input
               type="checkbox"
-              className="mt-1 accent-[#fdb913]"
+              className="mt-1 accent-primary"
               checked={consentToClose}
               onChange={(e) => setConsentToClose(e.target.checked)}
             />

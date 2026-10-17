@@ -17,6 +17,7 @@ class WarthogBackground {
     this.ready = this.restoreConnections();
     this.setupMessageListener();
     this.setupWindowListeners();
+    this.applyLedgerWindow();
   }
 
   // Chrome runs MV3 background code as a service worker, which it terminates
@@ -41,11 +42,40 @@ class WarthogBackground {
       .catch((error) => console.error('Failed to persist connections:', error));
   }
 
+  async applyLedgerWindow() {
+    let mode = 'dropdown';
+    try {
+      const stored = await browser.storage.local.get('warthogLedgerWindow');
+      const value = stored && stored.warthogLedgerWindow;
+      if (value === 'sidepanel' || value === 'tab') mode = 'sidepanel';
+    } catch (err) {
+      console.warn('ledger window read failed', err);
+    }
+    const chromeApi = globalThis.chrome;
+    const sidePanel = chromeApi && chromeApi.sidePanel;
+    const action = chromeApi && chromeApi.action;
+    try {
+      if (mode === 'sidepanel') {
+        if (action && action.setPopup) await action.setPopup({ popup: '' });
+        if (sidePanel && sidePanel.setOptions) {
+          await sidePanel.setOptions({ path: 'index.html?sidepanel=1', enabled: true });
+        }
+        if (sidePanel && sidePanel.setPanelBehavior) {
+          await sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+        }
+        return;
+      }
+      if (sidePanel && sidePanel.setPanelBehavior) {
+        await sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+      }
+      if (action && action.setPopup) await action.setPopup({ popup: 'index.html' });
+    } catch (err) {
+      console.warn('ledger window apply failed', err);
+    }
+  }
+
   setupWindowListeners() {
-    browser.action.onClicked.addListener(async (tab) => {
-      console.log('Extension icon clicked');
-      await this.focusOrCreatePopup('index.html');
-    });
+    // default_popup owns the toolbar click. Do not also listen for onClicked.
 
     browser.windows.onRemoved.addListener((windowId) => {
       if (windowId === this.approvalWindowId) {
@@ -99,6 +129,20 @@ class WarthogBackground {
         return;
       }
 
+      if (message.action === 'reopenToolbarPopup') {
+        sendResponse({ success: true });
+        this.reopenToolbarAfter(message.windowId);
+        return;
+      }
+
+      if (message.action === 'showToolbarDropdown') {
+        return this.showToolbarDropdown();
+      }
+
+      if (message.action === 'extensionFetch') {
+        return this.extensionFetch(message, sender);
+      }
+
       if (message.action) {
         this.handleMessage(message, origin, tabId);
       }
@@ -106,6 +150,197 @@ class WarthogBackground {
       sendResponse({ success: true });
       return true;
     });
+  }
+
+  extensionFetch(message, sender) {
+    const senderUrl = (sender && sender.url) || '';
+    const selfPrefix = browser.runtime.getURL('');
+    if (!senderUrl.startsWith(selfPrefix)) {
+      return Promise.resolve({ ok: false, error: 'Blocked' });
+    }
+    let target;
+    try {
+      target = new URL(message.url);
+    } catch (err) {
+      return Promise.resolve({ ok: false, error: 'Bad URL' });
+    }
+    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+      return Promise.resolve({ ok: false, error: 'Blocked' });
+    }
+    const headers = message.headers && typeof message.headers === 'object' ? message.headers : {};
+    const method = typeof message.method === 'string' ? message.method : 'GET';
+    return fetch(message.url, {
+      method,
+      headers,
+      cache: 'no-store',
+      body: typeof message.body === 'string' ? message.body : undefined,
+    })
+      .then(async (response) => {
+        const text = await response.text();
+        return { ok: response.ok, status: response.status, text };
+      })
+      .catch((err) => ({
+        ok: false,
+        error: String(err && err.message ? err.message : err),
+      }));
+  }
+
+  reopenToolbarAfter(windowId) {
+    if (this.toolbarReopenPending) return;
+    this.toolbarReopenPending = true;
+    let done = false;
+    const open = () => {
+      if (done) return;
+      done = true;
+      browser.windows.onRemoved.removeListener(onRemoved);
+      clearTimeout(this.toolbarReopenTimer);
+      this.openToolbarDropdown()
+        .catch((err) => {
+          const msg = String(err && err.message ? err.message : err);
+          console.warn('toolbar popup reopen failed:', msg);
+          if (/already/i.test(msg)) return;
+          return this.openToolbarCornerFallback();
+        })
+        .finally(() => {
+          this.toolbarReopenPending = false;
+        });
+    };
+    const onRemoved = (removedId) => {
+      if (removedId !== windowId) return;
+      setTimeout(open, 60);
+    };
+    if (typeof windowId === 'number') {
+      browser.windows.onRemoved.addListener(onRemoved);
+    }
+    this.toolbarReopenTimer = setTimeout(open, 500);
+  }
+
+  async showToolbarDropdown() {
+    if (this.toolbarDropdownPending) return { ok: true };
+    this.toolbarDropdownPending = true;
+    const chromeApi = globalThis.chrome;
+    try {
+      await this.armLedgerPopupView();
+      try {
+        await browser.storage.local.set({ warthogLedgerWindow: 'dropdown' });
+      } catch (err) {
+        console.warn('dropdown mode save failed', err);
+      }
+      try {
+        if (chromeApi && chromeApi.sidePanel && chromeApi.sidePanel.setPanelBehavior) {
+          await chromeApi.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+        }
+        if (chromeApi && chromeApi.action && chromeApi.action.setPopup) {
+          await chromeApi.action.setPopup({ popup: 'index.html' });
+        }
+      } catch (err) {
+        console.warn('dropdown mode apply failed', err);
+      }
+      // The side panel closes itself on this click. Wait until that document
+      // is gone. Opening sooner lets the close swallow the menu.
+      await new Promise((resolve) => setTimeout(resolve, 280));
+      let opened = false;
+      try {
+        await this.openToolbarDropdown();
+        opened = true;
+      } catch (err) {
+        const msg = String(err && err.message ? err.message : err);
+        if (/already/i.test(msg)) return { ok: true };
+        console.warn('show toolbar dropdown failed:', msg);
+      }
+      if (opened) {
+        const visible = await this.waitForExtensionPopup();
+        if (visible !== false) return { ok: true };
+        console.warn('openPopup resolved with no popup view');
+      }
+      await this.armLedgerPopupView();
+      await this.openToolbarCornerFallback();
+      return { ok: true };
+    } finally {
+      this.toolbarDropdownPending = false;
+    }
+  }
+
+  async armLedgerPopupView() {
+    try {
+      const chromeApi = globalThis.chrome;
+      const session = chromeApi && chromeApi.storage && chromeApi.storage.session;
+      if (session && session.set) {
+        await session.set({ warthogLedgerPopupArm: Date.now() });
+      }
+    } catch (err) {
+      console.warn('ledger popup arm failed', err);
+    }
+  }
+
+  /** true when a popup view exists, false when it does not, null if unknown. */
+  async waitForExtensionPopup() {
+    const runtime = globalThis.chrome && globalThis.chrome.runtime;
+    if (!runtime || typeof runtime.getContexts !== 'function') return null;
+    for (let i = 0; i < 5; i++) {
+      try {
+        const contexts = await runtime.getContexts({ contextTypes: ['POPUP'] });
+        if (Array.isArray(contexts) && contexts.length > 0) return true;
+      } catch {
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    return false;
+  }
+
+  async openToolbarDropdown() {
+    const chromeAction = globalThis.chrome && globalThis.chrome.action;
+    if (chromeAction && chromeAction.openPopup) {
+      await chromeAction.openPopup();
+      return;
+    }
+    if (browser.action && browser.action.openPopup) {
+      await browser.action.openPopup();
+      return;
+    }
+    throw new Error('openPopup unavailable');
+  }
+
+  async openToolbarCornerFallback() {
+    const width = 440;
+    const height = 680;
+    let left;
+    let top;
+    try {
+      const all = await browser.windows.getAll({ windowTypes: ['normal'] });
+      const base =
+        all.find((w) => w.focused && (w.width || 0) > 500) ||
+        [...all].sort((a, b) => (b.width || 0) - (a.width || 0))[0];
+      if (base && typeof base.width === 'number' && typeof base.left === 'number') {
+        left = Math.max(0, Math.round(base.left + base.width - width - 8));
+        top = Math.max(0, Math.round((base.top || 0) + 56));
+      }
+    } catch {
+      // ignore
+    }
+    const url = browser.runtime.getURL('index.html') + '#/home';
+    const created = await browser.windows.create({
+      url,
+      type: 'popup',
+      width,
+      height,
+      focused: true,
+      ...(left != null && top != null ? { left, top } : {}),
+    });
+    if (created && created.id != null && left != null && top != null) {
+      try {
+        await browser.windows.update(created.id, {
+          left,
+          top,
+          width,
+          height,
+          focused: true,
+        });
+      } catch {
+        // position is best-effort
+      }
+    }
   }
 
   extractOrigin(url) {
@@ -147,6 +382,34 @@ class WarthogBackground {
     return null;
   }
 
+  async popupBounds(width, height) {
+    // Service workers have no `screen`. Center on the browser window instead
+    // of letting Chrome drop the popup in the top-left corner.
+    let anchor = null;
+    try {
+      const focused = await browser.windows.getLastFocused({ windowTypes: ['normal'] });
+      if (focused && focused.type === 'normal' && focused.width > 500) anchor = focused;
+    } catch (err) {
+      console.warn('Could not read the focused window for centering:', err);
+    }
+    if (!anchor) {
+      try {
+        const all = await browser.windows.getAll({ windowTypes: ['normal'] });
+        anchor = (all || [])
+          .filter((w) => w.type === 'normal' && typeof w.width === 'number')
+          .sort((a, b) => (b.width || 0) - (a.width || 0))[0] || null;
+      } catch (err) {
+        console.warn('Could not list windows for centering:', err);
+      }
+    }
+    const bounds = { width, height };
+    if (anchor && typeof anchor.left === 'number' && typeof anchor.width === 'number') {
+      bounds.left = Math.max(0, Math.round(anchor.left + (anchor.width - width) / 2));
+      bounds.top = Math.max(0, Math.round((anchor.top || 0) + ((anchor.height || height) - height) / 2));
+    }
+    return bounds;
+  }
+
   async focusOrCreatePopup(url) {
     console.log('focusOrCreatePopup called with url:', url, 'pendingPopupPromise:', !!this.pendingPopupPromise);
     if (this.pendingPopupPromise) {
@@ -162,28 +425,34 @@ class WarthogBackground {
       return existing;
     }
     console.log('No existing popup, creating new');
-    const width = 410;
-    const height = 600;
-    // Under Chrome MV3 this file runs as a service worker, where neither
-    // `window` nor `screen` exists — reading them unconditionally threw a
-    // ReferenceError on the first approval request. Center the popup only when
-    // a screen global is actually available; otherwise let the OS place it.
-    const position =
-      typeof screen !== 'undefined' && screen.availWidth
-        ? {
-            top: Math.floor((screen.availHeight - height) / 2),
-            left: Math.floor((screen.availWidth - width) / 2),
-          }
-        : {};
+    // Outer size is a bit larger than the 410×600 card so the window frame
+    // does not eat the content area and clip the right edge.
+    const width = 440;
+    const height = 680;
+    const bounds = await this.popupBounds(width, height);
 
     this.pendingPopupPromise = browser.windows.create({
       url,
       type: 'popup',
-      width,
-      height,
-      ...position,
-    }).then((win) => {
+      focused: true,
+      ...bounds,
+    }).then(async (win) => {
       this.approvalWindowId = win?.id || null;
+      // Linux Chrome often ignores left/top on create and parks the window
+      // at 0,0. A follow-up update is what actually centers it.
+      if (win?.id != null && bounds.left != null) {
+        try {
+          await browser.windows.update(win.id, {
+            left: bounds.left,
+            top: bounds.top,
+            width,
+            height,
+            focused: true,
+          });
+        } catch (err) {
+          console.warn('Could not center popup window:', err);
+        }
+      }
       return win;
     }).finally(() => {
       this.pendingPopupPromise = null;

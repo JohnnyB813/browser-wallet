@@ -14,7 +14,7 @@ const WalletInfo: React.FC<WalletInfoProps> = ({ wallet, onCopy }) => {
   return (
     <div className="flex-col gap-2.5 py-4 px-2 rounded-[10px] border border-[#e0e0e0] w-full">
       <div className="flex items-center gap-3">
-        <div className="w-[27px] h-[27px] bg-gradient-to-br from-[#fdb913] to-[#9f750d] rounded-full" />
+        <div className="w-[27px] h-[27px] bg-linear-to-br from-primary to-[#9f750d] rounded-full" />
         <h2
           className="text-white text-lg font-normal cursor-pointer"
           onClick={onCopy}

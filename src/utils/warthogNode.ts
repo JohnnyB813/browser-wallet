@@ -7,7 +7,7 @@ import secp256k1 from "secp256k1";
 import { DEFAULT_TX_FEE } from "../config/network";
 import { isDefiNode, isMainnetNode, normalizeNodeUrl } from "./nodes";
 import { formatBalanceBreakdown } from "./balanceBreakdown";
-import { ensureHostPermission, hostPermissionError } from "./hostAccess";
+import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 
 export type BalanceResult = {
   /** Total holdings (available + locked). Kept for backward compatibility. */
@@ -39,12 +39,10 @@ async function nodeGet<T = unknown>(
     throw new Error(hostPermissionError(base));
   }
   const url = `${base}/${path.replace(/^\//, "")}`;
-  const response = await fetch(url, {
+  const response = await privilegedFetch(url, {
     method: "GET",
-    headers: {
-      Accept: "application/json",
-      "Cache-Control": "no-cache",
-    },
+    cache: "no-store",
+    headers: { Accept: "application/json" },
   });
   if (!response.ok) {
     throw new Error(`Node HTTP ${response.status}`);
@@ -67,7 +65,7 @@ async function nodePost<T = unknown>(
     throw new Error(hostPermissionError(base));
   }
   const url = `${base}/${path.replace(/^\//, "")}`;
-  const response = await fetch(url, {
+  const response = await privilegedFetch(url, {
     method: "POST",
     headers: {
       Accept: "application/json",

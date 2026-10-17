@@ -32,6 +32,12 @@ import CancelOrderStep2 from "./pages/CancelOrderStep2";
 import CreateTokenPage from "./pages/CreateTokenPage";
 import CreateTokenStep2 from "./pages/CreateTokenStep2";
 import DefiHub from "./pages/DefiHub";
+import SwapPage from "./pages/SwapPage";
+import ActivityDetailPage from "./pages/ActivityDetailPage";
+import PasskeyHost from "./pages/PasskeyHost";
+import LedgerHost from "./pages/LedgerHost";
+import { takeLedgerPanelRoute } from "./ledger/session";
+import { isExtensionSidePanel } from "./ledger/shell";
 
 const App: React.FC = () => {
   const {
@@ -39,10 +45,11 @@ const App: React.FC = () => {
     wallet,
     password,
     token,
+    isAuthenticated,
+    sessionReady,
     clearToken,
     refreshTokenExpiration,
   } = useWallet();
-  const isAuthenticated = Boolean(seedPhrase && password && token);
   const navigate = useNavigate();
   const location = useLocation();
   const [initialUrlProcessed, setInitialUrlProcessed] = useState(false);
@@ -57,6 +64,31 @@ const App: React.FC = () => {
   }, [initialUrlProcessed]);
 
   useEffect(() => {
+    if (!isExtensionSidePanel()) return;
+    let alive = true;
+    const pull = async () => {
+      const route = await takeLedgerPanelRoute();
+      if (!alive || !route) return;
+      navigate(route, { replace: true });
+    };
+    void pull();
+    const onChanged = (
+      changes: Record<string, Storage.StorageChange>,
+      area: string,
+    ) => {
+      if (area !== "session" && area !== "local") return;
+      if (!changes.warthogLedgerPanelRoute) return;
+      void pull();
+    };
+    browser.storage.onChanged.addListener(onChanged);
+    return () => {
+      alive = false;
+      browser.storage.onChanged.removeListener(onChanged);
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    if (location.pathname === "/passkey-host" || location.pathname === "/ledger-host") return;
     if (sendMode && sendToAddress) {
       if (!token) {
         navigate("/locked", { state: { from: `/send?address=${sendToAddress}` } });
@@ -64,10 +96,11 @@ const App: React.FC = () => {
         navigate(`/send?address=${sendToAddress}`);
       }
     }
-  }, [sendMode, sendToAddress, token, navigate]);
+  }, [sendMode, sendToAddress, token, navigate, location.pathname]);
 
   useEffect(() => {
     const checkPendingSend = async () => {
+      if (location.pathname === "/passkey-host" || location.pathname === "/ledger-host") return;
       try {
         const result = await browser.storage.local.get('pendingApproval');
         if (result.pendingApproval) {
@@ -91,6 +124,7 @@ const App: React.FC = () => {
     const handleStorageChange = async (
       changes: Record<string, Storage.StorageChange>,
     ) => {
+      if (location.pathname === "/passkey-host" || location.pathname === "/ledger-host") return;
       const change = changes.pendingApproval;
       if (change && change.newValue) {
         try {
@@ -109,7 +143,7 @@ const App: React.FC = () => {
     return () => {
       browser.storage.onChanged.removeListener(handleStorageChange);
     };
-  }, [navigate]);
+  }, [navigate, location.pathname]);
 
   useEffect(() => {
     const handleActivity = () => {
@@ -126,13 +160,14 @@ const App: React.FC = () => {
   }, [token, refreshTokenExpiration]);
 
   useEffect(() => {
+    if (location.pathname === "/passkey-host" || location.pathname === "/ledger-host") return;
     if (seedPhrase && wallet && password) {
       if (!token) {
         clearToken();
         navigate("/locked");
       }
     }
-  }, [token, clearToken, navigate, seedPhrase, wallet, password]);
+  }, [token, clearToken, navigate, seedPhrase, wallet, password, location.pathname]);
 
   const AuthenticatedRoutes = () => (
     <Routes>
@@ -151,6 +186,8 @@ const App: React.FC = () => {
       <Route path="/manage-account" element={<ManageAccounts />} />
       <Route path="/select-node" element={<SelectNode />} />
       <Route path="/defi" element={<DefiHub />} />
+      <Route path="/swap" element={<SwapPage />} />
+      <Route path="/activity-details" element={<ActivityDetailPage />} />
       <Route path="/account-details" element={<AccountDetails />} />
       <Route path="/private-key" element={<ShowPrivateKey />} />
       <Route path="/trade" element={<TradePage />} />
@@ -189,6 +226,18 @@ const App: React.FC = () => {
       <Route path="/secure-setup" element={<SecureSetup />} />
     </Routes>
   );
+
+  if (location.pathname === "/passkey-host") {
+    return <PasskeyHost />;
+  }
+
+  if (location.pathname === "/ledger-host") {
+    return <LedgerHost />;
+  }
+
+  if (!sessionReady) {
+    return null;
+  }
 
   return isAuthenticated ? <AuthenticatedRoutes /> : <UnauthenticatedRoutes />;
 };

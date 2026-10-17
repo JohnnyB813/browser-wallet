@@ -20,7 +20,7 @@ import { normalizeNodeUrl } from "./nodes";
 import { nodeRead } from "./warthogNode";
 import { formatBalanceBreakdown } from "./balanceBreakdown";
 import { runWithUnlockedAccount } from "./signingBridge";
-import { ensureHostPermission, hostPermissionError } from "./hostAccess";
+import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 
 /** Matches mobile-wallet AssetBalance / OpenOrders shapes. */
 export type DefiAssetBalance = {
@@ -359,8 +359,9 @@ export async function searchAssetsDetailed(
   }
   let text: string;
   try {
-    const response = await fetch(url, {
+    const response = await privilegedFetch(url, {
       method: "GET",
+      cache: "no-store",
       headers: { Accept: "application/json" },
     });
     text = await response.text();
@@ -495,7 +496,7 @@ export async function fakeMine(
   // Testnet-only debug helper; POSTs to the node's fake-mine hook.
   const base = normalizeNodeUrl(nodeBase);
   if (!base) throw new Error("Invalid node URL");
-  const response = await fetch(`${base}/fake_mine/${address}`, {
+  const response = await privilegedFetch(`${base}/fake_mine/${address}`, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
   });

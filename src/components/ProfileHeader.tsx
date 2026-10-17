@@ -102,7 +102,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({ wallet }) => {
       <div
         ref={menuRef}
         role="menu"
-        className="p-5 bg-[#272727] rounded-[10px] border border-[#fdb913] w-[210px] shadow-xl"
+        className="p-5 bg-[#272727] rounded-[10px] border border-primary w-[210px] shadow-xl"
         style={{
           position: "fixed",
           top: menuPos.top,

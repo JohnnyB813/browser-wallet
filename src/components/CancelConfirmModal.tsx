@@ -43,7 +43,7 @@ const CancelConfirmModal: React.FC<CancelConfirmModalProps> = ({ tx, type, onCan
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs z-50">
       <div className="bg-[#1A1A1A] rounded-lg p-6 max-w-md w-full border border-primary/25">
         <h3 className="text-white text-xl font-semibold mb-4">Cancel Transaction</h3>
 

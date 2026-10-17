@@ -63,7 +63,7 @@ const HistoryTxRow: React.FC<HistoryTxRowProps> = ({ type, tx, confirmations }) 
       rel="noopener noreferrer"
       className="flex items-center gap-2 py-3 px-4 bg-white/5 rounded-lg border border-white/10 hover:border-primary/50 transition-colors cursor-pointer no-underline"
     >
-      <div className={`px-2 py-1 rounded text-xs font-medium ${type === "wartTransfer" || type === "tokenTransfer" ? "bg-blue-500/20 text-blue-400" : type === "assetCreation" ? "bg-green-500/20 text-green-400" : "bg-purple-500/20 text-purple-400"}`}>
+      <div className={`px-2 py-1 rounded-sm text-xs font-medium ${type === "wartTransfer" || type === "tokenTransfer" ? "bg-blue-500/20 text-blue-400" : type === "assetCreation" ? "bg-green-500/20 text-green-400" : "bg-purple-500/20 text-purple-400"}`}>
         <TxTypeIcon type={type} />
       </div>
       <div className="flex-1 min-w-0">

@@ -58,7 +58,7 @@ function LockScreen() {
             <input
               id="password"
               type={showPassword ? "text" : "password"}
-              className={`w-full bg-primary/10 text-white border rounded-lg px-4 py-2 mt-1 outline-none focus:outline-none pr-10 ${
+              className={`w-full bg-primary/10 text-white border rounded-lg px-4 py-2 mt-1 outline-hidden focus:outline-hidden pr-10 ${
                 error ? "border-red-500" : "border-primary/50"
               }`}
               placeholder="Your password..."
