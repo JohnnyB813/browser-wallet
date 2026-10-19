@@ -9,6 +9,10 @@
 
     /* Bundler mode */
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@react-native-async-storage/async-storage": ["src/mobile-port/shims/asyncStorage.ts"]
+    },
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",

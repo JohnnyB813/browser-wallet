@@ -21,7 +21,7 @@ import {
   withdrawLiquidityTx,
   type DefiAssetBalance,
 } from "../utils/defiClient";
-import SpendConfirm from "./SpendConfirm";
+import SpendConfirm, { useSpendFlow } from "./SpendConfirm";
 import AssetMark, { AssetTitle } from "./AssetMark";
 import {
   assetDisplayTicker,
@@ -136,6 +136,7 @@ export default function SwapDexPanel({
   inactiveReason = null,
 }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const swapFlow = useSpendFlow();
   const [orderMode, setOrderMode] = useState<SwapOrderMode>(initialMode);
   const [payingWart, setPayingWart] = useState(true);
   const [selectedAsset, setSelectedAsset] = useState<TokenOption | null>(null);
@@ -512,10 +513,10 @@ export default function SwapDexPanel({
       setConfirmOpen(true);
       return;
     }
-    setConfirmOpen(false);
-    setBusy(true);
+    swapFlow.begin(orderMode === "market" ? "Submitting the market swap…" : "Placing the limit order…");
     setError(null);
     setStatus(null);
+    let submitted = false;
     try {
       const spendable = await refreshPaySpendable();
       let decimalsNum = assetDecimals || 8;
@@ -525,13 +526,16 @@ export default function SwapDexPanel({
         }
         if (amountExceedsAvailable(amountStr, spendable.available)) {
           setPayAmount(spendable.available);
-          throw new Error(
+          swapFlow.finish(
+            false,
+            "Insufficient free balance",
             insufficientFreeBalanceMessage({
               available: spendable.available,
               locked: spendable.locked,
               unit: spendable.unit,
             }),
           );
+          return;
         }
       }
 
@@ -563,12 +567,12 @@ export default function SwapDexPanel({
             : payingWart
               ? "Limit buy placed"
               : "Limit sell placed";
-        setStatus(
-          orderMode === "market"
-            ? `${label} — may fill against the pool · ${r.txHash || "ok"}`
-            : `${label} — funds may stay locked until filled · ${r.txHash || "ok"}`,
-        );
-        setPayAmount("");
+        const detail = orderMode === "market"
+          ? `${label} — may fill against the pool · ${r.txHash || "ok"}`
+          : `${label} — funds may stay locked until filled · ${r.txHash || "ok"}`;
+        setStatus(detail);
+        submitted = true;
+        swapFlow.finish(true, "Submitted", detail);
         await onSuccess();
         void loadMarket(assetHash);
         void refreshPaySpendable();
@@ -582,9 +586,9 @@ export default function SwapDexPanel({
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Swap failed");
-    } finally {
-      setBusy(false);
+      const message = e instanceof Error ? e.message : "Swap failed";
+      setError(message);
+      if (!submitted) swapFlow.finish(false, "Swap failed", message);
     }
   };
 
@@ -656,7 +660,7 @@ export default function SwapDexPanel({
   };
 
   const actionsOff = Boolean(inactiveReason);
-  const swapDisabled = busy || !assetHash || actionsOff;
+  const swapDisabled = busy || swapFlow.busy || !assetHash || actionsOff;
   const submitLabel = (() => {
     if (busy) return orderMode === "market" ? "Swapping…" : "Placing order…";
     if (!selectedAsset) return "Select a token";
@@ -1399,8 +1403,13 @@ export default function SwapDexPanel({
           { label: "Fee", value: `${fee} WART` },
           { label: "Mode", value: orderMode },
         ]}
-        busy={busy}
-        onCancel={() => setConfirmOpen(false)}
+        busy={swapFlow.busy}
+        step={swapFlow.step}
+        outcome={swapFlow.outcome}
+        onCancel={() => {
+          swapFlow.close(() => setPayAmount(""));
+          setConfirmOpen(false);
+        }}
         onConfirm={() => void handleSwap(true)}
       />
     </div>

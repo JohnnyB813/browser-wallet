@@ -12,6 +12,10 @@ import CancelConfirmModal from "../components/CancelConfirmModal";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
 import { IoSend, IoTrendingUp, IoWater, IoDiamond, IoCloseCircleOutline } from "react-icons/io5";
+import { useChainAccounts } from "../chains/useChainAccounts";
+import ChainPicker from "../components/chains/ChainPicker";
+import ChainHoldings from "../components/chains/ChainHoldings";
+import NetworkBadge from "../components/chains/NetworkBadge";
 import { FaChevronDown, FaSearch, FaSync } from "react-icons/fa";
 import Jazzicon from "react-jazzicon";
 import { getPendingApproval, approveRequest, rejectRequest, PendingApproval } from "../utils/extensionApi";
@@ -211,6 +215,7 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
 
 const Home: React.FC = () => {
   const { wallet, selectedNodeIndex, nodeList, walletList, nameList, ledgerAccount } = useWallet();
+  const { accounts, chains, chain, setChain, mainnet } = useChainAccounts();
   const navigate = useNavigate();
   const [balance, setBalance] = useState(0);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -438,29 +443,46 @@ const Home: React.FC = () => {
       case Tab.Actions:
         return (
           <div className="space-y-4">
-            <div className="home-wallet-card">
-              <div className="min-w-0 flex-1">
-                <p className="text-white/50 text-sm mb-1">Wallet</p>
-                <p className="text-white text-2xl font-semibold wrap-break-word">
-                  {balance ? parseFloat(balance.toFixed(2)) : '0.00'} {selectedToken.name}
-                </p>
-                <p className="text-white/50 text-sm">
-                  ${(balance * balanceUSD).toFixed(2)}
-                </p>
-                {balanceError && (
-                  <p className="text-red-300 text-xs mt-1">{balanceError}</p>
-                )}
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ChainPicker chains={chains} chain={chain} onChange={setChain} />
+                <NetworkBadge mainnet={mainnet} />
               </div>
-              <TokenSelector
-                selectedToken={selectedToken}
-                onSelect={setSelectedToken}
-                nodeUrl={nodeList[selectedNodeIndex]}
-              />
+            </div>
+            <div className="home-wallet-card">
+              {chain === "wart" || !accounts ? (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white/50 text-sm mb-1">Wallet</p>
+                    <p className="text-white text-2xl font-semibold wrap-break-word">
+                      {balance ? parseFloat(balance.toFixed(2)) : '0.00'} {selectedToken.name}
+                    </p>
+                    <p className="text-white/50 text-sm">
+                      ${(balance * balanceUSD).toFixed(2)}
+                    </p>
+                    {balanceError && (
+                      <p className="text-red-300 text-xs mt-1">{balanceError}</p>
+                    )}
+                  </div>
+                  <TokenSelector
+                    selectedToken={selectedToken}
+                    onSelect={setSelectedToken}
+                    nodeUrl={nodeList[selectedNodeIndex]}
+                  />
+                </>
+              ) : (
+                <ChainHoldings
+                  chain={chain}
+                  ethAddress={accounts.ethAddress}
+                  btcAddress={accounts.btcAddress}
+                  solAddress={accounts.solAddress}
+                />
+              )}
             </div>
             <div className="flex flex-row justify-center gap-3 w-full">
               <div
                 className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate("/send")}
+                onClick={() => navigate(chain === "wart" ? "/send" : "/chain-send")}
               >
                 <IoSend className="text-2xl text-primary" />
                 <p className="text-white text-sm font-semibold">Send</p>
@@ -472,20 +494,24 @@ const Home: React.FC = () => {
                 <IoTrendingUp className="text-2xl text-primary" />
                 <p className="text-white text-sm font-semibold">Swap</p>
               </div>
-              <div
-                className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate("/liquidity")}
-              >
-                <IoWater className="text-2xl text-primary" />
-                <p className="text-white text-sm font-semibold">Liquidity</p>
-              </div>
-              <div
-                className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate("/create-token")}
-              >
-                <IoDiamond className="text-2xl text-primary" />
-                <p className="text-white text-sm font-semibold">Mint</p>
-              </div>
+              {chain === "wart" ? (
+                <>
+                  <div
+                    className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
+                    onClick={() => navigate("/liquidity")}
+                  >
+                    <IoWater className="text-2xl text-primary" />
+                    <p className="text-white text-sm font-semibold">Liquidity</p>
+                  </div>
+                  <div
+                    className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
+                    onClick={() => navigate("/create-token")}
+                  >
+                    <IoDiamond className="text-2xl text-primary" />
+                    <p className="text-white text-sm font-semibold">Mint</p>
+                  </div>
+                </>
+              ) : null}
             </div>
             {ledgerNote && (
               <p className="text-amber-200/90 text-xs text-center px-2">{ledgerNote}</p>

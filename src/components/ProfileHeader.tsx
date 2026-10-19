@@ -137,6 +137,14 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({ wallet }) => {
         <p
           className="text-white text-lg font-normal cursor-pointer"
           role="menuitem"
+          onClick={() => go("/safetrade")}
+        >
+          SafeTrade
+        </p>
+        <div className="border border-white/20 my-2" />
+        <p
+          className="text-white text-lg font-normal cursor-pointer"
+          role="menuitem"
           onClick={handleLockScreen}
         >
           Lock Screen

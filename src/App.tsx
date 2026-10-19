@@ -33,6 +33,10 @@ import CreateTokenPage from "./pages/CreateTokenPage";
 import CreateTokenStep2 from "./pages/CreateTokenStep2";
 import DefiHub from "./pages/DefiHub";
 import SwapPage from "./pages/SwapPage";
+import ChainSend from "./pages/ChainSend";
+import SafeTradePage from "./pages/SafeTradePage";
+import AppToast from "./components/AppToast";
+import { useChainAccounts } from "./chains/useChainAccounts";
 import ActivityDetailPage from "./pages/ActivityDetailPage";
 import PasskeyHost from "./pages/PasskeyHost";
 import LedgerHost from "./pages/LedgerHost";
@@ -187,6 +191,8 @@ const App: React.FC = () => {
       <Route path="/select-node" element={<SelectNode />} />
       <Route path="/defi" element={<DefiHub />} />
       <Route path="/swap" element={<SwapPage />} />
+      <Route path="/chain-send" element={<ChainSend />} />
+      <Route path="/safetrade" element={<SafeTradePage />} />
       <Route path="/activity-details" element={<ActivityDetailPage />} />
       <Route path="/account-details" element={<AccountDetails />} />
       <Route path="/private-key" element={<ShowPrivateKey />} />
@@ -239,7 +245,18 @@ const App: React.FC = () => {
     return null;
   }
 
-  return isAuthenticated ? <AuthenticatedRoutes /> : <UnauthenticatedRoutes />;
+  return (
+    <>
+      <ChainSessionSync />
+      <AppToast />
+      {isAuthenticated ? <AuthenticatedRoutes /> : <UnauthenticatedRoutes />}
+    </>
+  );
 };
+
+function ChainSessionSync() {
+  useChainAccounts();
+  return null;
+}
 
 export default App;
