@@ -3,9 +3,9 @@ import Button from "../components/Button";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import NodeCard from "../components/NodeCard";
-import { PRESET_NODES } from "../config/network";
 import {
   isDefiNode,
+  isPresetNodeUrl,
   labelForNodeUrl,
   normalizeNodeUrl,
 } from "../utils/nodes";
@@ -60,7 +60,7 @@ function SelectNode() {
   };
 
   const removeNode = (id: number) => {
-    // Keep at least one node
+    if (isPresetNodeUrl(nodeList[id])) return;
     if (nodeList.length <= 1) return;
     setNodeList(nodeList.filter((_, index) => index !== id));
     setNodeNameList(nodeNameList.filter((_, index) => index !== id));
@@ -89,10 +89,11 @@ function SelectNode() {
     }
 
     const len = nodeList.length;
-    const name =
+    const name = (
       newNodeName.trim() ||
       labelForNodeUrl(normalized) ||
-      (isDefiNode(normalized) ? "Custom DeFi node" : "Custom node");
+      (isDefiNode(normalized) ? "Custom DeFi node" : "Custom node")
+    ).replace(/,/g, " ");
     setNodeList([...nodeList, normalized]);
     setNodeNameList([...nodeNameList, name]);
     setSelectedNodeIndex(len);
@@ -100,21 +101,6 @@ function SelectNode() {
     setNewNodeAddress("");
     setIsDialogOpen(false);
     setWarning(false);
-  };
-
-  const handleAddPresets = (network: "mainnet" | "defi-testnet") => {
-    const toAdd = PRESET_NODES.filter((p) => p.network === network);
-    const urls = [...nodeList];
-    const names = [...nodeNameList];
-    for (const p of toAdd) {
-      const n = normalizeNodeUrl(p.url);
-      if (!urls.some((u) => normalizeNodeUrl(u) === n)) {
-        urls.push(n);
-        names.push(p.name);
-      }
-    }
-    setNodeList(urls);
-    setNodeNameList(names);
   };
 
   const handleCancel = () => {
@@ -174,6 +160,10 @@ function SelectNode() {
   return (
     <div className="min-h-screen container relative px-4">
       <Header title="Select A Node" />
+      <p className="text-white/50 text-xs mb-3">
+        Mainnet and DeFi Testnet match the mobile wallet. A node you add is
+        saved in this browser and is still here the next time you log in.
+      </p>
 
       <div className="flex gap-2 mb-3 flex-wrap">
         {(
@@ -212,23 +202,6 @@ function SelectNode() {
         />
       </div>
 
-      <div className="flex gap-2 mb-3">
-        <button
-          type="button"
-          className="text-xs text-primary underline"
-          onClick={() => handleAddPresets("mainnet")}
-        >
-          + Mainnet presets
-        </button>
-        <button
-          type="button"
-          className="text-xs text-amber-300 underline"
-          onClick={() => handleAddPresets("defi-testnet")}
-        >
-          + DeFi testnet presets
-        </button>
-      </div>
-
       <div className="h-[55vh] overflow-y-scroll">
         {filteredNodes.length > 0 ? (
           filteredNodes.map((node) => (
@@ -246,6 +219,7 @@ function SelectNode() {
                 {...node}
                 setPrimaryNode={setPrimaryNode}
                 removeNode={removeNode}
+                removable={!isPresetNodeUrl(node.address)}
               />
             </div>
           ))
@@ -272,9 +246,7 @@ function SelectNode() {
               Add new Node
             </h3>
             <p className="text-white/50 text-xs mb-2">
-              Mainnet example: https://warthognode.duckdns.org
-              <br />
-              DeFi testnet: https://warthog-defitestnet.duckdns.org
+              Saved on this browser. Example: http://203.0.113.10:3001
             </p>
             <input
               type="text"

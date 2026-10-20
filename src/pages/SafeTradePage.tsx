@@ -3,6 +3,7 @@ import { Account, Address, NonceId, RoundedFee, Wart } from "warthog-ts";
 import Header from "../components/Header";
 import NetworkBadge from "../components/chains/NetworkBadge";
 import SpendConfirm, { useSpendFlow } from "../components/SpendConfirm";
+import SwapStyleCard from "../components/SwapStyleCard";
 import useWallet from "../hooks/useWallet";
 import { createTransactionContext, submitTransaction } from "../utils";
 import { amountExceedsAvailable, insufficientFreeBalanceMessage } from "../utils/balanceBreakdown";
@@ -21,6 +22,7 @@ import {
   safePair,
   safePublicNetwork,
   safeSwap,
+  safeTicker,
   safeWaitOrder,
   safeWithdrawCoin,
   saveSafeTradeCredentials,
@@ -32,13 +34,18 @@ import { sendSol } from "../mobile-port/utils/networks/solana";
 import { useChainAccounts } from "../chains/useChainAccounts";
 
 const field = "w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-primary";
-const chip = "rounded-full border border-white/15 px-3 py-1 text-xs text-white";
-const chipOn = "rounded-full border border-primary bg-primary/15 px-3 py-1 text-xs text-primary";
+const chip = "swap-chip-btn";
+const chipOn = "swap-chip-btn swap-chip-btn--active";
 
 const NETWORKS = ["Warthog", "Ethereum", "Bitcoin", "Solana"] as const;
 
 function routesOn(network: string): SafeRoute[] {
   return SAFE_ROUTES.filter((route) => route.network === network);
+}
+
+function trimAmount(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  return value.toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 export default function SafeTradePage() {
@@ -60,6 +67,7 @@ export default function SafeTradePage() {
   const [notice, setNotice] = useState("");
   const [open, setOpen] = useState(false);
   const [free, setFree] = useState<Record<string, number>>({});
+  const [price, setPrice] = useState(0);
 
   const nodeUrl = wallet.selectedNodeUrl || wallet.nodeList[wallet.selectedNodeIndex] || "";
   const pay = SAFE_ROUTES.find((route) => route.id === payId) ?? routesOn(network)[0];
@@ -90,6 +98,22 @@ export default function SafeTradePage() {
       setFree(next);
     }).catch(() => undefined);
   }, [creds, notice]);
+
+  useEffect(() => {
+    if (panel !== "swap" || !pair) {
+      setPrice(0);
+      return undefined;
+    }
+    let alive = true;
+    void safeTicker(pair.market.id).then((ticker) => {
+      if (alive) setPrice(Number(ticker.last) || 0);
+    }).catch(() => {
+      if (alive) setPrice(0);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [panel, pair?.market.id]);
 
   const addressFor = (route: SafeRoute): string => {
     if (route.chain === "wart") return wallet.wallet || "";
@@ -226,6 +250,18 @@ export default function SafeTradePage() {
     await submitTransaction(wallet.nodeList, wallet.selectedNodeIndex, tx);
   }
 
+  const safeReceiveText = (): string => {
+    const value = Number(amount);
+    if (!(value > 0)) return "0";
+    if (panel === "swap") {
+      if (!(price > 0) || !pair) return "0";
+      const out = pair.side === "sell" ? value * price : value / price;
+      return trimAmount(out);
+    }
+    if (moveDir === "withdraw") return trimAmount(Math.max(0, value - (pay?.fee ?? 0)));
+    return trimAmount(value);
+  };
+
   return (
     <div className="container space-y-3 pb-8">
       <Header title="SafeTrade" />
@@ -250,89 +286,89 @@ export default function SafeTradePage() {
           Remove saved API key
         </button>
       )}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-2">
-          <button type="button" className={panel === "swap" ? chipOn : chip} onClick={() => setPanel("swap")}>Swap</button>
-          <button type="button" className={panel === "move" ? chipOn : chip} onClick={() => setPanel("move")}>Move</button>
-        </div>
-        <select
-          className="rounded-full border border-white/15 bg-black px-3 py-1 text-xs text-white"
-          value={network}
-          onChange={(event) => {
-            const next = event.target.value as (typeof NETWORKS)[number];
-            setNetwork(next);
-            const first = routesOn(next)[0];
-            if (first) setPayId(first.id);
-          }}
-        >
-          {NETWORKS.map((name) => <option key={name} value={name}>{name}</option>)}
-        </select>
-      </div>
-      {panel === "move" ? (
-        <div className="flex gap-2">
-          <button type="button" className={moveDir === "deposit" ? chipOn : chip} onClick={() => setMoveDir("deposit")}>Deposit</button>
-          <button type="button" className={moveDir === "withdraw" ? chipOn : chip} onClick={() => setMoveDir("withdraw")}>Withdraw</button>
-        </div>
-      ) : null}
-      <div className={panel === "swap" ? "grid grid-cols-2 gap-2" : ""}>
-        <select className={field} value={pay?.id ?? ""} onChange={(event) => {
-          const next = SAFE_ROUTES.find((route) => route.id === event.target.value);
-          setPayId(event.target.value);
+      <SwapStyleCard
+        title={panel === "swap" ? "Swap" : moveDir === "deposit" ? "Deposit" : "Withdraw"}
+        subtitle={panel === "swap"
+          ? (pair ? `${pair.market.base.toUpperCase()}/${pair.market.quote.toUpperCase()}` : "No direct market")
+          : `${pay?.symbol ?? ""} · ${network}`}
+        spotLabel="Price"
+        spotValue={panel === "swap" && price > 0 ? String(price) : undefined}
+        toolbar={(
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className={panel === "swap" ? chipOn : chip} onClick={() => setPanel("swap")}>Swap</button>
+            <button type="button" className={panel === "move" ? chipOn : chip} onClick={() => setPanel("move")}>Move</button>
+            {panel === "move" ? (
+              <>
+                <button type="button" className={moveDir === "deposit" ? chipOn : chip} onClick={() => setMoveDir("deposit")}>Deposit</button>
+                <button type="button" className={moveDir === "withdraw" ? chipOn : chip} onClick={() => setMoveDir("withdraw")}>Withdraw</button>
+              </>
+            ) : null}
+            <select
+              className="swap-chip-btn bg-zinc-900"
+              value={network}
+              onChange={(event) => {
+                const next = event.target.value as (typeof NETWORKS)[number];
+                setNetwork(next);
+                const first = routesOn(next)[0];
+                if (first) setPayId(first.id);
+              }}
+            >
+              {NETWORKS.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+        )}
+        payHint={panel === "move" && moveDir === "deposit"
+          ? "From this wallet"
+          : <>Available <span className="text-zinc-300 tabular-nums">{free[pay?.symbol ?? ""] ?? 0}</span> {pay?.symbol} on SafeTrade</>}
+        onMax={panel === "move" && moveDir === "deposit"
+          ? undefined
+          : pay && (free[pay.symbol] ?? 0) > 0
+            ? () => setAmount(String(free[pay.symbol]))
+            : undefined}
+        amount={amount}
+        onAmount={setAmount}
+        paySymbol={pay?.symbol ?? "—"}
+        payChoices={routesOn(network).map((route) => ({ id: route.id, symbol: route.symbol }))}
+        payValue={pay?.id ?? ""}
+        onPay={(id) => {
+          const next = SAFE_ROUTES.find((route) => route.id === id);
+          setPayId(id);
           if (next && panel === "swap") setNetwork(next.network as (typeof NETWORKS)[number]);
-        }}>
-          {(panel === "swap" ? routesOn(network) : routesOn(network)).map((route) => (
-            <option key={route.id} value={route.id}>{route.symbol}</option>
-          ))}
-        </select>
-        {panel === "swap" ? (
-          <select className={field} value={receive?.id ?? ""} onChange={(event) => setReceiveId(event.target.value)}>
-            {receiveChoices.filter((route) => route.id !== pay?.id).map((route) => (
-              <option key={route.id} value={route.id}>{route.symbol} · {route.network}</option>
-            ))}
-          </select>
+        }}
+        receiveHint={panel === "swap" ? "Estimate · before the trading fee" : moveDir === "deposit" ? "On SafeTrade" : "In this wallet · after the fee"}
+        receiveAmount={safeReceiveText()}
+        receiveSymbol={panel === "swap" ? (receive?.symbol ?? "—") : (pay?.symbol ?? "—")}
+        receiveChoices={panel === "swap"
+          ? receiveChoices.filter((route) => route.id !== pay?.id).map((route) => ({ id: route.id, symbol: route.symbol }))
+          : undefined}
+        receiveValue={receive?.id ?? ""}
+        onReceive={panel === "swap" ? setReceiveId : undefined}
+        onFlip={panel === "swap" && pay && receive ? () => {
+          setPayId(receive.id);
+          setReceiveId(pay.id);
+          setNetwork(receive.network as (typeof NETWORKS)[number]);
+        } : panel === "move" ? () => setMoveDir((dir) => (dir === "deposit" ? "withdraw" : "deposit")) : undefined}
+        extra={panel === "move" && moveDir === "withdraw" ? (
+          <div className="grid grid-cols-2 gap-2">
+            <input className={field} value={emailCode} onChange={(event) => setEmailCode(event.target.value)} placeholder="Email code" />
+            <input className={field} value={otpCode} onChange={(event) => setOtpCode(event.target.value)} placeholder="2FA code" inputMode="numeric" />
+          </div>
         ) : null}
-      </div>
-      <div className="flex gap-2">
-        <input className={field} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" inputMode="decimal" />
-        {panel === "swap" ? (
-          <button
-            type="button"
-            className="shrink-0 rounded-lg border border-white/20 px-3 text-sm text-white"
-            onClick={() => {
-              if (!pay || !receive) return;
-              setPayId(receive.id);
-              setReceiveId(pay.id);
-              setNetwork(receive.network as (typeof NETWORKS)[number]);
-            }}
-          >
-            Flip
-          </button>
-        ) : null}
-      </div>
-      {panel === "move" && moveDir === "withdraw" ? (
-        <div className="grid grid-cols-2 gap-2">
-          <input className={field} value={emailCode} onChange={(event) => setEmailCode(event.target.value)} placeholder="Email code" />
-          <input className={field} value={otpCode} onChange={(event) => setOtpCode(event.target.value)} placeholder="2FA code" inputMode="numeric" />
-        </div>
-      ) : null}
-      <p className="text-xs text-white/50">
-        {pay ? `Free on SafeTrade: ${free[pay.symbol] ?? 0} ${pay.symbol}` : ""}
-        {panel === "swap" && pay && receive && !pair ? " No direct market." : ""}
-      </p>
-      {error ? <p className="text-xs text-red-300">{error}</p> : null}
-      {notice ? <p className="text-xs text-emerald-300">{notice}</p> : null}
-      <button
-        type="button"
-        className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-black disabled:opacity-50"
-        disabled={!creds || flow.busy}
-        onClick={() => {
+        summary={panel === "swap" && pay && receive && !pair ? (
+          <p>No direct market for {pay.symbol} and {receive.symbol}.</p>
+        ) : undefined}
+        error={error}
+        hint={notice || (panel === "swap"
+          ? "The swap stays on SafeTrade until you withdraw."
+          : "Deposit sends from this wallet. Withdraw pays back to this wallet.")}
+        cta={panel === "swap" ? "Review swap" : moveDir === "deposit" ? "Review deposit" : "Review withdraw"}
+        ctaDisabled={!creds || flow.busy}
+        onCta={() => {
           const issue = problem();
           setError(issue);
           if (!issue) setOpen(true);
         }}
-      >
-        {panel === "swap" ? "Review swap" : moveDir === "deposit" ? "Review deposit" : "Review withdraw"}
-      </button>
+      />
       <SpendConfirm
         open={open}
         title={panel === "swap" ? "Confirm swap" : moveDir === "deposit" ? "Confirm deposit" : "Confirm withdraw"}

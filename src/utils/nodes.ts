@@ -82,55 +82,86 @@ const LEGACY_MAINNET = new Set([
 ]);
 
 /**
- * Merge stored custom nodes with current presets.
- * Migrates known-dead legacy defaults to the modern preset list.
+ * Lists this extension used to write on its own. An exact match is replaced
+ * with the two official nodes. A list that also contains a URL the user
+ * added is kept, so a saved node survives the next login.
+ */
+const SHIPPED_NODE_SETS: string[][] = [
+  [
+    "http://localhost:3101",
+    "http://localhost:3100",
+    "http://51.75.21.134:3001",
+    "http://62.72.44.89:3001",
+    "http://dev.node-s.com:3001",
+  ],
+  [
+    "https://warthognode.duckdns.org",
+    "https://warthog-defitestnet.duckdns.org",
+    "http://104.251.219.14:3001",
+    "http://65.87.7.86:3002",
+    "http://85.56.145.106:3001",
+    "http://209.127.34.202:3001",
+  ],
+];
+
+function sameNodeSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  const seen = new Set(right);
+  return left.every((url) => seen.has(url));
+}
+
+function officialNodes(): { urls: string[]; names: string[] } {
+  return {
+    urls: [...DEFAULT_NODE_LIST],
+    names: [...DEFAULT_NODE_NAME_LIST],
+  };
+}
+
+/**
+ * Merge stored nodes with the official mobile-wallet pair.
+ * Custom URLs stay, in the order they were saved. Known shipped defaults
+ * that contain no custom URL are replaced with Mainnet + DeFi Testnet.
  */
 export function mergeNodeLists(
   storedUrls: string[] | null | undefined,
   storedNames: string[] | null | undefined,
 ): { urls: string[]; names: string[] } {
-  const urls = (storedUrls || []).map(normalizeNodeUrl).filter(Boolean);
-  const names = storedNames || [];
+  const urls: string[] = [];
+  const names: string[] = [];
+  (storedUrls || []).forEach((raw, index) => {
+    const url = normalizeNodeUrl(raw);
+    if (!url || urls.includes(url)) return;
+    urls.push(url);
+    names.push((storedNames || [])[index] || "");
+  });
 
-  // Fresh install or empty storage → full presets
-  if (urls.length === 0) {
-    return {
-      urls: [...DEFAULT_NODE_LIST],
-      names: [...DEFAULT_NODE_NAME_LIST],
-    };
-  }
+  if (urls.length === 0) return officialNodes();
 
-  // If storage only has legacy dead nodes, replace with presets
-  const allLegacy =
-    urls.length > 0 &&
-    urls.every(
-      (u) =>
-        LEGACY_MAINNET.has(u) ||
-        LEGACY_MAINNET.has(u.replace(/\/$/, "")) ||
-        !u.startsWith("http"),
-    );
+  const allLegacy = urls.every(
+    (url) => LEGACY_MAINNET.has(url) || !url.startsWith("http"),
+  );
+  if (allLegacy) return officialNodes();
 
-  if (allLegacy) {
-    return {
-      urls: [...DEFAULT_NODE_LIST],
-      names: [...DEFAULT_NODE_NAME_LIST],
-    };
-  }
+  const shipped = SHIPPED_NODE_SETS.some((set) =>
+    sameNodeSet(urls, set.map((url) => normalizeNodeUrl(url))),
+  );
+  if (shipped) return officialNodes();
 
-  // Ensure official mainnet + official defi testnet are always present
   const nextUrls = [...urls];
-  const nextNames = urls.map((u, i) => names[i] || labelForNodeUrl(u));
+  const nextNames = urls.map((url, index) => {
+    const preset = PRESET_NODES.find((node) => normalizeNodeUrl(node.url) === url);
+    return preset?.name || names[index] || labelForNodeUrl(url);
+  });
 
   const ensure = (url: string, name: string) => {
-    const n = normalizeNodeUrl(url);
-    if (!nextUrls.some((u) => normalizeNodeUrl(u) === n)) {
-      nextUrls.unshift(n);
-      nextNames.unshift(name);
-    }
+    const normalized = normalizeNodeUrl(url);
+    if (nextUrls.includes(normalized)) return;
+    nextUrls.unshift(normalized);
+    nextNames.unshift(name);
   };
 
-  ensure(DEFI_TESTNET_URL, "DeFi Testnet (Official)");
-  ensure(MAINNET_OFFICIAL_URL, "Official Mainnet");
+  ensure(DEFI_TESTNET_URL, "DeFi Testnet");
+  ensure(MAINNET_OFFICIAL_URL, "Mainnet");
 
   return { urls: nextUrls, names: nextNames };
 }

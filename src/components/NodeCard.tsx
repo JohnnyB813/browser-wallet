@@ -9,6 +9,7 @@ const NodeCard = ({
   latency,
   setPrimaryNode,
   removeNode,
+  removable = true,
 }: {
   id: number;
   name: string;
@@ -17,6 +18,7 @@ const NodeCard = ({
   latency: number;
   setPrimaryNode: (id: number) => void;
   removeNode: (id: number) => void;
+  removable?: boolean;
 }) => {
   const { selectedNodeIndex } = useWallet();
   const isSelected = selectedNodeIndex === id;
@@ -49,15 +51,17 @@ const NodeCard = ({
         {latency > 0 && (
           <div className="text-white/30 text-xs">{Math.round(latency)}ms</div>
         )}
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            removeNode(id);
-          }}
-          className="p-1.5 rounded-sm hover:bg-red-500/20 transition-colors"
-        >
-          <IoMdTrash className="w-4 h-4 cursor-pointer text-white/40 hover:text-red-400" />
-        </div>
+        {removable ? (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              removeNode(id);
+            }}
+            className="p-1.5 rounded-sm hover:bg-red-500/20 transition-colors"
+          >
+            <IoMdTrash className="w-4 h-4 cursor-pointer text-white/40 hover:text-red-400" />
+          </div>
+        ) : null}
       </div>
     </div>
   );

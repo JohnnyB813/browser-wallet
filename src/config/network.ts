@@ -28,14 +28,13 @@ export type PresetNode = {
   network: "mainnet" | "defi-testnet";
 };
 
-/** Built-in nodes shown in the selector (mainnet + DeFi testnet). */
+/**
+ * Built-in nodes. Same pair the mobile wallet ships in WARTHOG_NODES:
+ * mainnet, then the DeFi testnet. Anything else is a node the user saved.
+ */
 export const PRESET_NODES: PresetNode[] = [
-  { url: MAINNET_OFFICIAL_URL, name: "Official Mainnet", network: "mainnet" },
-  { url: DEFI_TESTNET_URL, name: "DeFi Testnet (Official)", network: "defi-testnet" },
-  { url: "http://104.251.219.14:3001", name: "DeFi Testnet 2", network: "defi-testnet" },
-  { url: "http://65.87.7.86:3002", name: "DeFi Testnet 1", network: "defi-testnet" },
-  { url: "http://85.56.145.106:3001", name: "DeFi Testnet 3", network: "defi-testnet" },
-  { url: "http://209.127.34.202:3001", name: "DeFi Testnet 4", network: "defi-testnet" },
+  { url: MAINNET_OFFICIAL_URL, name: "Mainnet", network: "mainnet" },
+  { url: DEFI_TESTNET_URL, name: "DeFi Testnet", network: "defi-testnet" },
 ];
 
 export const DEFAULT_NODE_LIST = PRESET_NODES.map((n) => n.url);

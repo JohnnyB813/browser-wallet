@@ -3,6 +3,7 @@ import useWallet from "../hooks/useWallet";
 import { deriveEthAddress } from "../mobile-port/utils/evmAddress";
 import { chainAddresses } from "../mobile-port/utils/networks/derive";
 import { setChainSession } from "../mobile-port/utils/sessionVault";
+import { exportWalletFromWorker, getSigningStatus } from "../utils/signingBridge";
 
 export type BrowserChain = "wart" | "ethereum" | "bitcoin" | "hemi" | "solana";
 
@@ -24,8 +25,39 @@ function readChain(): BrowserChain {
 }
 
 export function useChainAccounts() {
-  const { seedPhrase, selectedNetworkLabel } = useWallet();
-  const phrase = seedPhrase?.trim() ?? "";
+  const { seedPhrase, selectedNetworkLabel, canAddAccounts, signingUnlocked } = useWallet();
+  const [recovered, setRecovered] = useState("");
+  const [phrasePending, setPhrasePending] = useState(false);
+
+  useEffect(() => {
+    const direct = seedPhrase?.trim() ?? "";
+    if (direct || !signingUnlocked || !canAddAccounts) {
+      setRecovered("");
+      setPhrasePending(false);
+      return;
+    }
+    let alive = true;
+    setPhrasePending(true);
+    void (async () => {
+      try {
+        const status = await getSigningStatus();
+        if (!alive || !status.hasMnemonic) return;
+        const exported = await exportWalletFromWorker();
+        const mnemonic = exported.mnemonic?.trim() ?? "";
+        exported.privateKey = "";
+        if (alive) setRecovered(mnemonic);
+      } catch {
+        if (alive) setRecovered("");
+      } finally {
+        if (alive) setPhrasePending(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [seedPhrase, signingUnlocked, canAddAccounts]);
+
+  const phrase = seedPhrase?.trim() || recovered;
 
   useEffect(() => {
     setChainSession(phrase || null);
@@ -67,5 +99,5 @@ export function useChainAccounts() {
 
   const mainnet = active === "wart" ? selectedNetworkLabel === "Mainnet" : true;
 
-  return { accounts, chains, chain: active, setChain, mainnet };
+  return { accounts, chains, chain: active, setChain, mainnet, phrasePending };
 }

@@ -9,7 +9,6 @@ import React, {
 import { getKeyFromPassword, encrypt, decrypt } from "dha-encryption";
 import browser from "webextension-polyfill";
 import { Account } from "warthog-ts";
-import { defaultNodeList, defaultNodeNameList } from "../config/nodes";
 import { DEFAULT_NODE_INDEX } from "../config/network";
 import { mergeNodeLists, networkLabel, normalizeNodeUrl } from "../utils/nodes";
 import {
@@ -357,12 +356,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       : `m/44'/2070'/0/0/${index}`;
   };
 
-  const ensureDefaultNodes = () => {
-    setNodeList(defaultNodeList);
-    setNodeNameList(defaultNodeNameList);
-    setSelectedNodeIndex(DEFAULT_NODE_INDEX);
-  };
-
   const setPrivateKey = (pk: string | null): void => {
     setPrivateKeyState(pk);
   };
@@ -474,9 +467,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     if (data.pathType) {
       setPathTypeState(data.pathType);
     }
-    setNodeListState([...defaultNodeList]);
-    setNodeNameListState([...defaultNodeNameList]);
-    setSelectedNodeIndexState(DEFAULT_NODE_INDEX);
     if (opts?.password) {
       setPasswordState(opts.password);
     }
@@ -494,9 +484,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       saveToBrowserStorage("selectedWalletIndex", "0"),
       saveToBrowserStorage("name", accountName),
       saveToBrowserStorage("pathType", data.pathType || pathType),
-      saveToBrowserStorage("nodeList", defaultNodeList.join(",")),
-      saveToBrowserStorage("nodeNameList", defaultNodeNameList.join(",")),
-      saveToBrowserStorage("selectedNodeIndex", String(DEFAULT_NODE_INDEX)),
       sessionToken
         ? saveToBrowserStorage("token", sessionToken)
         : Promise.resolve(),
@@ -531,7 +518,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       setSelectedWalletIndex(0);
       setName("Account 0");
       setPathType(pt);
-      ensureDefaultNodes();
     } catch (error) {
       console.log("Error creating new wallet:", error);
       throw error;
@@ -624,7 +610,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setSelectedWalletIndex(0);
     setName("Account 0");
     setPathType(pt);
-    ensureDefaultNodes();
   };
   const setToken = (token: string): void => {
     setTokenState(token);
@@ -735,7 +720,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setNameState(name);
     setPathTypeState(nextPath);
     setTokenState(sessionToken);
-    ensureDefaultNodes();
     await Promise.all([
       saveToBrowserStorage("wallet", session.address),
       saveToBrowserStorage("walletList", session.address),
@@ -768,7 +752,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setVisibleWalletList([true]);
     setSelectedWalletIndex(0);
     setName("Account 0");
-    ensureDefaultNodes();
   };
 
   const currentWalletPayload = async (): Promise<EncryptedWalletPayload> => {
@@ -1213,8 +1196,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         loadFromChromeStorage("selectedNodeIndex", resolve),
       ),
     ]).then(([storedNodes, storedNames, storedIndex]) => {
+      const storedUrls = storedNodes ? storedNodes.split(",").filter(Boolean) : [];
       const merged = mergeNodeLists(
-        storedNodes ? storedNodes.split(",").filter(Boolean) : [],
+        storedUrls,
         storedNames ? storedNames.split(",") : [],
       );
       setNodeListState(merged.urls);
@@ -1223,11 +1207,21 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       saveToBrowserStorage("nodeNameList", merged.names.join(","));
 
       const idx = storedIndex ? parseInt(storedIndex, 10) : DEFAULT_NODE_INDEX;
+      const previousUrl =
+        Number.isFinite(idx) && idx >= 0 ? storedUrls[idx] : "";
+      const matched = previousUrl
+        ? merged.urls.findIndex(
+            (url) => normalizeNodeUrl(url) === normalizeNodeUrl(previousUrl),
+          )
+        : -1;
       const safeIdx =
-        Number.isFinite(idx) && idx >= 0 && idx < merged.urls.length
-          ? idx
-          : DEFAULT_NODE_INDEX;
+        matched >= 0
+          ? matched
+          : Number.isFinite(idx) && idx >= 0 && idx < merged.urls.length
+            ? idx
+            : DEFAULT_NODE_INDEX;
       setSelectedNodeIndexState(safeIdx);
+      saveToBrowserStorage("selectedNodeIndex", String(safeIdx));
     });
     loadFromChromeStorage("visibleWalletList", (visible) => {
       const boolArray = visible

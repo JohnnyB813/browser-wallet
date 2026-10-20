@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import Header from "../components/Header";
 import SpendConfirm, { useSpendFlow } from "../components/SpendConfirm";
+import SwapStyleCard from "../components/SwapStyleCard";
 import { CHAIN_LABEL, useChainAccounts, type BrowserChain } from "../chains/useChainAccounts";
 import {
   executeSushiPair,
@@ -44,10 +46,13 @@ import {
   type LifiAsset,
   type LifiRoute,
 } from "../mobile-port/utils/networks/lifiSwap";
-import { depositToHemi, mintHemiDeposit, readTunnelMoves, withdrawToBitcoin, type TunnelMove } from "../mobile-port/utils/networks/tunnel";
+import { depositToHemi, fetchHemiBtcBalance, mintHemiDeposit, readTunnelMoves, withdrawToBitcoin, type TunnelMove } from "../mobile-port/utils/networks/tunnel";
+import { fetchHemiBalance } from "../mobile-port/utils/networks/hemi";
+import { fetchBtcBalance } from "../mobile-port/utils/networks/btc";
 import {
   depositEth,
   finalizeWithdrawal,
+  readL1Eth,
   markEthMove,
   proveWithdrawal,
   readEthMoves,
@@ -60,11 +65,11 @@ import {
   type EthMove,
 } from "../mobile-port/utils/networks/ethBridge";
 import { formatUnits, parseUnits } from "../mobile-port/utils/networks/units";
+import { readOneBalance } from "../mobile-port/utils/tokenBalances";
 import { defaultsFor, type WalletToken } from "../mobile-port/utils/walletTokens";
 
-const field = "w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-primary";
-const chip = "rounded-full border border-white/15 px-3 py-1 text-xs text-white";
-const chipOn = "rounded-full border border-primary bg-primary/15 px-3 py-1 text-xs text-primary";
+const chip = "swap-chip-btn";
+const chipOn = "swap-chip-btn swap-chip-btn--active";
 
 type Chain = Exclude<BrowserChain, "wart">;
 
@@ -108,7 +113,11 @@ type Draft =
 export default function ChainSwap({ chain }: { chain: Chain }) {
   const { accounts } = useChainAccounts();
   const flow = useSpendFlow();
-  const [mode, setMode] = useState<"swap" | "tunnel">(chain === "bitcoin" ? "tunnel" : "swap");
+  const location = useLocation();
+  const requested = (location.state as { mode?: string } | null)?.mode;
+  const [mode, setMode] = useState<"swap" | "tunnel">(
+    requested === "tunnel" || chain === "bitcoin" ? "tunnel" : "swap",
+  );
   const [amount, setAmount] = useState("");
   const [payId, setPayId] = useState("");
   const [receiveId, setReceiveId] = useState("");
@@ -122,6 +131,7 @@ export default function ChainSwap({ chain }: { chain: Chain }) {
   const [open, setOpen] = useState(false);
   const [btcMoves, setBtcMoves] = useState<TunnelMove[]>([]);
   const [ethMoves, setEthMoves] = useState<EthMove[]>([]);
+  const [available, setAvailable] = useState<{ raw: bigint; decimals: number } | null>(null);
 
   const eth = accounts?.ethAddress ?? "";
   const btc = accounts?.btcAddress ?? "";
@@ -136,6 +146,59 @@ export default function ChainSwap({ chain }: { chain: Chain }) {
   const tokens = chain === "bitcoin" ? [] : defaultsFor(chain === "solana" ? "solana" : chain);
   const pay = tokens.find((token) => token.id === payId) ?? tokens[0];
   const receive = tokens.find((token) => token.id === receiveId && token.id !== pay?.id) ?? tokens.find((token) => token.id !== pay?.id);
+  const tunnelChoices: [string, string][] =
+    chain === "ethereum"
+      ? [["hemi", "Hemi"], ["solana", "Solana"]]
+      : chain === "hemi"
+        ? [["btc", "Bitcoin"], ["eth", "ETH"]]
+        : chain === "solana"
+          ? [["bitcoin", "Bitcoin"], ["ethereum", "Ethereum"]]
+          : [["hemi", "Hemi"]];
+  const activeTarget = target || tunnelChoices[0][0];
+
+  useEffect(() => {
+    let alive = true;
+    setAvailable(null);
+    async function loadPayBalance(): Promise<{ raw: bigint; decimals: number } | null> {
+      const btcTunnel = chain === "bitcoin" || (chain === "hemi" && mode === "tunnel" && activeTarget !== "eth");
+      if (btcTunnel) {
+        if (direction === "withdraw") {
+          if (!eth) return null;
+          return { raw: await fetchHemiBtcBalance(eth), decimals: 8 };
+        }
+        if (!btc) return null;
+        return { raw: await fetchBtcBalance(btc), decimals: 8 };
+      }
+      const ethTunnel =
+        (chain === "ethereum" && mode === "tunnel" && activeTarget !== "solana") ||
+        (chain === "hemi" && mode === "tunnel") ||
+        (chain === "hemi" && mode === "swap" && venue === "stargate");
+      if (ethTunnel) {
+        if (!eth) return null;
+        const fromHemi = direction === "withdraw";
+        return {
+          raw: fromHemi ? await fetchHemiBalance(eth) : await readL1Eth(eth),
+          decimals: 18,
+        };
+      }
+      if (payId === "bridge:eth") {
+        if (!eth) return null;
+        return { raw: await readL1Eth(eth), decimals: 18 };
+      }
+      if (!pay) return null;
+      const owner = pay.network === "solana" ? sol : eth;
+      if (!owner) return null;
+      return { raw: await readOneBalance(pay.network, owner, pay), decimals: pay.decimals };
+    }
+    void loadPayBalance().then((row) => {
+      if (alive) setAvailable(row);
+    }).catch(() => {
+      if (alive) setAvailable(null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [chain, mode, venue, activeTarget, direction, payId, pay, eth, btc, sol]);
 
   useEffect(() => {
     setDraft(null);
@@ -435,80 +498,93 @@ export default function ChainSwap({ chain }: { chain: Chain }) {
   }
 
   const showSwap = chain !== "bitcoin";
-  const tunnelChoices = chain === "ethereum"
-    ? [["hemi", "Hemi"], ["solana", "Solana"]]
-    : chain === "hemi"
-      ? [["btc", "Bitcoin"], ["eth", "ETH"]]
-      : chain === "solana"
-        ? [["bitcoin", "Bitcoin"], ["ethereum", "Ethereum"]]
-        : [["hemi", "Hemi"]];
-  const activeTarget = target || tunnelChoices[0][0];
+  const picks = showTokenPick();
+  const payChoices = picks ? tokenChoices("pay") : undefined;
+  const receiveChoices = picks ? tokenChoices("receive") : undefined;
+  const paySymbol = payChoices?.find((choice) => choice.id === (payId || pay?.id))?.symbol
+    || pay?.symbol
+    || (chain === "bitcoin" || (chain === "hemi" && mode === "tunnel" && activeTarget !== "eth")
+      ? (direction === "withdraw" ? "hemiBTC" : "BTC")
+      : "ETH");
+  const receiveSymbol = receiveChoices?.find((choice) => choice.id === (receiveId || receive?.id))?.symbol
+    || receive?.symbol
+    || (paySymbol === "BTC" ? "hemiBTC" : paySymbol === "hemiBTC" ? "BTC" : paySymbol);
+  const usesSlippage =
+    (mode === "swap" && chain !== "bitcoin" && !(chain === "hemi" && venue === "stargate")) ||
+    (mode === "tunnel" && (
+      (chain === "ethereum" && activeTarget === "solana") ||
+      (chain === "solana" && activeTarget === "ethereum")
+    ));
 
   return (
     <div className="container space-y-3 pb-8">
       <Header title={CHAIN_LABEL[chain]} />
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-2">
-          {showSwap ? (
-            <button type="button" className={mode === "swap" ? chipOn : chip} onClick={() => setMode("swap")}>Swap</button>
-          ) : null}
-          <button type="button" className={mode === "tunnel" ? chipOn : chip} onClick={() => setMode("tunnel")}>Tunnel</button>
-        </div>
-        {mode === "tunnel" ? (
+      <SwapStyleCard
+        title={mode === "swap" ? "Swap" : "Tunnel"}
+        subtitle={`${paySymbol} → ${receiveSymbol}`}
+        toolbar={(
+          <div className="flex flex-wrap items-center gap-2">
+            {showSwap ? (
+              <button type="button" className={mode === "swap" ? chipOn : chip} onClick={() => setMode("swap")}>Swap</button>
+            ) : null}
+            <button type="button" className={mode === "tunnel" ? chipOn : chip} onClick={() => setMode("tunnel")}>Tunnel</button>
+            {mode === "tunnel"
+              ? tunnelChoices.map(([id, label]) => (
+                <button key={id} type="button" className={activeTarget === id ? chipOn : chip} onClick={() => setTarget(id)}>{label}</button>
+              ))
+              : null}
+            {chain === "hemi" && mode === "swap" ? (
+              <>
+                <button type="button" className={venue === "sushi" ? chipOn : chip} onClick={() => setVenue("sushi")}>Sushi</button>
+                <button type="button" className={venue === "stargate" ? chipOn : chip} onClick={() => setVenue("stargate")}>Stargate</button>
+              </>
+            ) : null}
+          </div>
+        )}
+        payHint={available ? <>Available <span className="text-zinc-300 tabular-nums">{formatUnits(available.raw, available.decimals)}</span> {paySymbol}</> : "Available …"}
+        onMax={available && available.raw > 0n ? () => setAmount(formatUnits(available.raw, available.decimals)) : undefined}
+        amount={amount}
+        onAmount={setAmount}
+        paySymbol={paySymbol}
+        payChoices={payChoices}
+        payValue={payId || pay?.id || ""}
+        onPay={picks ? setPayId : undefined}
+        receiveHint={usesSlippage ? `Estimate · ${slippage / 100}% slip` : "Estimate"}
+        receiveAmount={quoting ? "…" : receiveFigure()}
+        receiveSymbol={receiveSymbol}
+        receiveChoices={receiveChoices}
+        receiveValue={receiveId || receive?.id || ""}
+        onReceive={picks ? setReceiveId : undefined}
+        onFlip={flipLegs}
+        extra={usesSlippage ? (
           <div className="flex gap-2">
-            {tunnelChoices.map(([id, label]) => (
-              <button key={id} type="button" className={activeTarget === id ? chipOn : chip} onClick={() => setTarget(id)}>{label}</button>
+            {[50, 100, 300].map((bps) => (
+              <button key={bps} type="button" className={slippage === bps ? chipOn : chip} onClick={() => setSlippage(bps)}>
+                {bps / 100}%
+              </button>
             ))}
           </div>
         ) : null}
-      </div>
-
-      {chain === "hemi" && mode === "swap" ? (
-        <div className="flex gap-2">
-          <button type="button" className={venue === "sushi" ? chipOn : chip} onClick={() => setVenue("sushi")}>Sushi</button>
-          <button type="button" className={venue === "stargate" ? chipOn : chip} onClick={() => setVenue("stargate")}>Stargate</button>
-        </div>
-      ) : null}
-
-      {showTokenPick() ? (
-        <div className="grid grid-cols-2 gap-2">
-          <select className={field} value={payId || pay?.id || ""} onChange={(event) => setPayId(event.target.value)}>
-            {tokenOptions("pay")}
-          </select>
-          <select className={field} value={receiveId || receive?.id || ""} onChange={(event) => setReceiveId(event.target.value)}>
-            {tokenOptions("receive")}
-          </select>
-        </div>
-      ) : null}
-
-      {showDirection() ? (
-        <div className="flex gap-2">
-          <button type="button" className={direction !== "withdraw" ? chipOn : chip} onClick={() => setDirection("deposit")}>
-            {directionLabel(false)}
-          </button>
-          <button type="button" className={direction === "withdraw" ? chipOn : chip} onClick={() => setDirection("withdraw")}>
-            {directionLabel(true)}
-          </button>
-        </div>
-      ) : null}
-
-      <input className={field} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" inputMode="decimal" />
-      <div className="flex gap-2">
-        {[50, 100, 300].map((bps) => (
-          <button key={bps} type="button" className={slippage === bps ? chipOn : chip} onClick={() => setSlippage(bps)}>
-            {bps / 100}%
-          </button>
-        ))}
-      </div>
-      <p className="min-h-5 text-sm text-white">{quoting ? "Quoting…" : draft?.text || error}</p>
-      <button
-        type="button"
-        className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-black disabled:opacity-50"
-        disabled={!draft || quoting || flow.busy}
-        onClick={() => setOpen(true)}
-      >
-        Review
-      </button>
+        summary={(
+          <>
+            <div className="flex justify-between gap-3">
+              <span>Route</span>
+              <span className="text-zinc-400 text-right">{draft?.text || (quoting ? "Quoting…" : "Enter an amount")}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span>Network</span>
+              <span className="text-zinc-400">{CHAIN_LABEL[chain]}</span>
+            </div>
+          </>
+        )}
+        error={error}
+        hint={mode === "swap"
+          ? "A market swap. The amount you receive is an estimate until you confirm."
+          : "A tunnel moves the same coin to the other network."}
+        cta={mode === "swap" ? "Review swap" : "Review tunnel"}
+        ctaDisabled={!draft || quoting || flow.busy}
+        onCta={() => setOpen(true)}
+      />
 
       {btcMoves.length > 0 && (chain === "bitcoin" || chain === "hemi") ? (
         <MoveList title="Bitcoin tunnel" rows={btcMoves.map((move) => ({
@@ -559,24 +635,7 @@ export default function ChainSwap({ chain }: { chain: Chain }) {
     return chain === "ethereum" || chain === "hemi" || chain === "solana";
   }
 
-  function showDirection(): boolean {
-    if (chain === "bitcoin") return true;
-    if (mode !== "tunnel") return chain === "hemi" && venue === "stargate";
-    return true;
-  }
-
-  function directionLabel(back: boolean): string {
-    if (chain === "bitcoin" || (chain === "hemi" && mode === "tunnel" && activeTarget !== "eth")) {
-      return back ? "To Bitcoin" : "To Hemi";
-    }
-    if (chain === "solana" && mode === "tunnel" && activeTarget !== "ethereum") {
-      return back ? "To Solana" : "To Bitcoin";
-    }
-    if (venue === "stargate" && mode === "swap") return back ? "To Ethereum" : "To Hemi";
-    return back ? "Withdraw" : "Deposit";
-  }
-
-  function tokenOptions(role: "pay" | "receive") {
+  function tokenChoices(role: "pay" | "receive") {
     const list = [...tokens];
     if (chain === "solana" && mode === "swap") {
       list.unshift({
@@ -591,9 +650,35 @@ export default function ChainSwap({ chain }: { chain: Chain }) {
     }
     return list
       .filter((token) => role === "pay" || token.id !== (pay?.id ?? ""))
-      .map((token) => (
-        <option key={`${role}-${token.id}`} value={token.id}>{token.symbol}</option>
-      ));
+      .map((token) => ({ id: token.id, symbol: token.symbol }));
+  }
+
+  function flipLegs() {
+    if (payId === "bridge:eth" || receiveId === "bridge:eth") {
+      const nextPay = payId === "bridge:eth" ? (receive?.id || "") : "bridge:eth";
+      const nextReceive = receiveId === "bridge:eth" ? payId : "bridge:eth";
+      setPayId(nextPay);
+      setReceiveId(nextReceive);
+      return;
+    }
+    if (picks && pay && receive) {
+      setPayId(receive.id);
+      setReceiveId(pay.id);
+      return;
+    }
+    setDirection((current) => (current === "withdraw" ? "deposit" : "withdraw"));
+  }
+
+  function receiveFigure(): string {
+    if (!draft) return "0";
+    if (draft.kind === "sushi" || draft.kind === "hemi-sushi") {
+      return formatUnits(draft.quote.amountOut, receive?.decimals ?? draft.quote.receive.decimals);
+    }
+    if (draft.kind === "stargate") return formatUnits(draft.quote.amountOut, 18);
+    if (draft.kind === "sol") return draft.quote.outText;
+    if (draft.kind === "bridge") return formatBridgeAmount(draft.route.expectedOut, draft.route.receive.decimals);
+    if (draft.kind === "lifi") return formatLifi(draft.route.expectedOut, draft.to);
+    return amount.trim() || "0";
   }
 }
 
