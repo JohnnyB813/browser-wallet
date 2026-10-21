@@ -95,7 +95,8 @@ function bundleBackground(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  // Firefox gets its own build. The plain build is the Chromium one.
+  // The mode names the target. The plain build runs in the production mode,
+  // and that is the Chromium one.
   const target = mode === "firefox" ? "firefox" : "chromium";
   const outDir = target === "firefox" ? "build-firefox" : "build";
 

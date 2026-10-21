@@ -55,14 +55,19 @@ Follow these steps to install and run the Warthog Wallet Extension:
 5. Build the extension for production:
 
    ```bash
-   npm run build
+   # Chromium browsers (Chrome, Brave, Edge, Opera, Vivaldi, Arc)
+   npm run build          # writes build/
+
+   # Firefox
+   npm run build:firefox  # writes build-firefox/
    ```
 
-6. Reload in Firefox (after code changes, just reload - no need to rebuild unless otherwise mentioned):
+6. Reload the extension after code changes (no need to rebuild unless otherwise mentioned):
 
    ```bash
    # In Firefox: about:debugging#/runtime/this-firefox
    # Click "Reload" on the Warthog extension
+   # The Firefox build is the one in build-firefox/
    ```
 
 ---
@@ -79,12 +84,22 @@ Create a `.env` file from `.env.sample`:
 
 ## 📄 Manifest Files
 
-The extension's configuration is managed by the `public/manifest.json` file. This file defines key settings such as permissions, browser compatibility, and entry points.
+The manifest is per browser. `public/manifest.json` holds what every browser takes, and `config/manifest.targets.json` holds what only some of them need. The build merges the two and writes the manifest of the target into the output folder.
 
-To build and package the extension, run:
+Chrome runs the background as a service worker and docks the wallet in a side panel. Firefox has no service worker, so its background is an event page, and its docked panel is a sidebar.
+
+To build the extension, run:
 
 ```bash
-npm run build
+npm run build          # Chromium browsers, the same as build:chromium
+npm run build:firefox  # Firefox
+```
+
+To package either one into a zip, use the justfile:
+
+```bash
+just chrome   # packages build/ into dist-chrome/
+just firefox   # packages build-firefox/ into dist-firefox/
 ```
 
 ---
@@ -107,6 +122,16 @@ npm run build
    - Select the `build` folder from the project directory.
 
 The extension will now be loaded and ready for use.
+
+### Load the Extension in Firefox
+
+1. Open `about:debugging#/runtime/this-firefox`.
+
+2. Click **Load Temporary Add-on**.
+
+3. Select the `build-firefox/manifest.json` file from the project directory.
+
+The extension will now be loaded and ready for use. It keeps its own manifest, so reload it after every build.
 
 ---
 
