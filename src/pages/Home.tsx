@@ -263,7 +263,7 @@ const Home: React.FC = () => {
   const loadPending = useCallback(async () => {
     if (!wallet || !nodeList[selectedNodeIndex]) return;
 
-    const nodeUrl = nodeList[selectedNodeIndex];
+    const nodeUrl = nodeList[selectedNodeIndex].url;
     setPendingLoading(true);
     try {
       const entries = await nodeRead<NodeMempoolEntry[]>(
@@ -378,7 +378,8 @@ const Home: React.FC = () => {
 
   const updateBalance = useCallback(() => {
     if (wallet && nodeList[selectedNodeIndex]) {
-      const nodeUrl = nodeList[selectedNodeIndex];
+      const node = nodeList[selectedNodeIndex];
+      const nodeUrl = node.url;
       if (selectedToken.hash) {
         const tokenSpec = `asset:${selectedToken.hash}`;
         nodeRead<{
@@ -406,7 +407,7 @@ const Home: React.FC = () => {
             setBalanceError(message);
           });
       } else {
-        fetchBalanceAndPin(nodeUrl, wallet)
+        fetchBalanceAndPin(node, wallet)
           .then((result) => {
             setBalance(parseFloat(result.balance) || 0);
             setWartSpend({
@@ -528,7 +529,7 @@ const Home: React.FC = () => {
                   <TokenSelector
                     selectedToken={selectedToken}
                     onSelect={setSelectedToken}
-                    nodeUrl={nodeList[selectedNodeIndex]}
+                    nodeUrl={nodeList[selectedNodeIndex]?.url || ""}
                   />
                   {chains.length < 2 && !phrasePending ? (
                     <p className="text-[11px] text-zinc-500">
@@ -595,7 +596,7 @@ const Home: React.FC = () => {
         return (
           <TransactionHistoryPanel
             wallet={wallet}
-            nodeUrl={nodeList[selectedNodeIndex] || null}
+            node={nodeList[selectedNodeIndex] || null}
             active
             onActivityClick={openActivity}
           />

@@ -1,5 +1,11 @@
 import nodes from '../../config/nodes.json';
+import type { NodeNetwork, WalletNode } from './network';
 
-export const defaultNodeList: string[] = nodes.nodes.map(node => node.url);
-export const defaultNodeNameList: string[] = nodes.nodes.map(node => node.label);
+/** The development node list, as records. */
+export const defaultNodes: WalletNode[] = nodes.nodes.map((node) => ({
+  url: node.url,
+  name: node.label,
+  network: node.network as NodeNetwork,
+}));
+
 export const explorerBaseUrl: string = nodes.explorerBaseUrl || 'https://explorer.warthog.network';

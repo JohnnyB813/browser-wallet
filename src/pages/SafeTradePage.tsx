@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import safetradeMark from "../assets/safetrade-favicon.png";
-import { Account, Address, NonceId, RoundedFee, Wart } from "warthog-ts";
+import { Account, Address, NonceId, RoundedFee, Wart, type TransactionJson } from "warthog-ts";
 import Header from "../components/Header";
 import NetworkBadge from "../components/chains/NetworkBadge";
 import SpendConfirm, { useSpendFlow } from "../components/SpendConfirm";
@@ -96,7 +96,7 @@ export default function SafeTradePage() {
   const [free, setFree] = useState<Record<string, number>>({});
   const [price, setPrice] = useState(0);
 
-  const nodeUrl = wallet.selectedNodeUrl || wallet.nodeList[wallet.selectedNodeIndex] || "";
+  const selectedNode = wallet.selectedNode;
   const pay = SAFE_ROUTES.find((route) => route.id === payId) ?? routesOn(network)[0];
   const trading = panel === "swap" || panel === "limit";
   const receiveChoices = useMemo(() => {
@@ -105,7 +105,7 @@ export default function SafeTradePage() {
   }, [network, trading, pay]);
   const receive = receiveChoices.find((route) => route.id === receiveId) ?? receiveChoices.find((route) => route.id !== pay?.id) ?? receiveChoices[0];
   const pair = pay && receive ? safePair(pay.currency, receive.currency) : null;
-  const mainnet = network !== "Warthog" || !isDefiNode(nodeUrl);
+  const mainnet = network !== "Warthog" || !isDefiNode(selectedNode);
 
   useEffect(() => {
     void loadSafeTradeCredentials().then(setCreds);
@@ -199,7 +199,7 @@ export default function SafeTradePage() {
     }
     if (moveDir === "deposit") {
       if (!pay.canDeposit) return `${pay.symbol} cannot be deposited from this wallet.`;
-      if (pay.chain === "wart" && isDefiNode(nodeUrl)) return "WART deposits use the mainnet node.";
+      if (pay.chain === "wart" && isDefiNode(selectedNode)) return "WART deposits use the mainnet node.";
       if (!addressFor(pay) && pay.chain !== "wart") return "This wallet has no address on that network.";
       return "";
     }
@@ -297,7 +297,7 @@ export default function SafeTradePage() {
   async function sendWart(to: string, wartAmount: string) {
     if (wallet.ledgerAccount) throw new Error("Ledger WART deposits use Send on the Warthog home.");
     if (!wallet.seedPhrase && !wallet.privateKey) throw new Error("Unlock the wallet before depositing WART.");
-    const live = wallet.wallet ? await fetchBalanceAndPin(nodeUrl, wallet.wallet) : null;
+    const live = wallet.wallet && selectedNode ? await fetchBalanceAndPin(selectedNode, wallet.wallet) : null;
     if (live && amountExceedsAvailable(wartAmount, live.available)) {
       throw new Error(insufficientFreeBalanceMessage({
         available: live.available,
@@ -315,7 +315,7 @@ export default function SafeTradePage() {
     const parsed = Wart.parse(wartAmount);
     if (!toAddr || !parsed) throw new Error("SafeTrade returned an address this wallet cannot pay.");
     const tx = context.transferWart(account, toAddr, parsed);
-    await submitTransaction(wallet.nodeList, wallet.selectedNodeIndex, tx);
+    await submitTransaction(wallet.nodeList, wallet.selectedNodeIndex, tx as TransactionJson);
   }
 
   const safeReceiveText = (): string => {

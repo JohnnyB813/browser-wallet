@@ -5,7 +5,7 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
-import { formatWalletAddress, parsePriceInput, createTransactionContext, submitTransaction } from "../utils";
+import { formatWalletAddress, parsePriceInput, createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
 import { defiSubmitHold } from "../utils/nodes";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
@@ -150,14 +150,14 @@ function TradeStep2() {
       if (tmpTradeType === "buy") {
         const wartParsed = Wart.parse(tmpWartAmount || "0");
         if (!wartParsed) throw new Error("Invalid WART amount");
-        tx = context.buy(account, tmpAssetHash, wartParsed, priceParsed);
+        tx = requireDeFiContext(context).buy(account, tmpAssetHash, wartParsed, priceParsed);
       } else {
         const fundsParsed = Funds.parse(
           tmpTokenAmount || "0",
           new TokenDecimals(tmpPrecision || 8),
         );
         if (!fundsParsed) throw new Error("Invalid token amount");
-        tx = context.sell(account, tmpAssetHash, fundsParsed, priceParsed);
+        tx = requireDeFiContext(context).sell(account, tmpAssetHash, fundsParsed, priceParsed);
       }
 
       const txHash = await submitTransaction(nodeList, selectedNodeIndex, tx as TransactionJson);

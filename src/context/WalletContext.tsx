@@ -2,6 +2,7 @@ import React, {
   createContext,
   useState,
   useEffect,
+  useMemo,
   useRef,
   ReactNode,
   useCallback,
@@ -9,8 +10,18 @@ import React, {
 import { getKeyFromPassword, encrypt, decrypt } from "dha-encryption";
 import browser from "webextension-polyfill";
 import { Account } from "warthog-ts";
-import { DEFAULT_NODE_INDEX, PRESET_NODES } from "../config/network";
-import { mergeNodeLists, networkLabel, normalizeNodeUrl } from "../utils/nodes";
+import { defaultNodes } from "../config/nodes";
+import {
+  DEFAULT_NODE_INDEX,
+  type NodeGroups,
+  type WalletNode,
+} from "../config/network";
+import {
+  flattenNodeGroups,
+  groupNodeRecords,
+  networkLabel,
+  normalizeNodeUrl,
+} from "../utils/nodes";
 import {
   deriveAccountAtIndex,
   deriveWallet,
@@ -81,8 +92,9 @@ interface WalletContextProps {
   wallet: string | null;
   walletList: string[];
   nameList: string[];
-  nodeList: string[];
-  nodeNameList: string[];
+  nodeList: WalletNode[];
+  /** The node the wallet is talking to, with the family it belongs to. */
+  selectedNode: WalletNode | null;
   visibleWalletList: boolean[];
   selectedWalletIndex: number;
   selectedNodeIndex: number;
@@ -122,10 +134,10 @@ interface WalletContextProps {
   setWallet: (wallet: string) => void;
   setPassword: (password: string) => void;
   setWalletList: (walletList: string[]) => void;
-  setNodeList: (nodeList: string[]) => void;
-  setNodeNameList: (nodeNameList: string[]) => void;
+  setNodeList: (nodeList: WalletNode[]) => void;
   setNameList: (nameList: string[]) => void;
-  setSelectedNodeIndex: (selectedNodeIndex: number) => void;
+  /** Select a node by its URL. The index is derived from it. */
+  setSelectedNodeUrl: (selectedNodeUrl: string) => void;
   setVisibleWalletList: (visibleWalletList: boolean[]) => void;
   setSelectedWalletIndex: (selectedWalletIndex: number) => void;
   setInputWordsBackup: (inputWordsBackup: string[]) => void;
@@ -186,11 +198,10 @@ interface WalletContextProps {
     opts?: { password?: string; name?: string },
   ) => Promise<void>;
   setWalletListState: (walletList: string[]) => void;
-  setNodeListState: (nodeList: string[]) => void;
-  setNodeNameListState: (nodeNameList: string[]) => void;
+  setNodeListState: (nodeList: WalletNode[]) => void;
   setNameListState: (nameList: string[]) => void;
   setSelectedWalletIndexState: (selectedWalletIndex: number) => void;
-  setSelectedNodeIndexState: (selectedNodeIndex: number) => void;
+  setSelectedNodeUrlState: (selectedNodeUrl: string | null) => void;
   setVisibleWalletListState: (visibleWalletList: boolean[]) => void;
   setTmpDestinationWalletState: (tmpDestinationWallet: string) => void;
   setTmpAssetHashState: (tmpAssetHash: string) => void;
@@ -228,12 +239,11 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const [walletList, setWalletListState] = useState<string[]>([]);
   const [selectedWalletIndex, setSelectedWalletIndexState] =
     useState<number>(0);
-  const [selectedNodeIndex, setSelectedNodeIndexState] =
-    useState<number>(DEFAULT_NODE_INDEX);
+  const [selectedNodeUrl, setSelectedNodeUrlState] = useState<string | null>(
+    null,
+  );
   const [nameList, setNameListState] = useState<string[]>([]);
-  const [nodeList, setNodeListState] = useState<string[]>([]);
-  const [nodeNameList, setNodeNameListState] = useState<string[]>([]);
-  const dismissedNodesRef = useRef<string[]>([]);
+  const [nodeList, setNodeListState] = useState<WalletNode[]>([]);
   const [token, setTokenState] = useState<string | null>(null);
   const [signingUnlocked, setSigningUnlocked] = useState(false);
   const [ledgerAccount, setLedgerAccount] = useState<LedgerSession | null>(null);
@@ -357,6 +367,11 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       : `m/44'/2070'/0/0/${index}`;
   };
 
+  const ensureDefaultNodes = () => {
+    setNodeList(defaultNodes);
+    setSelectedNodeUrl(defaultNodes[0].url);
+  };
+
   const setPrivateKey = (pk: string | null): void => {
     setPrivateKeyState(pk);
   };
@@ -380,27 +395,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     saveToBrowserStorage("walletList", list.join(","));
   };
 
-  const setNodeList = (list: string[]): void => {
+  const setNodeList = (list: WalletNode[]): void => {
     setNodeListState(list);
-    saveToBrowserStorage("nodeList", list.join(","));
-    const prev = new Set(nodeList.map((url) => normalizeNodeUrl(url)));
-    const next = new Set(list.map((url) => normalizeNodeUrl(url)));
-    const dismissed = new Set(
-      dismissedNodesRef.current.map((url) => normalizeNodeUrl(url)).filter(Boolean),
-    );
-    for (const preset of PRESET_NODES) {
-      const url = normalizeNodeUrl(preset.url);
-      if (prev.has(url) && !next.has(url)) dismissed.add(url);
-      if (next.has(url)) dismissed.delete(url);
-    }
-    const saved = [...dismissed];
-    dismissedNodesRef.current = saved;
-    saveToBrowserStorage("dismissedNodes", saved.join(","));
-  };
-
-  const setNodeNameList = (list: string[]): void => {
-    setNodeNameListState(list);
-    saveToBrowserStorage("nodeNameList", list.join(","));
+    saveToBrowserStorage("nodes", JSON.stringify(groupNodeRecords(list)));
   };
 
   const setNameList = (list: string[]): void => {
@@ -413,10 +410,10 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     saveToBrowserStorage("selectedWalletIndex", idx.toString());
   };
 
-  const setSelectedNodeIndex = useCallback(
-    (idx: number): void => {
-      setSelectedNodeIndexState(idx);
-      saveToBrowserStorage("selectedNodeIndex", idx.toString());
+  const setSelectedNodeUrl = useCallback(
+    (url: string): void => {
+      setSelectedNodeUrlState(url);
+      saveToBrowserStorage("selectedNodeUrl", url);
     },
     [saveToBrowserStorage],
   );
@@ -481,6 +478,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     if (data.pathType) {
       setPathTypeState(data.pathType);
     }
+    setNodeListState([...defaultNodes]);
+    setSelectedNodeUrlState(defaultNodes[0].url);
     if (opts?.password) {
       setPasswordState(opts.password);
     }
@@ -498,6 +497,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       saveToBrowserStorage("selectedWalletIndex", "0"),
       saveToBrowserStorage("name", accountName),
       saveToBrowserStorage("pathType", data.pathType || pathType),
+      saveToBrowserStorage("nodes", JSON.stringify(groupNodeRecords(defaultNodes))),
+      saveToBrowserStorage("selectedNodeUrl", defaultNodes[0].url),
       sessionToken
         ? saveToBrowserStorage("token", sessionToken)
         : Promise.resolve(),
@@ -532,6 +533,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       setSelectedWalletIndex(0);
       setName("Account 0");
       setPathType(pt);
+      ensureDefaultNodes();
     } catch (error) {
       console.log("Error creating new wallet:", error);
       throw error;
@@ -624,6 +626,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setSelectedWalletIndex(0);
     setName("Account 0");
     setPathType(pt);
+    ensureDefaultNodes();
   };
   const setToken = (token: string): void => {
     setTokenState(token);
@@ -734,6 +737,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setNameState(name);
     setPathTypeState(nextPath);
     setTokenState(sessionToken);
+    ensureDefaultNodes();
     await Promise.all([
       saveToBrowserStorage("wallet", session.address),
       saveToBrowserStorage("walletList", session.address),
@@ -766,6 +770,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setVisibleWalletList([true]);
     setSelectedWalletIndex(0);
     setName("Account 0");
+    ensureDefaultNodes();
   };
 
   const currentWalletPayload = async (): Promise<EncryptedWalletPayload> => {
@@ -1201,48 +1206,34 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     );
     Promise.all([
       new Promise<string | null>((resolve) =>
-        loadFromChromeStorage("nodeList", resolve),
+        loadFromChromeStorage("nodes", resolve),
       ),
       new Promise<string | null>((resolve) =>
-        loadFromChromeStorage("nodeNameList", resolve),
+        loadFromChromeStorage("selectedNodeUrl", resolve),
       ),
-      new Promise<string | null>((resolve) =>
-        loadFromChromeStorage("selectedNodeIndex", resolve),
-      ),
-      new Promise<string | null>((resolve) =>
-        loadFromChromeStorage("dismissedNodes", resolve),
-      ),
-    ]).then(([storedNodes, storedNames, storedIndex, storedDismissed]) => {
-      const storedUrls = storedNodes ? storedNodes.split(",").filter(Boolean) : [];
-      const dismissed = storedDismissed ? storedDismissed.split(",").filter(Boolean) : [];
-      dismissedNodesRef.current = dismissed;
-      const merged = mergeNodeLists(
-        storedUrls,
-        storedNames ? storedNames.split(",") : [],
-        dismissed,
-      );
-      setNodeListState(merged.urls);
-      setNodeNameListState(merged.names);
-      saveToBrowserStorage("nodeList", merged.urls.join(","));
-      saveToBrowserStorage("nodeNameList", merged.names.join(","));
+    ]).then(([storedNodes, storedSelection]) => {
+      // The nodes are stored as JSON, with the two families apart. There is
+      // no older format to read: a wallet without the key starts from the
+      // presets.
+      const groups: NodeGroups = storedNodes
+        ? (JSON.parse(storedNodes) as NodeGroups)
+        : groupNodeRecords(defaultNodes);
+      const nodes = flattenNodeGroups(groups);
+      setNodeListState(nodes);
+      saveToBrowserStorage("nodes", JSON.stringify(groups));
 
-      const idx = storedIndex ? parseInt(storedIndex, 10) : DEFAULT_NODE_INDEX;
-      const previousUrl =
-        Number.isFinite(idx) && idx >= 0 ? storedUrls[idx] : "";
-      const matched = previousUrl
-        ? merged.urls.findIndex(
-            (url) => normalizeNodeUrl(url) === normalizeNodeUrl(previousUrl),
-          )
-        : -1;
-      const safeIdx =
-        matched >= 0
-          ? matched
-          : Number.isFinite(idx) && idx >= 0 && idx < merged.urls.length
-            ? idx
-            : DEFAULT_NODE_INDEX;
-      setSelectedNodeIndexState(safeIdx);
-      saveToBrowserStorage("selectedNodeIndex", String(safeIdx));
+      const selected =
+        nodes.find((n) => n.url === storedSelection) ??
+        nodes[DEFAULT_NODE_INDEX] ??
+        nodes[0];
+      if (selected) {
+        setSelectedNodeUrlState(selected.url);
+        saveToBrowserStorage("selectedNodeUrl", selected.url);
+      }
     });
+    // The node list used to be two comma-joined strings and an index. The
+    // nodes are JSON now, and the old keys are dropped rather than read.
+    browser.storage.local.remove(["nodeList", "nodeNameList", "selectedNodeIndex"]);
     loadFromChromeStorage("visibleWalletList", (visible) => {
       const boolArray = visible
         ? visible.split(",").map((val) => val === "true")
@@ -1272,11 +1263,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     return () => clearInterval(interval);
   }, [loadFromChromeStorage]);
 
-  useEffect(() => {
-    if (nodeList.length > 0 && selectedNodeIndex >= nodeList.length) {
-      setSelectedNodeIndex(0);
-    }
-  }, [nodeList, selectedNodeIndex, setSelectedNodeIndex]);
+  // The index is derived from the selected node's URL, so it stays right when
+  // the list is regrouped or a node is added.
+  const selectedNodeIndex = useMemo(() => {
+    const found = nodeList.findIndex(
+      (n) => normalizeNodeUrl(n.url) === normalizeNodeUrl(selectedNodeUrl || ""),
+    );
+    return found >= 0 ? found : 0;
+  }, [nodeList, selectedNodeUrl]);
 
   const lockSessionRef = useRef(lockSession);
   lockSessionRef.current = lockSession;
@@ -1317,11 +1311,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     };
   }, []);
 
-  const selectedNodeUrl =
-    nodeList.length > 0
-      ? normalizeNodeUrl(nodeList[selectedNodeIndex] || nodeList[0])
-      : null;
-  const selectedNetworkLabel = networkLabel(selectedNodeUrl);
+  const selectedNode: WalletNode | null =
+    nodeList.length > 0 ? nodeList[selectedNodeIndex] || nodeList[0] : null;
+  const selectedNetworkLabel = networkLabel(selectedNode);
   // Password or session token (passkey-only unlock sets token without password)
   const isAuthenticated = Boolean(wallet && signingUnlocked && token);
   const canAddAccounts = hasMnemonic || Boolean(seedPhrase);
@@ -1338,7 +1330,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         token,
         walletList,
         nodeList,
-        nodeNameList,
+        selectedNode,
         nameList,
         selectedWalletIndex,
         selectedNodeIndex,
@@ -1372,11 +1364,10 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setName,
         setWalletList,
         setNodeList,
-        setNodeNameList,
         setNameList,
         setVisibleWalletList,
         setSelectedWalletIndex,
-        setSelectedNodeIndex,
+        setSelectedNodeUrl,
         setPathType,
         clearWalletData,
         setToken,
@@ -1387,10 +1378,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         switchActiveAccount,
         setWalletListState,
         setNodeListState,
-        setNodeNameListState,
         setNameListState,
         setSelectedWalletIndexState,
-        setSelectedNodeIndexState,
+        setSelectedNodeUrlState,
         setVisibleWalletListState,
         setTmpDestinationWalletState,
         setTmpAssetHashState,

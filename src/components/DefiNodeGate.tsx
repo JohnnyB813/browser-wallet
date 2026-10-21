@@ -16,12 +16,9 @@ export default function DefiNodeGate({
   children: ReactNode;
 }) {
   const navigate = useNavigate();
-  const { selectedNodeUrl, nodeList, selectedNodeIndex } = useWallet();
-  const nodeUrl =
-    selectedNodeUrl ||
-    (nodeList.length > 0 ? nodeList[selectedNodeIndex] : "");
+  const { selectedNode } = useWallet();
 
-  if (isDefiNode(nodeUrl)) return <>{children}</>;
+  if (isDefiNode(selectedNode)) return <>{children}</>;
 
   return (
     <div className="defi-page container">

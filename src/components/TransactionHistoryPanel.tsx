@@ -10,6 +10,7 @@ import {
 } from "../utils/warthogNode";
 import { fetchWartUsdPrice } from "../utils/wartPrice";
 import { isDefiNode } from "../utils/nodes";
+import type { WalletNode } from "../config/network";
 
 export type HistoryActivity = ActivityRow;
 
@@ -85,7 +86,8 @@ function matchesLocalFilter(
 
 type Props = {
   wallet: string | null | undefined;
-  nodeUrl: string | null | undefined;
+  /** The node, with the family it belongs to. */
+  node: WalletNode | null | undefined;
   /** When true, panel loads immediately (e.g. History tab open). */
   active?: boolean;
   onActivityClick?: (activity: HistoryActivity) => void;
@@ -96,13 +98,14 @@ type Props = {
 
 const TransactionHistoryPanel: React.FC<Props> = ({
   wallet,
-  nodeUrl,
+  node,
   active = true,
   onActivityClick,
   refreshKey,
   className = "",
 }) => {
-  const isTestnet = nodeUrl ? isDefiNode(nodeUrl) : false;
+  const nodeUrl = node?.url;
+  const isTestnet = isDefiNode(node);
   const filters = isTestnet ? DEFI_FILTERS : MAINNET_FILTERS;
 
   const [activities, setActivities] = useState<HistoryActivity[]>([]);
@@ -152,7 +155,7 @@ const TransactionHistoryPanel: React.FC<Props> = ({
         if (price > 0) setPriceUsd(price);
 
         if (append && historySource === "indexer") {
-          const result = await fetchAccountHistory(nodeUrl, wallet, {
+          const result = await fetchAccountHistory(node!, wallet, {
             page: nextPage,
             filter,
           });
@@ -161,7 +164,7 @@ const TransactionHistoryPanel: React.FC<Props> = ({
           if (result.nextPage) setNextPage(result.nextPage);
           setActivities((prev) => [...prev, ...withUsd(result.items, price)]);
         } else if (append && historySource === "node" && nodeCursor != null) {
-          const result = await fetchAccountHistory(nodeUrl, wallet, {
+          const result = await fetchAccountHistory(node!, wallet, {
             beforeTxIndex: nodeCursor,
             filter: "all",
           });
@@ -174,7 +177,7 @@ const TransactionHistoryPanel: React.FC<Props> = ({
           );
           setActivities((prev) => [...prev, ...mapped]);
         } else {
-          const result = await fetchAccountHistory(nodeUrl, wallet, {
+          const result = await fetchAccountHistory(node!, wallet, {
             page: 1,
             filter,
           });
@@ -210,6 +213,7 @@ const TransactionHistoryPanel: React.FC<Props> = ({
     },
     [
       wallet,
+      node,
       nodeUrl,
       priceUsd,
       historyFilter,
@@ -227,7 +231,7 @@ const TransactionHistoryPanel: React.FC<Props> = ({
     setActivities([]);
     setNextPage(2);
     setNodeCursor(null);
-  }, [wallet, nodeUrl]);
+  }, [wallet, node, nodeUrl]);
 
   useEffect(() => {
     if (!active || !wallet || !nodeUrl) return;

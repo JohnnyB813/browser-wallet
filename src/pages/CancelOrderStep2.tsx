@@ -4,7 +4,7 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
-import { createTransactionContext, submitTransaction } from "../utils";
+import { createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
 import { NonceId, RoundedFee, HDWallet, TransactionJson } from "warthog-ts";
@@ -102,7 +102,7 @@ function CancelOrderStep2() {
         nonceId,
       );
       const cancelNonceObj = NonceId.fromNumber(tmpCancelNonceId)!;
-      const tx = context.cancelTransaction(
+      const tx = requireDeFiContext(context).cancelTransaction(
         account,
         tmpCancelHeight,
         cancelNonceObj,

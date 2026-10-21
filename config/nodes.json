@@ -3,19 +3,23 @@
   "nodes": [
     {
       "url": "https://warthognode.duckdns.org",
-      "label": "Mainnet"
+      "label": "Mainnet",
+      "network": "mainnet"
     },
     {
       "url": "https://mainnet.wartnode.com",
-      "label": "Wartnode Mainnet"
+      "label": "Wartnode Mainnet",
+      "network": "mainnet"
     },
     {
       "url": "https://warthog-defitestnet.duckdns.org",
-      "label": "DeFi Testnet"
+      "label": "DeFi Testnet",
+      "network": "defi-testnet"
     },
     {
       "url": "https://testnet.wartnode.com",
-      "label": "Wartnode Testnet"
+      "label": "Wartnode Testnet",
+      "network": "defi-testnet"
     }
   ]
 }

@@ -3,9 +3,8 @@
  * Uses direct fetch (extension has host_permissions) — no proxy required.
  */
 import { ethers } from "ethers";
-import secp256k1 from "secp256k1";
-import { DEFAULT_TX_FEE } from "../config/network";
-import { isDefiNode, isMainnetNode, normalizeNodeUrl } from "./nodes";
+import { DEFAULT_TX_FEE, type WalletNode } from "../config/network";
+import { isDefiNode, normalizeNodeUrl } from "./nodes";
 import { formatBalanceBreakdown } from "./balanceBreakdown";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 
@@ -54,36 +53,6 @@ async function nodeGet<T = unknown>(
   return json.data as T;
 }
 
-async function nodePost<T = unknown>(
-  nodeBase: string,
-  path: string,
-  body: unknown,
-): Promise<T> {
-  const base = normalizeNodeUrl(nodeBase);
-  if (!base) throw new Error("Invalid node URL");
-  if (!(await ensureHostPermission(base))) {
-    throw new Error(hostPermissionError(base));
-  }
-  const url = `${base}/${path.replace(/^\//, "")}`;
-  const response = await privilegedFetch(url, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body, (_k, v) =>
-      typeof v === "bigint" ? Number(v) : v,
-    ),
-  });
-  if (!response.ok) {
-    throw new Error(`Node HTTP ${response.status}`);
-  }
-  const json = (await response.json()) as NodeJson<T>;
-  if (json.code !== 0) {
-    throw new Error(json.error || `Node error code ${json.code}`);
-  }
-  return json.data as T;
-}
 
 function formatAmountFromRaw(raw: bigint | number | string, precision = 8): string {
   const value = BigInt(raw);
@@ -155,10 +124,11 @@ export function validateWarthogAddress(raw: string): boolean {
  * Returns total / available / locked so UIs can show free vs open-order locks.
  */
 export async function fetchBalanceAndPin(
-  nodeBase: string,
+  node: WalletNode,
   address: string,
 ): Promise<BalanceResult> {
-  const defi = isDefiNode(nodeBase);
+  const nodeBase = node.url;
+  const defi = isDefiNode(node);
   const headData = await nodeGet<Record<string, unknown>>(nodeBase, "chain/head");
   const { pinHash, pinHeight } = normalizeChainPin(headData);
 
@@ -287,141 +257,6 @@ export type SendWartResult = {
   pinHeight: number;
 };
 
-function wartToE8(amount: string | number): bigint {
-  const s = String(amount).trim().replace(",", ".");
-  if (!/^\d+(\.\d+)?$/.test(s)) {
-    throw new Error(`Invalid amount "${amount}"`);
-  }
-  const [whole, frac = ""] = s.split(".");
-  const fracPadded = (frac + "00000000").slice(0, 8);
-  return BigInt(whole) * 100000000n + BigInt(fracPadded);
-}
-
-function signTransfer(
-  pinHash: string,
-  pinHeight: number,
-  nonceId: number,
-  feeE8: bigint,
-  toAddr48: string,
-  amountE8: bigint,
-  privateKeyHex: string,
-): string {
-  const buf1 = Buffer.from(pinHash, "hex");
-  const buf2 = Buffer.alloc(19);
-  buf2.writeUInt32BE(pinHeight, 0);
-  buf2.writeUInt32BE(nonceId, 4);
-  buf2.writeUInt8(0, 8);
-  buf2.writeUInt8(0, 9);
-  buf2.writeUInt8(0, 10);
-  buf2.writeBigUInt64BE(feeE8, 11);
-  const buf3 = Buffer.from(toAddr48.slice(0, 40), "hex");
-  const buf4 = Buffer.alloc(8);
-  buf4.writeBigUInt64BE(amountE8, 0);
-  const toSign = Buffer.concat([buf1, buf2, buf3, buf4]);
-
-  const signHash = ethers.sha256("0x" + toSign.toString("hex")).slice(2);
-  const signed = secp256k1.ecdsaSign(
-    Uint8Array.from(Buffer.from(signHash, "hex")),
-    Uint8Array.from(Buffer.from(privateKeyHex, "hex")),
-  );
-  const signatureWithoutRecid = Buffer.from(signed.signature);
-  const signatureWithoutRecidNormalized = secp256k1.signatureNormalize(
-    signed.signature,
-  );
-  let recid = signed.recid;
-  if (Buffer.compare(signatureWithoutRecid, signatureWithoutRecidNormalized) !== 0) {
-    recid = recid ^ 1;
-  }
-  const recidBuffer = Buffer.alloc(1);
-  recidBuffer.writeUint8(recid);
-  return Buffer.concat([signatureWithoutRecidNormalized, recidBuffer]).toString(
-    "hex",
-  );
-}
-
-/**
- * Build + sign + submit a WART transfer.
- * - Mainnet: amountE8 payload (website webwallet)
- * - DeFi testnet: wartE8 + type wartTransfer (wartbunker / core-defi)
- */
-export async function sendWartTransfer(
-  params: Omit<SendWartParams, "privateKeyHex"> & { privateKeyHex?: string },
-): Promise<SendWartResult> {
-  const { nodeBase, toAddress, amountWart } = params;
-  const feeStr = String(params.feeWart ?? DEFAULT_TX_FEE).trim() || DEFAULT_TX_FEE;
-  const amountE8 = wartToE8(amountWart);
-  if (amountE8 <= 0n) throw new Error("Amount must be positive");
-
-  const feeE8 = await roundFeeE8(nodeBase, feeStr);
-
-  // Enforce min fee when available
-  try {
-    const minData = await nodeGet<{ minFee?: { E8?: number | string } }>(
-      nodeBase,
-      "transaction/minfee",
-    );
-    if (minData?.minFee?.E8 != null && feeE8 < BigInt(minData.minFee.E8)) {
-      throw new Error(
-        `Fee must be at least ${formatFeeE8(minData.minFee.E8)} WART`,
-      );
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message.startsWith("Fee must")) throw err;
-  }
-
-  const headData = await nodeGet<Record<string, unknown>>(nodeBase, "chain/head");
-  const pin = normalizeChainPin(headData);
-  const nonceId = Number.isFinite(params.nonceId) ? Number(params.nonceId) : 0;
-  const toAddr = parseRecipientAddress(toAddress);
-  const { runWithUnlockedPrivateKey } = await import("./signingBridge");
-  const signature65 = await runWithUnlockedPrivateKey((pk) =>
-    signTransfer(
-      pin.pinHash,
-      pin.pinHeight,
-      nonceId,
-      feeE8,
-      toAddr,
-      amountE8,
-      pk.replace(/^0x/i, ""),
-    ),
-  );
-
-  let postdata: Record<string, unknown>;
-  if (isDefiNode(nodeBase)) {
-    postdata = {
-      type: "wartTransfer",
-      pinHeight: pin.pinHeight,
-      nonceId,
-      feeE8: Number(feeE8),
-      toAddr,
-      wartE8: Number(amountE8),
-      signature65,
-    };
-  } else {
-    postdata = {
-      pinHeight: pin.pinHeight,
-      nonceId,
-      toAddr,
-      amountE8: Number(amountE8),
-      feeE8: Number(feeE8),
-      signature65,
-    };
-  }
-
-  const result = await nodePost<{ txHash?: string }>(
-    nodeBase,
-    "transaction/add",
-    postdata,
-  );
-
-  return {
-    txHash: result?.txHash || "",
-    feeE8: String(feeE8),
-    amountE8: String(amountE8),
-    nonceId,
-    pinHeight: pin.pinHeight,
-  };
-}
 
 export type HistoryItem = {
   date: string;
@@ -682,7 +517,7 @@ function toHistoryItem(tx: FlatTx, viewingAddress: string): HistoryItem {
  * Prefers explorer indexer on DeFi (rich `meta` cards); falls back to node RPC.
  */
 export async function fetchAccountHistory(
-  nodeBase: string,
+  node: WalletNode,
   address: string,
   options:
     | number
@@ -693,6 +528,7 @@ export async function fetchAccountHistory(
         filter?: string;
       } = {},
 ): Promise<HistoryFetchResult> {
+  const nodeBase = node.url;
   // Back-compat: third arg used to be beforeTxIndex only.
   const opts =
     typeof options === "object" && options !== null
@@ -706,7 +542,7 @@ export async function fetchAccountHistory(
   // Indexer path (DeFi testnet) — rich meta for limit swaps / matches / etc.
   try {
     const { fetchIndexerHistoryPage } = await import("./warthogIndexer");
-    const indexed = await fetchIndexerHistoryPage(nodeBase, address, {
+    const indexed = await fetchIndexerHistoryPage(node, address, {
       page,
       filter: filterId,
     });
@@ -748,26 +584,17 @@ export async function fetchAccountHistory(
   };
 }
 
-/** Convenience: return items only (legacy call sites). */
-export async function fetchAccountHistoryItems(
-  nodeBase: string,
-  address: string,
-  beforeTxIndex: number | string = 4294967295,
-): Promise<HistoryItem[]> {
-  const result = await fetchAccountHistory(nodeBase, address, { beforeTxIndex });
-  return result.items;
-}
-
 /** Lightweight health/latency check for a node. */
 export async function probeNode(
-  nodeBase: string,
+  node: WalletNode,
   address?: string | null,
 ): Promise<{ online: boolean; latencyMs: number }> {
+  const nodeBase = node.url;
   const start = performance.now();
   try {
     await nodeGet(nodeBase, "chain/head");
     if (address) {
-      if (isDefiNode(nodeBase)) {
+      if (isDefiNode(node)) {
         await nodeGet(nodeBase, `account/${address}/wart_balance`);
       } else {
         try {
@@ -782,8 +609,6 @@ export async function probeNode(
     return { online: false, latencyMs: performance.now() - start };
   }
 }
-
-export { isDefiNode, isMainnetNode, normalizeNodeUrl };
 
 /**
  * Read-only node GET.

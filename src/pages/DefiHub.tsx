@@ -135,18 +135,15 @@ function DefiHub() {
   const {
     wallet,
     name,
+    selectedNode,
     selectedNodeUrl,
-    nodeList,
-    selectedNodeIndex,
     signingUnlocked,
     enablePasskeyOnCurrentWallet,
     ledgerAccount,
   } = useWallet();
 
-  const nodeUrl =
-    selectedNodeUrl ||
-    (nodeList.length > 0 ? nodeList[selectedNodeIndex] : "");
-  const submitHold = defiSubmitHold(nodeUrl, Boolean(ledgerAccount));
+  const nodeUrl = selectedNodeUrl || "";
+  const submitHold = defiSubmitHold(selectedNode, Boolean(ledgerAccount));
 
   const [tab, setTab] = useState<MainTab>("overview");
   const [status, setStatus] = useState<string | null>(null);
@@ -360,7 +357,7 @@ function DefiHub() {
       setError("Wallet or node not ready");
       return;
     }
-    if (!isDefiNode(nodeUrl)) {
+    if (!isDefiNode(selectedNode)) {
       setError("Switch to a DeFi testnet node");
       return;
     }
@@ -380,7 +377,7 @@ function DefiHub() {
     if (!wallet || !nodeUrl) return;
     setRefreshing(true);
     try {
-      const bal = await fetchBalanceAndPin(nodeUrl, wallet);
+      const bal = await fetchBalanceAndPin(selectedNode!, wallet);
       setWartBalance(bal.balance);
       setWartAvailable(bal.available);
       setWartLocked(bal.locked);
@@ -396,7 +393,7 @@ function DefiHub() {
     } finally {
       setRefreshing(false);
     }
-  }, [wallet, nodeUrl]);
+  }, [wallet, nodeUrl, selectedNode]);
 
   const refreshAssets = useCallback(async () => {
     if (!wallet || !nodeUrl) return;
@@ -472,7 +469,7 @@ function DefiHub() {
   }, [refreshBalance, refreshAssets]);
 
   useEffect(() => {
-    if (wallet && nodeUrl && isDefiNode(nodeUrl)) {
+    if (wallet && nodeUrl && isDefiNode(selectedNode)) {
       refreshAll().catch(() => undefined);
     }
   }, [wallet, nodeUrl]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -588,7 +585,7 @@ function DefiHub() {
     setTab("overview");
   };
 
-  if (!nodeUrl || !isDefiNode(nodeUrl)) {
+  if (!nodeUrl || !isDefiNode(selectedNode)) {
     return (
       <div className="defi-page container">
         <Header title="DeFi" />
@@ -744,7 +741,7 @@ function DefiHub() {
           <div className="defi-section-body pt-2!">
             <TransactionHistoryPanel
               wallet={wallet}
-              nodeUrl={nodeUrl}
+              node={selectedNode}
               active={tab === "history"}
             />
           </div>
