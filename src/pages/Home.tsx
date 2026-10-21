@@ -246,7 +246,7 @@ const Home: React.FC = () => {
   const loadPending = useCallback(async () => {
     if (!wallet || !nodeList[selectedNodeIndex]) return;
 
-    const nodeUrl = nodeList[selectedNodeIndex];
+    const nodeUrl = nodeList[selectedNodeIndex].url;
     setPendingLoading(true);
     try {
       const entries = await nodeRead<NodeMempoolEntry[]>(
@@ -361,7 +361,7 @@ const Home: React.FC = () => {
 
   const updateBalance = useCallback(() => {
     if (wallet && nodeList[selectedNodeIndex]) {
-      const nodeUrl = nodeList[selectedNodeIndex];
+      const nodeUrl = nodeList[selectedNodeIndex].url;
       if (selectedToken.hash) {
         const tokenSpec = `asset:${selectedToken.hash}`;
         nodeRead<{
@@ -382,7 +382,7 @@ const Home: React.FC = () => {
             setBalanceError(message);
           });
       } else {
-        fetchBalanceAndPin(nodeUrl, wallet)
+        fetchBalanceAndPin(nodeList[selectedNodeIndex], wallet)
           .then((result) => {
             setBalance(parseFloat(result.balance) || 0);
             setBalanceError(null);
@@ -454,7 +454,7 @@ const Home: React.FC = () => {
               <TokenSelector
                 selectedToken={selectedToken}
                 onSelect={setSelectedToken}
-                nodeUrl={nodeList[selectedNodeIndex]}
+                nodeUrl={nodeList[selectedNodeIndex]?.url}
               />
             </div>
             <div className="flex flex-row justify-center gap-3 w-full">
@@ -497,7 +497,7 @@ const Home: React.FC = () => {
         return (
           <TransactionHistoryPanel
             wallet={wallet}
-            nodeUrl={nodeList[selectedNodeIndex] || null}
+            node={nodeList[selectedNodeIndex] || null}
             active
             onActivityClick={openActivity}
           />

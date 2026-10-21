@@ -3,23 +3,28 @@
   "nodes": [
     {
       "url": "http://localhost:3101",
-      "label": "Localhost + CORS Proxy"
+      "label": "Localhost + CORS Proxy",
+      "network": "defi-testnet"
     },
     {
       "url": "http://localhost:3100",
-      "label": "localhost"
+      "label": "localhost",
+      "network": "mainnet"
     },
     {
       "url": "http://51.75.21.134:3001",
-      "label": "polaire"
+      "label": "polaire",
+      "network": "mainnet"
     },
     {
       "url": "http://62.72.44.89:3001",
-      "label": "blu & Asia"
+      "label": "blu & Asia",
+      "network": "mainnet"
     },
     {
       "url": "http://dev.node-s.com:3001",
-      "label": "johnnyb Us East"
+      "label": "johnnyb Us East",
+      "network": "mainnet"
     }
   ]
 }

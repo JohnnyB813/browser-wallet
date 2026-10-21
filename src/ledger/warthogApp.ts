@@ -8,6 +8,7 @@
 import { ethers } from "ethers";
 import type { TransactionJson } from "warthog-ts";
 import { isDefiNode } from "../utils/nodes";
+import type { WalletNode } from "../config/network";
 import type { PathType } from "../utils/walletKeys";
 import { apdu, exchange, LedgerError, requestLedgerDevice } from "./hid";
 
@@ -194,7 +195,7 @@ export async function signWartTransferOnLedger(
  */
 export function ledgerWartSubmitJson(
   signed: TransactionJson,
-  nodeUrl: string | null | undefined,
+  node: WalletNode,
 ): TransactionJson {
   const feeE8 = Number(signed.feeE8);
   const amountE8 = Number(signed.wartE8 ?? signed.amountE8);
@@ -205,7 +206,7 @@ export function ledgerWartSubmitJson(
   const nonceId = Number(signed.nonceId);
   const toAddr = String(signed.toAddr || "");
   const signature65 = String(signed.signature65 || "");
-  if (isDefiNode(nodeUrl)) {
+  if (isDefiNode(node)) {
     return {
       type: "wartTransfer",
       pinHeight,

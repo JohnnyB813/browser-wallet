@@ -3,12 +3,8 @@ import Button from "../components/Button";
 import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import NodeCard from "../components/NodeCard";
-import { PRESET_NODES } from "../config/network";
-import {
-  isDefiNode,
-  labelForNodeUrl,
-  normalizeNodeUrl,
-} from "../utils/nodes";
+import { PRESET_NODES, type NodeNetwork, type WalletNode } from "../config/network";
+import { labelForNodeUrl, normalizeNodeUrl } from "../utils/nodes";
 import { probeNode } from "../utils/warthogNode";
 import { ensureHostPermission } from "../utils/hostAccess";
 
@@ -18,18 +14,15 @@ interface NodeType {
   address: string;
   status: string;
   latency: number;
-  network: "mainnet" | "defi-testnet";
+  network: NodeNetwork;
 }
 
 function SelectNode() {
   const {
     wallet,
     nodeList,
-    nodeNameList,
-    selectedNodeIndex,
-    setSelectedNodeIndex,
+    setSelectedNodeUrl,
     setNodeList,
-    setNodeNameList,
   } = useWallet();
 
   const [nodes, setNodes] = useState<NodeType[]>([] as NodeType[]);
@@ -39,6 +32,9 @@ function SelectNode() {
   const [warning, setWarning] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "mainnet" | "defi-testnet">("all");
+  // Which family the node being added belongs to. The user says, not the URL.
+  const [newNodeNetwork, setNewNodeNetwork] =
+    useState<NodeNetwork>("mainnet");
 
   const filteredNodes = nodes.filter((node) => {
     if (filter !== "all" && node.network !== filter) return false;
@@ -51,21 +47,34 @@ function SelectNode() {
   });
 
   const setPrimaryNode = async (id: number) => {
-    const url = nodeList[id];
-    if (url && !(await ensureHostPermission(url))) {
+    const node = nodeList[id];
+    if (node && !(await ensureHostPermission(node.url))) {
       setWarning(true);
       return;
     }
-    setSelectedNodeIndex(id);
+    if (node) setSelectedNodeUrl(node.url);
   };
 
   const removeNode = (id: number) => {
     // Keep at least one node
     if (nodeList.length <= 1) return;
     setNodeList(nodeList.filter((_, index) => index !== id));
-    setNodeNameList(nodeNameList.filter((_, index) => index !== id));
-    if (selectedNodeIndex >= id)
-      setSelectedNodeIndex(Math.max(selectedNodeIndex - 1, 0));
+  };
+
+  /** Move a node to the other family. */
+  const moveNode = (id: number) => {
+    const node = nodeList[id];
+    if (!node) return;
+    setNodeList(
+      nodeList.map((n, index) =>
+        index === id
+          ? {
+              ...n,
+              network: n.network === "defi-testnet" ? "mainnet" : "defi-testnet",
+            }
+          : n,
+      ),
+    );
   };
 
   const handleAddNode = async () => {
@@ -78,7 +87,7 @@ function SelectNode() {
       return;
     }
 
-    if (nodeList.some((n) => normalizeNodeUrl(n) === normalized)) {
+    if (nodeList.some((n) => normalizeNodeUrl(n.url) === normalized)) {
       setWarning(true);
       return;
     }
@@ -88,33 +97,26 @@ function SelectNode() {
       return;
     }
 
-    const len = nodeList.length;
-    const name =
-      newNodeName.trim() ||
-      labelForNodeUrl(normalized) ||
-      (isDefiNode(normalized) ? "Custom DeFi node" : "Custom node");
-    setNodeList([...nodeList, normalized]);
-    setNodeNameList([...nodeNameList, name]);
-    setSelectedNodeIndex(len);
+    const name = newNodeName.trim() || labelForNodeUrl(normalized);
+    const node: WalletNode = { url: normalized, name, network: newNodeNetwork };
+    setNodeList([...nodeList, node]);
+    setSelectedNodeUrl(node.url);
     setNewNodeName("");
     setNewNodeAddress("");
     setIsDialogOpen(false);
     setWarning(false);
   };
 
-  const handleAddPresets = (network: "mainnet" | "defi-testnet") => {
+  const handleAddPresets = (network: NodeNetwork) => {
     const toAdd = PRESET_NODES.filter((p) => p.network === network);
-    const urls = [...nodeList];
-    const names = [...nodeNameList];
+    const next = [...nodeList];
     for (const p of toAdd) {
       const n = normalizeNodeUrl(p.url);
-      if (!urls.some((u) => normalizeNodeUrl(u) === n)) {
-        urls.push(n);
-        names.push(p.name);
+      if (!next.some((node) => normalizeNodeUrl(node.url) === n)) {
+        next.push({ url: n, name: p.name, network: p.network });
       }
     }
-    setNodeList(urls);
-    setNodeNameList(names);
+    setNodeList(next);
   };
 
   const handleCancel = () => {
@@ -125,8 +127,8 @@ function SelectNode() {
   };
 
   const measureLatency = useCallback(
-    async (address: string, index: number) => {
-      const result = await probeNode(address, wallet);
+    async (node: WalletNode, index: number) => {
+      const result = await probeNode(node, wallet);
       setNodes((prev) => {
         const newNodes = [...prev];
         if (!newNodes[index]) return prev;
@@ -150,11 +152,11 @@ function SelectNode() {
     setNodes(
       nodeList.map((node, index) => ({
         id: index,
-        name: nodeNameList[index] || labelForNodeUrl(node),
-        address: node,
+        name: node.name || labelForNodeUrl(node.url),
+        address: node.url,
         status: "Checking",
         latency: 0,
-        network: isDefiNode(node) ? "defi-testnet" : "mainnet",
+        network: node.network,
       })),
     );
 
@@ -169,7 +171,7 @@ function SelectNode() {
     }, 10_000);
 
     return () => clearInterval(interval);
-  }, [measureLatency, nodeList, nodeNameList]);
+  }, [measureLatency, nodeList]);
 
   return (
     <div className="min-h-screen container relative px-4">
@@ -246,6 +248,7 @@ function SelectNode() {
                 {...node}
                 setPrimaryNode={setPrimaryNode}
                 removeNode={removeNode}
+                moveNode={moveNode}
               />
             </div>
           ))
@@ -276,6 +279,30 @@ function SelectNode() {
               <br />
               DeFi testnet: https://warthog-defitestnet.duckdns.org
             </p>
+            <p className="text-white/50 text-xs mb-1">
+              Which network is this node on?
+            </p>
+            <div className="flex gap-2 mb-2">
+              {(
+                [
+                  ["mainnet", "Mainnet"],
+                  ["defi-testnet", "DeFi Testnet"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setNewNodeNetwork(id)}
+                  className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${
+                    newNodeNetwork === id
+                      ? "bg-primary/20 border-primary text-primary"
+                      : "border-white/20 text-white/60"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <input
               type="text"
               placeholder="Node Name"

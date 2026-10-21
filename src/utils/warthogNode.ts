@@ -3,8 +3,8 @@
  * Uses direct fetch (extension has host_permissions) — no proxy required.
  */
 import { ethers } from "ethers";
-import { DEFAULT_TX_FEE } from "../config/network";
-import { isDefiNode, isMainnetNode, normalizeNodeUrl } from "./nodes";
+import { DEFAULT_TX_FEE, type WalletNode } from "../config/network";
+import { isDefiNode, normalizeNodeUrl } from "./nodes";
 import { formatBalanceBreakdown } from "./balanceBreakdown";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 
@@ -124,10 +124,11 @@ export function validateWarthogAddress(raw: string): boolean {
  * Returns total / available / locked so UIs can show free vs open-order locks.
  */
 export async function fetchBalanceAndPin(
-  nodeBase: string,
+  node: WalletNode,
   address: string,
 ): Promise<BalanceResult> {
-  const defi = isDefiNode(nodeBase);
+  const nodeBase = node.url;
+  const defi = isDefiNode(node);
   const headData = await nodeGet<Record<string, unknown>>(nodeBase, "chain/head");
   const { pinHash, pinHeight } = normalizeChainPin(headData);
 
@@ -516,7 +517,7 @@ function toHistoryItem(tx: FlatTx, viewingAddress: string): HistoryItem {
  * Prefers explorer indexer on DeFi (rich `meta` cards); falls back to node RPC.
  */
 export async function fetchAccountHistory(
-  nodeBase: string,
+  node: WalletNode,
   address: string,
   options:
     | number
@@ -527,6 +528,7 @@ export async function fetchAccountHistory(
         filter?: string;
       } = {},
 ): Promise<HistoryFetchResult> {
+  const nodeBase = node.url;
   // Back-compat: third arg used to be beforeTxIndex only.
   const opts =
     typeof options === "object" && options !== null
@@ -540,7 +542,7 @@ export async function fetchAccountHistory(
   // Indexer path (DeFi testnet) — rich meta for limit swaps / matches / etc.
   try {
     const { fetchIndexerHistoryPage } = await import("./warthogIndexer");
-    const indexed = await fetchIndexerHistoryPage(nodeBase, address, {
+    const indexed = await fetchIndexerHistoryPage(node, address, {
       page,
       filter: filterId,
     });
@@ -582,26 +584,17 @@ export async function fetchAccountHistory(
   };
 }
 
-/** Convenience: return items only (legacy call sites). */
-export async function fetchAccountHistoryItems(
-  nodeBase: string,
-  address: string,
-  beforeTxIndex: number | string = 4294967295,
-): Promise<HistoryItem[]> {
-  const result = await fetchAccountHistory(nodeBase, address, { beforeTxIndex });
-  return result.items;
-}
-
 /** Lightweight health/latency check for a node. */
 export async function probeNode(
-  nodeBase: string,
+  node: WalletNode,
   address?: string | null,
 ): Promise<{ online: boolean; latencyMs: number }> {
+  const nodeBase = node.url;
   const start = performance.now();
   try {
     await nodeGet(nodeBase, "chain/head");
     if (address) {
-      if (isDefiNode(nodeBase)) {
+      if (isDefiNode(node)) {
         await nodeGet(nodeBase, `account/${address}/wart_balance`);
       } else {
         try {
@@ -616,8 +609,6 @@ export async function probeNode(
     return { online: false, latencyMs: performance.now() - start };
   }
 }
-
-export { isDefiNode, isMainnetNode, normalizeNodeUrl };
 
 /**
  * Read-only node GET.

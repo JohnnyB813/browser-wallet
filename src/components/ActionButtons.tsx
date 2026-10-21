@@ -6,11 +6,8 @@ import { isDefiNode } from "../utils/nodes";
 
 const ActionButtons: React.FC = () => {
   const navigate = useNavigate();
-  const { selectedNodeUrl, nodeList, selectedNodeIndex } = useWallet();
-  const nodeUrl =
-    selectedNodeUrl ||
-    (nodeList.length > 0 ? nodeList[selectedNodeIndex] : "");
-  const showDefi = nodeUrl ? isDefiNode(nodeUrl) : false;
+  const { selectedNode } = useWallet();
+  const showDefi = isDefiNode(selectedNode);
 
   return (
     <div className="flex flex-col w-full gap-3">

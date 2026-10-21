@@ -47,13 +47,11 @@ function parseMode(raw: string | null): SwapOrderMode {
 
 function SwapPage() {
   const [params] = useSearchParams();
-  const { wallet, selectedNodeUrl, nodeList, selectedNodeIndex, ledgerAccount } = useWallet();
+  const { wallet, selectedNode, selectedNodeUrl, ledgerAccount } = useWallet();
 
-  const nodeUrl =
-    selectedNodeUrl ||
-    (nodeList.length > 0 ? nodeList[selectedNodeIndex] : "");
-  const defi = Boolean(nodeUrl) && isDefiNode(nodeUrl);
-  const inactiveReason = defiSubmitHold(nodeUrl, Boolean(ledgerAccount));
+  const nodeUrl = selectedNodeUrl || "";
+  const defi = isDefiNode(selectedNode);
+  const inactiveReason = defiSubmitHold(selectedNode, Boolean(ledgerAccount));
 
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,11 +64,11 @@ function SwapPage() {
 
   const refreshBalance = useCallback(async () => {
     if (!wallet || !nodeUrl) return;
-    const bal = await fetchBalanceAndPin(nodeUrl, wallet);
+    const bal = await fetchBalanceAndPin(selectedNode!, wallet);
     setWartBalance(bal.balance);
     setWartAvailable(bal.available);
     setWartLocked(bal.locked);
-  }, [wallet, nodeUrl]);
+  }, [wallet, nodeUrl, selectedNode]);
 
   const refreshAssets = useCallback(async () => {
     if (!wallet || !nodeUrl) return;

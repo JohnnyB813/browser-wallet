@@ -9,9 +9,8 @@ import {
   type AnyTransactionContext,
   type AnyWarthogApi,
   type TransactionJson,
-  type WarthogApiVersion,
 } from "warthog-ts";
-import { isDefiNode } from "./utils/nodes";
+import type { WalletNode } from "./config/network";
 
 const formatWalletAddress = (
   address: string,
@@ -35,39 +34,25 @@ const parsePriceInput = (value: string): Price | null => {
 };
 
 /**
- * Which `/chain/head` payload shape a node returns.
- *
- * V1 (core/master, core/dev) flattens the ChainHead fields to the top level;
- * V2 (core/defi) nests them under `chainHead`. The two are not
- * interchangeable, so the client is told which to expect rather than sniffing.
- *
- * TODO(nodes-version-field): this still infers the generation from the node URL
- * via isDefiNode, which guesses on "localhost" and a ":3002" substring. Replace
- * with an explicit `version` field on each node entry and a one-time
- * `/chain/head` probe for user-added nodes.
- */
-const apiVersionForNode = (nodeUrl: string | null | undefined): WarthogApiVersion =>
-  isDefiNode(nodeUrl) ? "v2" : "v1";
-
-/**
  * The client for a node, one per node family.
  *
  * The family decides more than the chain head shape: it decides the amount
- * field a transfer carries, so a legacy node needs the legacy client.
+ * field a transfer carries, so a legacy node needs the legacy client. It is
+ * part of the node record, so nothing is inferred from the URL.
  */
-const createApi = (nodeUrl: string): AnyWarthogApi =>
-  apiVersionForNode(nodeUrl) === "v2"
-    ? new WarthogDeFiApi(nodeUrl)
-    : new WarthogLegacyApi(nodeUrl);
+const createApi = (node: WalletNode): AnyWarthogApi =>
+  node.network === "defi-testnet"
+    ? new WarthogDeFiApi(node.url)
+    : new WarthogLegacyApi(node.url);
 
 const createTransactionContext = async (
-  nodeList: string[],
+  nodeList: WalletNode[],
   selectedNodeIndex: number,
   fee: RoundedFee,
   nonce: NonceId,
 ): Promise<AnyTransactionContext> => {
-  const nodeUrl = nodeList[selectedNodeIndex];
-  const api = createApi(nodeUrl);
+  const node = nodeList[selectedNodeIndex];
+  const api = createApi(node);
   return api.createTransactionContext(fee, nonce);
 };
 
@@ -86,12 +71,12 @@ const requireDeFiContext = (
 };
 
 const submitTransaction = async (
-  nodeList: string[],
+  nodeList: WalletNode[],
   selectedNodeIndex: number,
   tx: TransactionJson,
 ): Promise<string> => {
-  const nodeUrl = nodeList[selectedNodeIndex];
-  const api = createApi(nodeUrl);
+  const node = nodeList[selectedNodeIndex];
+  const api = createApi(node);
   const result = await api.submitTransaction(tx);
   if (!result.success) {
     throw new Error(result.error);
@@ -104,7 +89,6 @@ export {
   addressToSeed,
   formatAddress,
   parsePriceInput,
-  apiVersionForNode,
   createApi,
   createTransactionContext,
   requireDeFiContext,

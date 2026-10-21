@@ -4,7 +4,7 @@
  * See wartbunker docs/WARTBUNKER-INDEXER-RICH-CARDS-CLIENT-GUIDE.md
  */
 
-import { DEFI_TESTNET_URL } from "../config/network";
+import { DEFI_TESTNET_URL, type WalletNode } from "../config/network";
 import { isDefiNode, normalizeNodeUrl } from "./nodes";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 
@@ -42,24 +42,15 @@ function envIndexerBase(): string | null {
  * - DeFi / public testnet → public indexer
  * - Loopback custom nodes → no remote indexer
  */
-export function resolveIndexerBase(nodeBase: string): string | null {
+export function resolveIndexerBase(walletNode: WalletNode): string | null {
   const fromEnv = envIndexerBase();
   if (fromEnv) return fromEnv;
 
-  const node = normalizeNodeUrl(nodeBase);
+  const node = normalizeNodeUrl(walletNode.url);
   if (!node) return null;
 
-  try {
-    const u = new URL(node);
-    if (u.hostname.toLowerCase().includes("defitestnet")) {
-      return `${node.replace(/\/+$/, "")}/api/explorer`;
-    }
-  } catch {
-    /* ignore */
-  }
-
   if (isLoopbackNode(node)) return null;
-  if (isDefiNode(node)) return DEFAULT_INDEXER_BASE;
+  if (isDefiNode(walletNode)) return DEFAULT_INDEXER_BASE;
   return null;
 }
 
@@ -559,11 +550,11 @@ export type HistoryFetchResult = {
  * Prefer explorer indexer (rich `meta` cards) on DeFi; caller falls back to node.
  */
 export async function fetchIndexerHistoryPage(
-  nodeBase: string,
+  node: WalletNode,
   address: string,
   options: { page?: number; filter?: string; count?: number } = {},
 ): Promise<HistoryFetchResult | null> {
-  const indexerBase = resolveIndexerBase(nodeBase);
+  const indexerBase = resolveIndexerBase(node);
   if (!indexerBase) return null;
 
   const page = Math.max(1, options.page ?? 1);
