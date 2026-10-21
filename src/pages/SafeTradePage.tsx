@@ -17,7 +17,6 @@ import { explainExchangeFailure } from "../mobile-port/utils/exchange/http";
 import {
   SAFE_ROUTES,
   clearSafeTradeCredentials,
-  keyHint,
   loadSafeTradeCredentials,
   safeBalances,
   safeCancelOrder,
@@ -34,7 +33,6 @@ import {
   type SafeOrder,
   type SafeRoute,
   type SafeTradeCredentials,
-  type SpotBalance,
 } from "../mobile-port/utils/exchange/safetrade";
 import { sendBtc } from "../mobile-port/utils/networks/btc";
 import { sendSol } from "../mobile-port/utils/networks/solana";
@@ -75,27 +73,6 @@ function trimAmount(value: number): string {
   return value.toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
 }
 
-function formatBalance(value: number): string {
-  if (!Number.isFinite(value)) return "0";
-  const text = value.toFixed(8).replace(/\.?0+$/, "");
-  return text || "0";
-}
-
-function balanceLine(rows: SpotBalance[], asset: string): string {
-  const row = rows.find((item) => item.asset === asset);
-  if (!row) return "0 free";
-  const free = formatBalance(row.available);
-  if (row.locked > 0) return `${free} free · ${formatBalance(row.locked)} locked`;
-  return `${free} free`;
-}
-
-function freeLockedMessage(symbol: string, available: number, locked: number): string {
-  if (locked > 0) {
-    return `Only ${formatBalance(available)} ${symbol} free; ${formatBalance(locked)} locked in open orders.`;
-  }
-  return `Only ${formatBalance(available)} ${symbol} is free on SafeTrade.`;
-}
-
 export default function SafeTradePage() {
   const wallet = useWallet();
   const { accounts } = useChainAccounts();
@@ -116,13 +93,8 @@ export default function SafeTradePage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState<SpotBalance[] | null>(null);
-  const [checkError, setCheckError] = useState("");
-  const [checking, setChecking] = useState(false);
+  const [free, setFree] = useState<Record<string, number>>({});
   const [price, setPrice] = useState(0);
-
-  const balanceOf = (symbol: string): SpotBalance | undefined =>
-    rows?.find((row) => row.asset === symbol);
 
   const selectedNode = wallet.selectedNode;
   const pay = SAFE_ROUTES.find((route) => route.id === payId) ?? routesOn(network)[0];
@@ -138,6 +110,15 @@ export default function SafeTradePage() {
   useEffect(() => {
     void loadSafeTradeCredentials().then(setCreds);
   }, []);
+
+  useEffect(() => {
+    if (!creds) return;
+    void safeBalances(creds).then((rows) => {
+      const next: Record<string, number> = {};
+      rows.forEach((row) => { next[row.asset] = row.available; });
+      setFree(next);
+    }).catch(() => undefined);
+  }, [creds, notice]);
 
   useEffect(() => {
     if (!trading || !pay) return;
@@ -168,7 +149,7 @@ export default function SafeTradePage() {
   }, [trading, panel, pair?.market.id]);
 
   useEffect(() => {
-    if (panel !== "limit" || !creds || !pair || !rows) {
+    if (panel !== "limit" || !creds || !pair) {
       setOrders([]);
       return undefined;
     }
@@ -184,7 +165,7 @@ export default function SafeTradePage() {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [panel, creds, pair?.market.id, notice, rows]);
+  }, [panel, creds, pair?.market.id, notice]);
 
   const addressFor = (route: SafeRoute): string => {
     if (route.chain === "wart") return wallet.wallet || "";
@@ -193,60 +174,26 @@ export default function SafeTradePage() {
     return accounts?.solAddress || "";
   };
 
-  const checkBalances = async () => {
-    setChecking(true);
-    setCheckError("");
-    try {
-      let next = creds;
-      const typedKey = apiKey.trim();
-      const typedSecret = secret.trim();
-      if (typedKey || typedSecret) {
-        if (!typedKey || !typedSecret) {
-          throw new Error("Enter both the API key and the secret, then check again.");
-        }
-        next = { apiKey: typedKey, secret: typedSecret };
-        await saveSafeTradeCredentials(next);
-        setCreds(next);
-        setApiKey("");
-        setSecret("");
-      }
-      if (!next) throw new Error("Save a SafeTrade API key and secret first.");
-      setRows(null);
-      const balances = await safeBalances(next);
-      setRows(balances);
-    } catch (err) {
-      setRows(null);
-      setCheckError(explainExchangeFailure(err));
-    } finally {
-      setChecking(false);
+  const saveKeys = async () => {
+    const next = { apiKey: apiKey.trim(), secret: secret.trim() };
+    if (!next.apiKey || !next.secret) {
+      setError("Enter the API key and secret.");
+      return;
     }
-  };
-
-  const forgetKey = async () => {
-    setChecking(true);
-    try {
-      await clearSafeTradeCredentials();
-      setCreds(null);
-      setApiKey("");
-      setSecret("");
-      setRows(null);
-      setCheckError("");
-    } catch (err) {
-      setCheckError(explainExchangeFailure(err));
-    } finally {
-      setChecking(false);
-    }
+    await saveSafeTradeCredentials(next);
+    setCreds(next);
+    setApiKey("");
+    setSecret("");
+    setError("");
   };
 
   const problem = (): string => {
-    if (!rows) return "Check balances first.";
     const value = Number(amount);
     if (!pay || !(value > 0)) return "Enter an amount.";
     if (trading) {
       if (!pair) return "SafeTrade has no direct market for that pair.";
-      const spot = balanceOf(pay.symbol);
-      const available = spot?.available ?? 0;
-      if (value > available) return freeLockedMessage(pay.symbol, available, spot?.locked ?? 0);
+      const available = free[pay.symbol] ?? 0;
+      if (value > available) return `Only ${available} ${pay.symbol} is free on SafeTrade.`;
       if (panel === "limit" && !(Number(limitPrice) > 0)) return "Enter a limit price.";
       return "";
     }
@@ -272,10 +219,9 @@ export default function SafeTradePage() {
     try {
       if (trading) {
         if (!pair) throw new Error("SafeTrade has no direct market for that pair.");
-        const spot = balanceOf(pay.symbol);
-        const available = spot?.available ?? 0;
+        const available = free[pay.symbol] ?? 0;
         if (value > available) {
-          flow.finish(false, "Insufficient free balance", freeLockedMessage(pay.symbol, available, spot?.locked ?? 0));
+          flow.finish(false, "Insufficient free balance", `Only ${available} ${pay.symbol} is free on SafeTrade.`);
           return;
         }
         if (panel === "limit") {
@@ -286,7 +232,6 @@ export default function SafeTradePage() {
           const done = `Limit ${pair.side} resting at ${order.price || price} ${pair.market.quote.toUpperCase()}.`;
           setNotice(done);
           submitted = true;
-          try { setRows(await safeBalances(creds)); } catch { /* order already resting */ }
           flow.finish(true, "Limit placed", done);
           return;
         }
@@ -298,7 +243,6 @@ export default function SafeTradePage() {
           : "The order is placed. It may still be filling.";
         setNotice(done);
         submitted = true;
-        try { setRows(await safeBalances(creds)); } catch { /* order already placed */ }
         flow.finish(true, finished.filled > 0 ? "Swapped" : "Order placed", done);
         return;
       }
@@ -343,7 +287,6 @@ export default function SafeTradePage() {
         const sent = `Withdraw ${result.amount} ${pay.symbol} submitted.`;
         setNotice(sent);
         submitted = true;
-        try { setRows(await safeBalances(creds)); } catch { /* withdraw already submitted */ }
         flow.finish(true, "Withdraw submitted", sent);
       }
     } catch (err) {
@@ -395,71 +338,23 @@ export default function SafeTradePage() {
         <p className="text-sm font-semibold text-white">SafeTrade</p>
         <NetworkBadge mainnet={mainnet} />
       </div>
-      <p className="text-xs leading-relaxed text-white/50">
-        Checks the WART/USDT account on safe.trade. The key stays in this browser.
-        SafeTrade accepts the call only from a trusted IPv4.
-      </p>
-      <p className="text-xs text-white/70">
-        {creds ? `Key on this device ${keyHint(creds.apiKey)}` : "No SafeTrade key saved in this browser yet."}
-      </p>
-      <div className="space-y-2">
-        <input
-          className={field}
-          value={apiKey}
-          onChange={(event) => setApiKey(event.target.value)}
-          placeholder={creds ? "Paste a new key to replace" : "SafeTrade API key"}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          disabled={checking}
-        />
-        <input
-          className={field}
-          value={secret}
-          onChange={(event) => setSecret(event.target.value)}
-          placeholder={creds ? "Paste the secret with the new key" : "HMAC secret"}
-          type="password"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          disabled={checking}
-        />
+      {!creds ? (
+        <div className="space-y-2">
+          <input className={field} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="API key" />
+          <input className={field} value={secret} onChange={(event) => setSecret(event.target.value)} placeholder="Secret" type="password" />
+          <button type="button" className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-black" onClick={() => void saveKeys()}>
+            Save API key
+          </button>
+        </div>
+      ) : (
         <button
           type="button"
-          className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-black disabled:opacity-60"
-          onClick={() => void checkBalances()}
-          disabled={checking}
+          className="text-xs text-white/50"
+          onClick={() => { void clearSafeTradeCredentials().then(() => setCreds(null)); }}
         >
-          {checking ? "Checking…" : apiKey.trim() || secret.trim() ? "Save and check balances" : "Check balances"}
+          Remove saved API key
         </button>
-        {creds ? (
-          <button
-            type="button"
-            className="text-xs text-white/50"
-            onClick={() => { void forgetKey(); }}
-            disabled={checking}
-          >
-            Remove saved key
-          </button>
-        ) : null}
-      </div>
-      {rows ? (
-        <div className="space-y-1 rounded-lg border border-primary/40 bg-primary/10 p-3 text-sm">
-          <p className="font-semibold text-white">SafeTrade accepted this address</p>
-          <p className="pt-1 text-[10px] uppercase tracking-wide text-white/40">WART</p>
-          <p className="text-white">{balanceLine(rows, "WART")}</p>
-          <p className="pt-1 text-[10px] uppercase tracking-wide text-white/40">USDT</p>
-          <p className="text-white">{balanceLine(rows, "USDT")}</p>
-          {rows
-            .filter((row) => row.asset !== "WART" && row.asset !== "USDT" && (row.available > 0 || row.locked > 0))
-            .map((row) => (
-              <p key={row.asset} className="text-xs text-white/60">
-                {row.asset} {balanceLine([row], row.asset)}
-              </p>
-            ))}
-        </div>
-      ) : null}
-      {checkError ? <p className="text-sm text-red-400">{checkError}</p> : null}
+      )}
       <SwapStyleCard
         title={panel === "limit" ? "Limit" : panel === "swap" ? "Swap" : moveDir === "deposit" ? "Deposit" : "Withdraw"}
         subtitle={trading
@@ -500,17 +395,13 @@ export default function SafeTradePage() {
             </select>
           </div>
         )}
-        payHint={!rows
-          ? "Check balances first."
-          : panel === "move" && moveDir === "deposit"
-            ? "From this wallet"
-            : pay
-              ? balanceLine(rows, pay.symbol)
-              : "Check balances first."}
-        onMax={panel === "move" && moveDir === "deposit" || !pay || !rows
+        payHint={panel === "move" && moveDir === "deposit"
+          ? "From this wallet"
+          : <>Available <span className="text-zinc-300 tabular-nums">{free[pay?.symbol ?? ""] ?? 0}</span> {pay?.symbol} on SafeTrade</>}
+        onMax={panel === "move" && moveDir === "deposit"
           ? undefined
-          : (balanceOf(pay.symbol)?.available ?? 0) > 0
-            ? () => setAmount(formatBalance(balanceOf(pay.symbol)?.available ?? 0))
+          : pay && (free[pay.symbol] ?? 0) > 0
+            ? () => setAmount(String(free[pay.symbol]))
             : undefined}
         amount={amount}
         onAmount={setAmount}
@@ -593,7 +484,7 @@ export default function SafeTradePage() {
             ? "The swap stays on SafeTrade until you withdraw."
             : "Deposit sends from this wallet. Withdraw pays back to this wallet.")}
         cta={panel === "limit" ? "Review limit" : panel === "swap" ? "Review swap" : moveDir === "deposit" ? "Review deposit" : "Review withdraw"}
-        ctaDisabled={!rows || flow.busy}
+        ctaDisabled={!creds || flow.busy}
         onCta={() => {
           const issue = problem();
           setError(issue);
