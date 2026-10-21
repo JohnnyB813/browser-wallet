@@ -20,6 +20,11 @@
       "url": "https://testnet.wartnode.com",
       "label": "Wartnode Testnet",
       "network": "defi-testnet"
+    },
+    {
+      "url": "http://104.251.219.14:3001",
+      "label": "Testnet",
+      "network": "defi-testnet"
     }
   ]
 }

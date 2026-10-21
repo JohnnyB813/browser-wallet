@@ -58,6 +58,7 @@ export const PRESET_NODES: WalletNode[] = [
   { url: WARTNODE_MAINNET_URL, name: "Wartnode Mainnet", network: "mainnet" },
   { url: DEFI_TESTNET_URL, name: "DeFi Testnet", network: "defi-testnet" },
   { url: WARTNODE_TESTNET_URL, name: "Wartnode Testnet", network: "defi-testnet" },
+  { url: "http://104.251.219.14:3001", name: "Testnet", network: "defi-testnet" },
 ];
 
 /** Preferred default selection index (Official Mainnet). */
