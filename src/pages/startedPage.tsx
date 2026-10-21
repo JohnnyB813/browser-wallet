@@ -24,7 +24,7 @@ import {
   openLedgerHost,
   openLedgerInSidePanel,
 } from "../ledger/shell";
-import { hostBrowserName } from "../utils/browserName";
+import { hostBrowserName, isFirefoxBrowser } from "../utils/browserName";
 
 type AccessPath = "hub" | "login" | "create" | "have" | "derive" | "import" | "load" | "ledger";
 
@@ -84,7 +84,9 @@ function StartedPage() {
       ? bookmarks.length
         ? "Unlock a saved name. A Ledger name connects the Nano."
         : "Unlock with passkey or password, or start another path."
-      : "Create with passkey (password manager or this device; optional password / 2FA).",
+      : isFirefoxBrowser()
+        ? "Create a wallet, then unlock it with a password. A passkey is optional."
+        : "Create a wallet. A passkey is the preferred unlock. A password alone also works.",
     login: "Choose a saved wallet, then unlock with passkey, password, or Ledger.",
     create: "Name the wallet. Then create it from a new seed, or connect the Nano.",
     have: "How do you want to restore access?",

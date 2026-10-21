@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import useWallet from "../hooks/useWallet";
+import { isFirefoxBrowser } from "../utils/browserName";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
 import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
@@ -48,11 +49,13 @@ function SecureSetup() {
   const [awaitingPasskey, setAwaitingPasskey] = useState(false);
   const [backupPrivateKey, setBackupPrivateKey] = useState<string | null>(null);
 
+  const preferPasskey = !isFirefoxBrowser();
+
   useEffect(() => {
     const ok = isWebAuthnAvailable();
     setPasskeysSupported(ok);
-    setEnablePasskey(ok);
-  }, []);
+    if (ok && preferPasskey) setEnablePasskey(true);
+  }, [preferPasskey]);
 
   useEffect(() => {
     if (!wallet && !signingUnlocked) {
@@ -281,7 +284,10 @@ function SecureSetup() {
                     if (!e.target.checked) setRequire2fa(false);
                   }}
                 />
-                <span className="text-white text-sm">Enable passkey unlock</span>
+                <span className="text-white text-sm">
+                  Enable passkey unlock
+                  {preferPasskey ? " · preferred" : ""}
+                </span>
               </label>
               <p className="text-white/40 text-[11px] leading-relaxed -mt-1 pl-6">
                 Google Password Manager or this device can save it. Proton Pass
@@ -308,7 +314,9 @@ function SecureSetup() {
             <label className="text-white text-sm">
               {require2fa
                 ? "Password (required for 2FA)"
-                : "Password (optional if passkey is on)"}
+                : enablePasskey
+                  ? "Password (optional)"
+                  : "Password"}
             </label>
             <input
               type="password"
