@@ -1,7 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { viteStaticCopy } from "vite-plugin-static-copy";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
 import { build as esbuild } from "esbuild";
 
 // The background script needs `webextension-polyfill` in scope, which means it
@@ -42,20 +41,12 @@ export default defineConfig({
         },
       ],
     }),
-    nodePolyfills({
-      include: ["buffer", "stream", "util"],
-      globals: {
-        Buffer: true,
-        process: true,
-        global: true,
-      },
-    }),
   ],
 optimizeDeps: {
     include: ["ethers"],
-    // warthog-ts bundles elliptic and is consumed as ESM; pre-bundling it
-    // breaks its `type: module` exports.
-    exclude: ["warthog-ts", "elliptic"],
+    // warthog-ts is consumed as ESM; pre-bundling it breaks its
+    // `type: module` exports.
+    exclude: ["warthog-ts"],
   },
   build: {
     outDir: "build",
