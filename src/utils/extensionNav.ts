@@ -15,10 +15,63 @@ import browser from "webextension-polyfill";
 const HELPER_FLAG = "warthogHelperTab";
 const COMPACT_SHELL_FLAG = "warthogCompactShell";
 
+type ChromeSidePanelApi = {
+  open?: (details: { windowId: number }) => Promise<void>;
+  setOptions?: (details: { path?: string; enabled?: boolean }) => Promise<void>;
+  setPanelBehavior?: (details: { openPanelOnActionClick: boolean }) => Promise<void>;
+};
+
+type FirefoxSidebarApi = {
+  open?: () => Promise<void>;
+  setPanel?: (details: { panel: string }) => Promise<void>;
+  isOpen?: () => Promise<boolean>;
+};
+
+/** Chrome's docked panel. Chrome 114 and up only. */
+export function chromeSidePanelApi(): ChromeSidePanelApi | undefined {
+  return (globalThis as { chrome?: { sidePanel?: ChromeSidePanelApi } }).chrome
+    ?.sidePanel;
+}
+
+/** Firefox's docked panel. Its API is not compatible with Chrome's. */
+export function firefoxSidebarApi(): FirefoxSidebarApi | undefined {
+  return (browser as unknown as { sidebarAction?: FirefoxSidebarApi })
+    .sidebarAction;
+}
+
+/** True where the wallet can dock beside the page. */
+export function hasDockedPanel(): boolean {
+  return chromeSidePanelApi() !== undefined || firefoxSidebarApi() !== undefined;
+}
+
+/**
+ * True when this document is the docked panel. Chrome's side panel carries a
+ * marker in its URL. Firefox's sidebar panel is a plain index.html, so the
+ * marker is not there and the browser is asked which views it holds.
+ */
+export function isExtensionSidePanel(): boolean {
+  try {
+    if (new URLSearchParams(location.search).get("sidepanel") === "1") return true;
+  } catch {
+    // ignore
+  }
+  // The sidebar API exists only in Firefox, so this cannot misfire in Chrome.
+  if (!firefoxSidebarApi()) return false;
+  try {
+    const getViews = browser.extension.getViews as unknown as (opts?: {
+      type?: string;
+    }) => Window[];
+    const views = getViews({ type: "sidebar" });
+    return Array.isArray(views) && views.includes(window);
+  } catch {
+    return false;
+  }
+}
+
 /** True when this document is the browser action popup (small, temporary). */
 export function isExtensionPopup(): boolean {
   try {
-    if (new URLSearchParams(location.search).get("sidepanel") === "1") return false;
+    if (isExtensionSidePanel()) return false;
     if (/ledger-host|passkey-host/.test(location.hash || "")) return false;
   } catch {
     // ignore
@@ -102,8 +155,7 @@ export function reloadDocumentOnce(): boolean {
 
 export function applyExtensionShellClass(forceCompact = false): void {
   try {
-    const sidePanel =
-      new URLSearchParams(location.search).get("sidepanel") === "1";
+    const sidePanel = isExtensionSidePanel();
     const compact =
       !sidePanel &&
       (forceCompact || isExtensionPopup() || isCompactShellPreferred());

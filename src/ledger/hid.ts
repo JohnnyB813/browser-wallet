@@ -5,6 +5,7 @@
  * This TypeScript version's DOM lib has no WebHID types, so the few members
  * the client uses are declared here.
  */
+import { hostBrowserName } from "../utils/browserName";
 
 interface HidCollection {
   usagePage?: number;
@@ -78,7 +79,9 @@ function pickDevice(devices: HidDevice[]): HidDevice | undefined {
 
 export async function requestLedgerDevice(): Promise<HidDevice> {
   if (!navigator.hid) {
-    throw new LedgerError("Chrome is required to talk to a Ledger");
+    throw new LedgerError(
+      `${hostBrowserName("Chrome")} is required to talk to a Ledger`,
+    );
   }
   const already = pickDevice(await navigator.hid.getDevices());
   if (already) return already;
@@ -88,7 +91,7 @@ export async function requestLedgerDevice(): Promise<HidDevice> {
   const device = pickDevice(devices) ?? devices[0];
   if (!device) {
     throw new LedgerError(
-      "Choose Nano S+ in the Brave device list, then click Connect. If that list is hidden, look behind this window.",
+      `Choose Nano S+ in the ${hostBrowserName()} device list, then click Connect. If that list is hidden, look behind this window.`,
     );
   }
   return device;

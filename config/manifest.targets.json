@@ -1,0 +1,38 @@
+{
+  "chromium": {
+    "manifest": {
+      "background": {
+        "service_worker": "background.js"
+      },
+      "side_panel": {
+        "default_path": "index.html?sidepanel=1"
+      }
+    },
+    "addPermissions": ["sidePanel"]
+  },
+  "firefox": {
+    "manifest": {
+      "background": {
+        "scripts": ["background.js"]
+      },
+      "sidebar_action": {
+        "default_panel": "index.html",
+        "default_title": "WARTHOG NETWORK",
+        "default_icon": {
+          "16": "/logo-16.png",
+          "32": "/logo-32.png"
+        },
+        "open_at_install": false
+      },
+      "browser_specific_settings": {
+        "gecko": {
+          "id": "contact@warthog.network",
+          "data_collection_permissions": {
+            "required": ["none"]
+          }
+        }
+      }
+    },
+    "addPermissions": []
+  }
+}

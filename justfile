@@ -1,8 +1,8 @@
-default: firefox 
+default: firefox
 # build extension for firefox
 firefox:
-    npm run build 
-    npx web-ext build -s build -a dist-firefox --overwrite-dest
+    npm run build:firefox
+    npx web-ext build -s build-firefox -a dist-firefox --overwrite-dest
 
 # build extension for chrome/chromium (MV3 service worker)
 chrome:
