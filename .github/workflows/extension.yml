@@ -20,6 +20,7 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run build
+      - run: npm run build:firefox
 
       - name: Extract version from manifest.json
         id: get_version
@@ -36,12 +37,17 @@ jobs:
           cd build
           zip -r -FS ../warthog_extension.zip * --exclude '*.git*'
 
+      - name: Zip Firefox Extension
+        run: |
+          cd build-firefox
+          zip -r -FS ../warthog_extension_firefox.zip * --exclude '*.git*'
+
       - name: sign the extension
         continue-on-error: true
         uses: cardinalby/webext-buildtools-firefox-sign-xpi-action@v1
         with:
           timeoutMs: 2000000
-          zipFilePath: 'warthog_extension.zip'
+          zipFilePath: 'warthog_extension_firefox.zip'
           xpiFilePath: 'warthog_extension_firefox.xpi'
           jwtIssuer: ${{ secrets.FF_JWT_ISSUER }}
           jwtSecret: ${{ secrets.FF_JWT_SECRET }}
@@ -55,5 +61,6 @@ jobs:
           files: |
             warthog_extension_reviewer.zip
             warthog_extension.zip
+            warthog_extension_firefox.zip
             warthog_extension_firefox.xpi
 
