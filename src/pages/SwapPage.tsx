@@ -7,6 +7,8 @@ import { useSearchParams } from "react-router-dom";
 import Header from "../components/Header";
 import DefiNodeGate from "../components/DefiNodeGate";
 import SwapDexPanel, { type SwapOrderMode } from "../components/SwapDexPanel";
+import ChainSwap from "./ChainSwap";
+import { useChainAccounts } from "../chains/useChainAccounts";
 import useWallet from "../hooks/useWallet";
 import { DEFAULT_TX_FEE } from "../config/network";
 import { defiSubmitHold, isDefiNode } from "../utils/nodes";
@@ -48,6 +50,7 @@ function parseMode(raw: string | null): SwapOrderMode {
 function SwapPage() {
   const [params] = useSearchParams();
   const { wallet, selectedNode, selectedNodeUrl, ledgerAccount } = useWallet();
+  const { chain } = useChainAccounts();
 
   const nodeUrl = selectedNodeUrl || "";
   const defi = isDefiNode(selectedNode);
@@ -112,6 +115,10 @@ function SwapPage() {
   }, [wallet, nodeUrl, defi, refreshBalance, refreshAssets]);
 
   const decimals = parseInt(params.get("decimals") || "8", 10);
+
+  if (chain !== "wart") {
+    return <ChainSwap chain={chain} />;
+  }
 
   return (
     <DefiNodeGate title="Swap">
