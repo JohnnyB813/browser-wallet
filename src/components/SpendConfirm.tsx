@@ -3,7 +3,13 @@ import { toast } from "../utils/toast";
 
 type Row = { label: string; value: string };
 
-export type SpendOutcome = { ok: boolean; title: string; message: string };
+export type SpendOutcome = {
+  ok: boolean;
+  title: string;
+  message: string;
+  /** The send succeeded and a later step is still running. The sheet stays open. */
+  pending?: boolean;
+};
 
 /** Review, in-sheet progress, and the completion state for a send, swap, or tunnel. */
 export function useSpendFlow() {
@@ -27,6 +33,24 @@ export function useSpendFlow() {
     toast.settled(ok ? "success" : "error", title, text);
   };
 
+  /** Source transaction is in. Keep the spinner on the current bridge step until the user closes it. */
+  const hold = (title: string, message: string) => {
+    succeeded.current = true;
+    setBusy(false);
+    setStep(title);
+    setOutcome({ ok: true, pending: true, title, message });
+  };
+
+  /** Refresh a held step. No effect once the sheet has moved on. */
+  const note = (title: string, message: string) => {
+    setStep(title);
+    setOutcome((current) => {
+      if (!current?.pending) return current;
+      if (current.title === title && current.message === message) return current;
+      return { ok: true, pending: true, title, message };
+    });
+  };
+
   /** Closes the outcome. Runs `onSuccess` only after a successful finish. */
   const close = (onSuccess?: () => void) => {
     if (busy) return false;
@@ -37,7 +61,7 @@ export function useSpendFlow() {
     return ok;
   };
 
-  return { busy, step, setStep, outcome, begin, finish, close };
+  return { busy, step, setStep, outcome, begin, finish, hold, note, close };
 }
 
 export default function SpendConfirm({
@@ -69,10 +93,10 @@ export default function SpendConfirm({
   cancelRef.current = onCancel;
 
   useEffect(() => {
-    if (!open || !outcome?.ok) return undefined;
+    if (!open || !outcome?.ok || outcome.pending) return undefined;
     const timer = window.setTimeout(() => cancelRef.current(), 1700);
     return () => window.clearTimeout(timer);
-  }, [open, outcome?.ok, outcome?.title, outcome?.message]);
+  }, [open, outcome?.ok, outcome?.pending, outcome?.title, outcome?.message]);
 
   if (!open) return null;
 
@@ -84,17 +108,23 @@ export default function SpendConfirm({
         </h2>
         {outcome ? (
           <div className="mb-4 flex items-start gap-3">
-            <div
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${
-                outcome.ok ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"
-              }`}
-            >
-              {outcome.ok ? "✓" : "!"}
-            </div>
+            {outcome.pending ? (
+              <div className="mt-1 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            ) : (
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${
+                  outcome.ok ? "bg-emerald-400/15 text-emerald-300" : "bg-red-400/15 text-red-300"
+                }`}
+              >
+                {outcome.ok ? "✓" : "!"}
+              </div>
+            )}
             <div>
               <p className="text-sm text-white">{outcome.message}</p>
               <p className="mt-1 text-xs text-zinc-400">
-                {outcome.ok ? "Closing this in a moment." : "Nothing else was sent."}
+                {outcome.pending
+                  ? "The tracker on this screen keeps this step. Close this whenever you want."
+                  : outcome.ok ? "Closing this in a moment." : "Nothing else was sent."}
               </p>
             </div>
           </div>
@@ -120,7 +150,7 @@ export default function SpendConfirm({
         <div className="flex gap-2">
           {outcome ? (
             <button type="button" className="defi-btn-primary flex-1" onClick={onCancel}>
-              {outcome.ok ? "Done" : "Close"}
+              {outcome.pending || !outcome.ok ? "Close" : "Done"}
             </button>
           ) : (
             <>

@@ -221,6 +221,10 @@ export async function safeTicker(marketId = MARKET): Promise<SafeTicker> {
 export type SafeOrder = {
   id: string;
   state: string;
+  side: string;
+  type: string;
+  market: string;
+  price: number;
   filled: number;
   averagePrice: number;
   origin: number;
@@ -268,10 +272,25 @@ function readOrder(body: unknown): SafeOrder {
   return {
     id: String(rec.id ?? ''),
     state: String(rec.state ?? '').toLowerCase(),
+    side: String(rec.side ?? '').toLowerCase(),
+    type: String(rec.type ?? '').toLowerCase(),
+    market: String(rec.market ?? ''),
+    price: asNumber(rec.price),
     filled: asNumber(rec.filled_amount),
     averagePrice: asNumber(rec.avg_price ?? rec.price),
     origin: asNumber(rec.origin_amount),
   };
+}
+
+const OPEN_ORDER_STATES = new Set(['wait', 'pending']);
+
+function readOrderList(body: unknown, marketId: string): SafeOrder[] {
+  return recordList(body)
+    .map((row) => readOrder(row))
+    .filter((order) => (
+      OPEN_ORDER_STATES.has(order.state)
+      && (!order.market || order.market.toLowerCase() === marketId.toLowerCase())
+    ));
 }
 
 /** Market trade of a free SafeTrade balance. Buy spends the quote. Sell spends the base. */
@@ -332,8 +351,54 @@ export async function safeSellWart(creds: SafeTradeCredentials, wartAmount: numb
   return safeSwap(creds, { ...pair, amount: wartAmount });
 }
 
+/** Rest a limit order on a direct SafeTrade market. Amount is the base size. No slippage. */
+export async function safeLimitOrder(
+  creds: SafeTradeCredentials,
+  input: { market: SafeMarket; side: 'buy' | 'sell'; amount: number; price: number },
+): Promise<SafeOrder> {
+  const { market, side } = input;
+  const amount = floorDecimals(input.amount, market.amountPlaces);
+  const price = Number(input.price.toFixed(market.pricePlaces));
+  if (!(amount > 0) || amount < market.minBase) {
+    throw new ExchangeError(`Minimum ${market.base.toUpperCase()} order is ${market.minBase}.`, 0, null);
+  }
+  if (!(price > 0)) throw new ExchangeError('Enter a price.', 0, null);
+  const body = await call(creds, '/trade/market/orders', {
+    method: 'POST',
+    body: { market: market.id, side, type: 'limit', amount, price },
+  });
+  return readOrder(body);
+}
+
+/** Open orders on one market. SafeTrade calls a resting order `wait` or `pending`. */
+export async function safeOpenOrders(
+  creds: SafeTradeCredentials,
+  marketId: string,
+): Promise<SafeOrder[]> {
+  const market = encodeURIComponent(marketId);
+  try {
+    const body = await call(creds, `/trade/market/orders?market=${market}&state=wait,pending&limit=100`);
+    return readOrderList(body, marketId);
+  } catch (err) {
+    if (!(err instanceof ExchangeError) || (err.status !== 400 && err.status !== 422)) throw err;
+    const body = await call(creds, `/trade/market/orders?market=${market}&limit=100`);
+    return readOrderList(body, marketId);
+  }
+}
+
+export async function safeCancelOrder(creds: SafeTradeCredentials, orderId: string): Promise<SafeOrder> {
+  if (!/^\d+$/.test(orderId)) throw new ExchangeError('That order cannot be canceled.', 0, null);
+  const body = await call(creds, `/trade/market/orders/${orderId}/cancel`, {
+    method: 'POST',
+    body: {},
+  });
+  return readOrder(body);
+}
+
 export async function safeWaitOrder(creds: SafeTradeCredentials, orderId: string): Promise<SafeOrder> {
-  let latest: SafeOrder = { id: orderId, state: 'wait', filled: 0, averagePrice: 0, origin: 0 };
+  let latest: SafeOrder = {
+    id: orderId, state: 'wait', side: '', type: '', market: '', price: 0, filled: 0, averagePrice: 0, origin: 0,
+  };
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const body = await call(creds, `/trade/market/orders/${orderId}`);
     latest = readOrder(body);

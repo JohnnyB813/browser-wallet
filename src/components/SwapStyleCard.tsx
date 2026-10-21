@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import TokenMark from "./chains/TokenMark";
 
-export type SwapTokenChoice = { id: string; symbol: string };
+export type SwapTokenChoice = { id: string; symbol: string; mark?: string };
 
 /**
  * You pay / flip / You receive card shared by every extension swap.
@@ -12,6 +12,7 @@ export default function SwapStyleCard({
   subtitle,
   spotLabel,
   spotValue,
+  mark,
   toolbar,
   payHint,
   receiveHint,
@@ -19,10 +20,14 @@ export default function SwapStyleCard({
   onAmount,
   onMax,
   paySymbol,
+  payMark,
+  payChain,
   payChoices,
   payValue,
   onPay,
   receiveSymbol,
+  receiveMark,
+  receiveChain,
   receiveChoices,
   receiveValue,
   onReceive,
@@ -40,6 +45,8 @@ export default function SwapStyleCard({
   subtitle?: string;
   spotLabel?: string;
   spotValue?: string;
+  /** Corner mark, such as the SafeTrade favicon beside the price. */
+  mark?: ReactNode;
   toolbar?: ReactNode;
   payHint?: ReactNode;
   receiveHint?: string;
@@ -47,10 +54,18 @@ export default function SwapStyleCard({
   onAmount: (value: string) => void;
   onMax?: () => void;
   paySymbol: string;
+  /** Glyph when it differs from the ticker, such as hemiETH. */
+  payMark?: string;
+  /** Chain this side leaves, shown even when the asset cannot be changed. */
+  payChain?: string;
   payChoices?: SwapTokenChoice[];
   payValue?: string;
   onPay?: (id: string) => void;
   receiveSymbol: string;
+  /** Glyph when it differs from the ticker, such as hemiETH. */
+  receiveMark?: string;
+  /** Chain this side arrives on, shown even when there is one target. */
+  receiveChain?: string;
   receiveChoices?: SwapTokenChoice[];
   receiveValue?: string;
   onReceive?: (id: string) => void;
@@ -73,15 +88,20 @@ export default function SwapStyleCard({
               {title}
             </h2>
             {subtitle ? (
-              <p className="text-[11px] text-zinc-600 tabular-nums">{subtitle}</p>
+              <p className="text-[11px] font-medium text-zinc-300 tabular-nums">{subtitle}</p>
             ) : null}
           </div>
-          {spotValue ? (
-            <div className="text-right">
-              <span className="text-zinc-600 block text-[10px] uppercase tracking-wide mb-0.5">
-                {spotLabel || "Price"}
-              </span>
-              <span className="text-[11px] text-zinc-300 tabular-nums">{spotValue}</span>
+          {spotValue || mark ? (
+            <div className="flex items-start gap-2">
+              {spotValue ? (
+                <div className="text-right">
+                  <span className="text-zinc-600 block text-[10px] uppercase tracking-wide mb-0.5">
+                    {spotLabel || "Price"}
+                  </span>
+                  <span className="text-[11px] text-zinc-300 tabular-nums">{spotValue}</span>
+                </div>
+              ) : null}
+              {mark}
             </div>
           ) : null}
         </div>
@@ -91,7 +111,7 @@ export default function SwapStyleCard({
           <div className="swap-legs">
             <div className="swap-panel">
               <div className="flex items-start justify-between gap-3 mb-2.5">
-                <span className="text-xs text-zinc-500 shrink-0 pt-0.5">You pay</span>
+                <LegLabel action="You pay" chain={payChain} />
                 {payHint ? (
                   onMax ? (
                     <button type="button" className="swap-balance-btn" onClick={onMax}>
@@ -119,6 +139,8 @@ export default function SwapStyleCard({
                 ) : null}
                 <TokenPill
                   symbol={paySymbol}
+                  mark={payMark}
+                  chain={payChain}
                   choices={payChoices}
                   value={payValue}
                   onChange={onPay}
@@ -140,7 +162,7 @@ export default function SwapStyleCard({
 
             <div className="swap-panel">
               <div className="flex items-center justify-between mb-2.5">
-                <span className="text-xs text-zinc-500">You receive</span>
+                <LegLabel action="You receive" chain={receiveChain} />
                 {receiveHint ? (
                   <span className="text-[10px] text-zinc-600">{receiveHint}</span>
                 ) : null}
@@ -153,6 +175,8 @@ export default function SwapStyleCard({
                 </div>
                 <TokenPill
                   symbol={receiveSymbol}
+                  mark={receiveMark}
+                  chain={receiveChain}
                   choices={receiveChoices}
                   value={receiveValue}
                   onChange={onReceive}
@@ -174,37 +198,101 @@ export default function SwapStyleCard({
   );
 }
 
+function LegLabel({ action, chain }: { action: string; chain?: string }) {
+  return (
+    <span className="text-xs text-zinc-500 shrink-0 pt-0.5">
+      {action}
+      {chain ? <span className="font-medium text-zinc-100"> · {chain}</span> : null}
+    </span>
+  );
+}
+
 function TokenPill({
   symbol,
+  mark,
+  chain,
   choices,
   value,
   onChange,
 }: {
   symbol: string;
+  mark?: string;
+  chain?: string;
   choices?: SwapTokenChoice[];
   value?: string;
   onChange?: (id: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const interactive = Boolean(onChange && choices && choices.length > 1);
-  return (
-    <label className="swap-token-btn">
-      <TokenMark symbol={symbol} size={22} />
-      {interactive ? (
-        <select
-          className="max-w-[5.5rem] bg-transparent text-inherit outline-none"
-          value={value}
-          onChange={(event) => onChange?.(event.target.value)}
-        >
-          {choices!.map((choice) => (
-            <option key={choice.id} value={choice.id} className="bg-zinc-900">
-              {choice.symbol}
-            </option>
-          ))}
-        </select>
-      ) : (
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!interactive) setOpen(false);
+  }, [interactive]);
+
+  const face = (
+    <>
+      <TokenMark symbol={mark || symbol} size={22} />
+      <span className="flex min-w-0 flex-col items-start leading-none">
         <span>{symbol}</span>
-      )}
-      {interactive ? <span className="text-zinc-500 text-xs">▾</span> : null}
-    </label>
+        {chain ? <span className="mt-0.5 text-[10px] font-medium text-zinc-300">{chain}</span> : null}
+      </span>
+    </>
+  );
+
+  if (!interactive) {
+    return <span className="swap-token-btn">{face}</span>;
+  }
+
+  return (
+    <div className={`swap-token-menu${open ? " swap-token-menu--open" : ""}`} ref={rootRef}>
+      <button
+        type="button"
+        className="swap-token-btn"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Choose ${symbol}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {face}
+        <span className="text-zinc-500 text-xs" aria-hidden="true">▾</span>
+      </button>
+      {open ? (
+        <div className="swap-token-list" role="listbox" aria-label={`Choose ${symbol}`}>
+          {choices!.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              role="option"
+              aria-selected={choice.id === value}
+              className={`swap-token-option${choice.id === value ? " swap-token-option--active" : ""}`}
+              onClick={() => {
+                onChange?.(choice.id);
+                setOpen(false);
+              }}
+            >
+              <TokenMark symbol={choice.mark || choice.symbol} size={18} />
+              <span>{choice.symbol}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }

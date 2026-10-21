@@ -232,7 +232,7 @@ export function buildSolTransfer(input: {
   return concat(compactU16(1), signature, message);
 }
 
-function solOwner(): { address: string; publicKey: Uint8Array } {
+export function currentSolanaOwner(): { address: string; publicKey: Uint8Array } {
   const ledger = getLedgerSession();
   if (ledger) {
     if (!ledger.solAddress || !ledger.solPublicKey) {
@@ -252,7 +252,7 @@ function solOwner(): { address: string; publicKey: Uint8Array } {
 }
 
 export async function sendSol(to: string, amount: string): Promise<{ signature: string }> {
-  const owner = solOwner();
+  const owner = currentSolanaOwner();
   const destination = assertSolAddress(to);
   if (base58.encode(destination) === owner.address) {
     throw new Error('That is this wallet’s Solana address.');

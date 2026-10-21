@@ -9,7 +9,7 @@ import React, {
 import { getKeyFromPassword, encrypt, decrypt } from "dha-encryption";
 import browser from "webextension-polyfill";
 import { Account } from "warthog-ts";
-import { DEFAULT_NODE_INDEX } from "../config/network";
+import { DEFAULT_NODE_INDEX, PRESET_NODES } from "../config/network";
 import { mergeNodeLists, networkLabel, normalizeNodeUrl } from "../utils/nodes";
 import {
   deriveAccountAtIndex,
@@ -233,6 +233,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const [nameList, setNameListState] = useState<string[]>([]);
   const [nodeList, setNodeListState] = useState<string[]>([]);
   const [nodeNameList, setNodeNameListState] = useState<string[]>([]);
+  const dismissedNodesRef = useRef<string[]>([]);
   const [token, setTokenState] = useState<string | null>(null);
   const [signingUnlocked, setSigningUnlocked] = useState(false);
   const [ledgerAccount, setLedgerAccount] = useState<LedgerSession | null>(null);
@@ -382,6 +383,19 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const setNodeList = (list: string[]): void => {
     setNodeListState(list);
     saveToBrowserStorage("nodeList", list.join(","));
+    const prev = new Set(nodeList.map((url) => normalizeNodeUrl(url)));
+    const next = new Set(list.map((url) => normalizeNodeUrl(url)));
+    const dismissed = new Set(
+      dismissedNodesRef.current.map((url) => normalizeNodeUrl(url)).filter(Boolean),
+    );
+    for (const preset of PRESET_NODES) {
+      const url = normalizeNodeUrl(preset.url);
+      if (prev.has(url) && !next.has(url)) dismissed.add(url);
+      if (next.has(url)) dismissed.delete(url);
+    }
+    const saved = [...dismissed];
+    dismissedNodesRef.current = saved;
+    saveToBrowserStorage("dismissedNodes", saved.join(","));
   };
 
   const setNodeNameList = (list: string[]): void => {
@@ -1195,11 +1209,17 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       new Promise<string | null>((resolve) =>
         loadFromChromeStorage("selectedNodeIndex", resolve),
       ),
-    ]).then(([storedNodes, storedNames, storedIndex]) => {
+      new Promise<string | null>((resolve) =>
+        loadFromChromeStorage("dismissedNodes", resolve),
+      ),
+    ]).then(([storedNodes, storedNames, storedIndex, storedDismissed]) => {
       const storedUrls = storedNodes ? storedNodes.split(",").filter(Boolean) : [];
+      const dismissed = storedDismissed ? storedDismissed.split(",").filter(Boolean) : [];
+      dismissedNodesRef.current = dismissed;
       const merged = mergeNodeLists(
         storedUrls,
         storedNames ? storedNames.split(",") : [],
+        dismissed,
       );
       setNodeListState(merged.urls);
       setNodeNameListState(merged.names);

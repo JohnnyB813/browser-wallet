@@ -1,5 +1,4 @@
 import {
-  DEFI_TESTNET_URL,
   DEFAULT_NODE_LIST,
   DEFAULT_NODE_NAME_LIST,
   MAINNET_OFFICIAL_URL,
@@ -118,13 +117,16 @@ function officialNodes(): { urls: string[]; names: string[] } {
 }
 
 /**
- * Merge stored nodes with the official mobile-wallet pair.
- * Custom URLs stay, in the order they were saved. Known shipped defaults
- * that contain no custom URL are replaced with Mainnet + DeFi Testnet.
+ * Merge stored nodes with the built-in list.
+ * Built-in nodes stay in preset order. A built-in URL the user removed is
+ * listed in `dismissed` and stays gone. Custom URLs stay after the built-ins,
+ * in the order they were saved. An old shipped list with no custom URL is
+ * replaced by the built-in list.
  */
 export function mergeNodeLists(
   storedUrls: string[] | null | undefined,
   storedNames: string[] | null | undefined,
+  dismissed?: string[] | null,
 ): { urls: string[]; names: string[] } {
   const urls: string[] = [];
   const names: string[] = [];
@@ -147,23 +149,21 @@ export function mergeNodeLists(
   );
   if (shipped) return officialNodes();
 
-  const nextUrls = [...urls];
-  const nextNames = urls.map((url, index) => {
-    const preset = PRESET_NODES.find((node) => normalizeNodeUrl(node.url) === url);
-    return preset?.name || names[index] || labelForNodeUrl(url);
+  const hidden = new Set((dismissed || []).map((url) => normalizeNodeUrl(url)).filter(Boolean));
+  const presets = PRESET_NODES.filter((node) => !hidden.has(normalizeNodeUrl(node.url)));
+  const presetUrls = new Set(presets.map((node) => normalizeNodeUrl(node.url)));
+  const customUrls: string[] = [];
+  const customNames: string[] = [];
+  urls.forEach((url, index) => {
+    if (presetUrls.has(url) || hidden.has(url)) return;
+    customUrls.push(url);
+    customNames.push(names[index] || labelForNodeUrl(url));
   });
 
-  const ensure = (url: string, name: string) => {
-    const normalized = normalizeNodeUrl(url);
-    if (nextUrls.includes(normalized)) return;
-    nextUrls.unshift(normalized);
-    nextNames.unshift(name);
+  return {
+    urls: [...presets.map((node) => normalizeNodeUrl(node.url)), ...customUrls],
+    names: [...presets.map((node) => node.name), ...customNames],
   };
-
-  ensure(DEFI_TESTNET_URL, "DeFi Testnet");
-  ensure(MAINNET_OFFICIAL_URL, "Mainnet");
-
-  return { urls: nextUrls, names: nextNames };
 }
 
 export function labelForNodeUrl(url: string): string {

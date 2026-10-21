@@ -6,8 +6,16 @@
       "label": "Mainnet"
     },
     {
+      "url": "https://mainnet.wartnode.com",
+      "label": "Wartnode Mainnet"
+    },
+    {
       "url": "https://warthog-defitestnet.duckdns.org",
       "label": "DeFi Testnet"
+    },
+    {
+      "url": "https://testnet.wartnode.com",
+      "label": "Wartnode Testnet"
     }
   ]
 }

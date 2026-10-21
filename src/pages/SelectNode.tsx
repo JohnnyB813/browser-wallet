@@ -5,7 +5,6 @@ import useWallet from "../hooks/useWallet";
 import NodeCard from "../components/NodeCard";
 import {
   isDefiNode,
-  isPresetNodeUrl,
   labelForNodeUrl,
   normalizeNodeUrl,
 } from "../utils/nodes";
@@ -60,12 +59,12 @@ function SelectNode() {
   };
 
   const removeNode = (id: number) => {
-    if (isPresetNodeUrl(nodeList[id])) return;
     if (nodeList.length <= 1) return;
-    setNodeList(nodeList.filter((_, index) => index !== id));
+    const next = nodeList.filter((_, index) => index !== id);
+    setNodeList(next);
     setNodeNameList(nodeNameList.filter((_, index) => index !== id));
-    if (selectedNodeIndex >= id)
-      setSelectedNodeIndex(Math.max(selectedNodeIndex - 1, 0));
+    if (selectedNodeIndex > id) setSelectedNodeIndex(selectedNodeIndex - 1);
+    else if (selectedNodeIndex === id) setSelectedNodeIndex(Math.min(id, next.length - 1));
   };
 
   const handleAddNode = async () => {
@@ -161,8 +160,9 @@ function SelectNode() {
     <div className="min-h-screen container relative px-4">
       <Header title="Select A Node" />
       <p className="text-white/50 text-xs mb-3">
-        Mainnet and DeFi Testnet match the mobile wallet. A node you add is
-        saved in this browser and is still here the next time you log in.
+        Built-in nodes match the mobile wallet, including Wartnode mainnet and
+        testnet. A node you add is saved in this browser and is still here the
+        next time you log in.
       </p>
 
       <div className="flex gap-2 mb-3 flex-wrap">
@@ -205,23 +205,13 @@ function SelectNode() {
       <div className="h-[55vh] overflow-y-scroll">
         {filteredNodes.length > 0 ? (
           filteredNodes.map((node) => (
-            <div key={node.id} className="relative">
-              <span
-                className={`absolute right-3 top-3 z-10 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                  node.network === "defi-testnet"
-                    ? "bg-amber-500/20 text-amber-300"
-                    : "bg-emerald-500/15 text-emerald-300"
-                }`}
-              >
-                {node.network === "defi-testnet" ? "DeFi" : "Mainnet"}
-              </span>
-              <NodeCard
-                {...node}
-                setPrimaryNode={setPrimaryNode}
-                removeNode={removeNode}
-                removable={!isPresetNodeUrl(node.address)}
-              />
-            </div>
+            <NodeCard
+              key={node.id}
+              {...node}
+              setPrimaryNode={setPrimaryNode}
+              removeNode={removeNode}
+              removable={nodeList.length > 1}
+            />
           ))
         ) : (
           <div className="text-center text-white/50 mt-6">No nodes found</div>

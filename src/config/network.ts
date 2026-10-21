@@ -3,8 +3,14 @@ import { explorerBaseUrl } from "./nodes";
 /** Official mainnet node (same as website webwallet). */
 export const MAINNET_OFFICIAL_URL = "https://warthognode.duckdns.org";
 
+/** Wartnode mainnet. Same chain as the official mainnet, node v0.8.20. */
+export const WARTNODE_MAINNET_URL = "https://mainnet.wartnode.com";
+
 /** Official Warthog DeFi testnet (same as wartbunker). */
 export const DEFI_TESTNET_URL = "https://warthog-defitestnet.duckdns.org";
+
+/** Wartnode testnet. Same chain as the DeFi testnet. */
+export const WARTNODE_TESTNET_URL = "https://testnet.wartnode.com";
 
 export const WARTHOG_NETWORK = {
   chainId: 1337,
@@ -29,12 +35,14 @@ export type PresetNode = {
 };
 
 /**
- * Built-in nodes. Same pair the mobile wallet ships in WARTHOG_NODES:
- * mainnet, then the DeFi testnet. Anything else is a node the user saved.
+ * Built-in nodes. Same list the mobile wallet ships in WARTHOG_NODES.
+ * Anything else is a node the user saved.
  */
 export const PRESET_NODES: PresetNode[] = [
   { url: MAINNET_OFFICIAL_URL, name: "Mainnet", network: "mainnet" },
+  { url: WARTNODE_MAINNET_URL, name: "Wartnode Mainnet", network: "mainnet" },
   { url: DEFI_TESTNET_URL, name: "DeFi Testnet", network: "defi-testnet" },
+  { url: WARTNODE_TESTNET_URL, name: "Wartnode Testnet", network: "defi-testnet" },
 ];
 
 export const DEFAULT_NODE_LIST = PRESET_NODES.map((n) => n.url);
