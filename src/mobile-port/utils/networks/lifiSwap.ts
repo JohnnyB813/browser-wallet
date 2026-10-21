@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '../../shims/asyncStorage';
 import { base64 } from '@scure/base';
 import { assertBtcAddress, fetchBtcBalance, sendBtcPayment } from './btc';
 import { networkFetch } from './http';

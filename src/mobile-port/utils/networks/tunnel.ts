@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '../../shims/asyncStorage';
 import { Contract, ethers } from 'ethers';
 import {
   HEMIBTC,

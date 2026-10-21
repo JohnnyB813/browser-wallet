@@ -101,13 +101,6 @@ export default defineConfig(({ mode }) => {
   const outDir = target === "firefox" ? "build-firefox" : "build";
 
   return {
-    resolve: {
-      alias: {
-        "@react-native-async-storage/async-storage": resolve(
-          "src/mobile-port/shims/asyncStorage.ts",
-        ),
-      },
-    },
     plugins: [
       react(),
       bundleBackground(),

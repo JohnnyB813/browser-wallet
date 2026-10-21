@@ -1,6 +1,6 @@
 /** Default tokens per network, plus tokens the user adds on this device. */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '../shims/asyncStorage';
 import { base58, base64 } from '@scure/base';
 import { ethers } from 'ethers';
 import { ETH_CHAIN_ID, ETH_RPC, ETH_USDC, ETH_USDT, ETH_WBTC } from './ethTokens';

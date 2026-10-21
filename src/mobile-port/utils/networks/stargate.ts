@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '../../shims/asyncStorage';
 import { ethers } from 'ethers';
 import { ETH_CHAIN_ID, ETH_RPC } from '../ethTokens';
 import { sendEthCall } from '../ethChain';
