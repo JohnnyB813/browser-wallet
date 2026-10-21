@@ -5,7 +5,7 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
-import { formatWalletAddress, createTransactionContext, submitTransaction } from "../utils";
+import { formatWalletAddress, createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
 import { defiSubmitHold } from "../utils/nodes";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
@@ -144,7 +144,7 @@ function LiquidityStep2() {
         const tokenParsed = Funds.parse(tmpTokenAmount, TokenDecimals.WART);
         const wartParsed = Wart.parse(tmpWartAmount || "0");
         if (!tokenParsed || !wartParsed) throw new Error("Parse failed");
-        tx = context.depositLiquidity(
+        tx = requireDeFiContext(context).depositLiquidity(
           account,
           tmpAssetHash,
           tokenParsed,
@@ -153,7 +153,7 @@ function LiquidityStep2() {
       } else {
         const liquidityParsed = Liquidity.parse(tmpTokenAmount);
         if (!liquidityParsed) throw new Error("Parse failed");
-        tx = context.withdrawLiquidity(account, tmpAssetHash, liquidityParsed);
+        tx = requireDeFiContext(context).withdrawLiquidity(account, tmpAssetHash, liquidityParsed);
       }
 
       const txHash = await submitTransaction(nodeList, selectedNodeIndex, tx as TransactionJson);

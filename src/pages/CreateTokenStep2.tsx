@@ -5,7 +5,7 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
-import { createTransactionContext, submitTransaction } from "../utils";
+import { createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
 import { defiSubmitHold } from "../utils/nodes";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
@@ -119,7 +119,7 @@ function CreateTokenStep2() {
         new TokenDecimals(tmpPrecision || 8),
       );
       if (!tokenParsed) throw new Error("Parse failed");
-      const tx = context.createAssets(
+      const tx = requireDeFiContext(context).createAssets(
         account,
         tokenParsed,
         new TokenDecimals(tmpPrecision || 8),

@@ -4,7 +4,7 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import UserDropdown from "../components/UserDropdown";
 import useWallet from "../hooks/useWallet";
-import { formatWalletAddress, addressToSeed, createTransactionContext, submitTransaction } from "../utils";
+import { formatWalletAddress, addressToSeed, createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
 import { explorerBaseUrl } from "../config/nodes";
 import { DEFAULT_FEE_WART } from "../config";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
@@ -229,11 +229,11 @@ function SendFinalStep() {
           new TokenDecimals(tmpPrecision || 8),
         );
         if (!fundsParsed) throw new Error("Invalid token amount");
-        tx = context.transferAsset(account!, tmpAssetHash!, toAddr, fundsParsed);
+        tx = requireDeFiContext(context).transferAsset(account!, tmpAssetHash!, toAddr, fundsParsed);
       } else if (tmpTransferType === "liquidity") {
         const liquidityParsed = Liquidity.parse(tmpTokenAmount || "0");
         if (!liquidityParsed) throw new Error("Invalid liquidity amount");
-        tx = context.transferLiquidity(
+        tx = requireDeFiContext(context).transferLiquidity(
           account!,
           tmpAssetHash!,
           toAddr,

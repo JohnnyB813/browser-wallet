@@ -12,8 +12,9 @@ import {
   RoundedFee,
   TokenDecimals,
   Wart,
-  WarthogApi,
+  WarthogDeFiApi,
   type TransactionJson,
+  type WarthogDeFiTransactionContext,
 } from "warthog-ts";
 import { DEFAULT_TX_FEE } from "../config/network";
 import { normalizeNodeUrl } from "./nodes";
@@ -72,12 +73,12 @@ export type AssetInfo = {
   decimals?: number;
 };
 
-export function createDefiApi(nodeBase: string): WarthogApi {
+export function createDefiApi(nodeBase: string): WarthogDeFiApi {
   const base = normalizeNodeUrl(nodeBase);
   if (!base) throw new Error("Invalid node URL");
-  // DeFi testnet nodes serve the V2 /chain/head shape, which nests ChainHead
-  // under `chainHead`. Declaring it explicitly means the SDK normalizes it.
-  return new WarthogApi(base, { version: "v2" });
+  // The DeFi client speaks the V2 generation: /chain/head nests ChainHead
+  // under `chainHead`, and a transfer carries its amount in `wartE8`.
+  return new WarthogDeFiApi(base);
 }
 
 export function accountFromPrivateKey(privateKeyHex: string): Account {
@@ -159,7 +160,7 @@ async function resolveFee(
 }
 
 type BuildFn = (
-  ctx: Awaited<ReturnType<WarthogApi["createTransactionContext"]>>,
+  ctx: WarthogDeFiTransactionContext,
   account: Account,
 ) => TransactionJson;
 
@@ -175,7 +176,7 @@ async function signAndSubmit(
   const nonce = NonceId.fromNumber(nonceId);
   if (!nonce) throw new Error(`Invalid nonce ${nonceId}`);
 
-  let ctx: Awaited<ReturnType<WarthogApi["createTransactionContext"]>>;
+  let ctx: WarthogDeFiTransactionContext;
   try {
     ctx = await api.createTransactionContext(fee, nonce);
   } catch (e) {

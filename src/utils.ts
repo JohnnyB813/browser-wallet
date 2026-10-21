@@ -1,4 +1,16 @@
-import { Price, TokenDecimals, WarthogApi, RoundedFee, NonceId, TransactionContext, TransactionJson, type WarthogApiVersion } from "warthog-ts";
+import {
+  Price,
+  TokenDecimals,
+  WarthogDeFiApi,
+  WarthogDeFiTransactionContext,
+  WarthogLegacyApi,
+  RoundedFee,
+  NonceId,
+  type AnyTransactionContext,
+  type AnyWarthogApi,
+  type TransactionJson,
+  type WarthogApiVersion,
+} from "warthog-ts";
 import { isDefiNode } from "./utils/nodes";
 
 const formatWalletAddress = (
@@ -37,18 +49,40 @@ const parsePriceInput = (value: string): Price | null => {
 const apiVersionForNode = (nodeUrl: string | null | undefined): WarthogApiVersion =>
   isDefiNode(nodeUrl) ? "v2" : "v1";
 
-const createApi = (nodeUrl: string): WarthogApi =>
-  new WarthogApi(nodeUrl, { version: apiVersionForNode(nodeUrl) });
+/**
+ * The client for a node, one per node family.
+ *
+ * The family decides more than the chain head shape: it decides the amount
+ * field a transfer carries, so a legacy node needs the legacy client.
+ */
+const createApi = (nodeUrl: string): AnyWarthogApi =>
+  apiVersionForNode(nodeUrl) === "v2"
+    ? new WarthogDeFiApi(nodeUrl)
+    : new WarthogLegacyApi(nodeUrl);
 
 const createTransactionContext = async (
   nodeList: string[],
   selectedNodeIndex: number,
   fee: RoundedFee,
   nonce: NonceId,
-): Promise<TransactionContext> => {
+): Promise<AnyTransactionContext> => {
   const nodeUrl = nodeList[selectedNodeIndex];
-  const api = new WarthogApi(nodeUrl, { version: apiVersionForNode(nodeUrl) });
+  const api = createApi(nodeUrl);
   return api.createTransactionContext(fee, nonce);
+};
+
+/**
+ * A context for the DeFi node, with the builders only it has.
+ *
+ * The DeFi pages need them, and they only make sense against a DeFi node.
+ */
+const requireDeFiContext = (
+  context: AnyTransactionContext,
+): WarthogDeFiTransactionContext => {
+  if (!(context instanceof WarthogDeFiTransactionContext)) {
+    throw new Error("This transaction needs a DeFi node");
+  }
+  return context;
 };
 
 const submitTransaction = async (
@@ -57,7 +91,7 @@ const submitTransaction = async (
   tx: TransactionJson,
 ): Promise<string> => {
   const nodeUrl = nodeList[selectedNodeIndex];
-  const api = new WarthogApi(nodeUrl, { version: apiVersionForNode(nodeUrl) });
+  const api = createApi(nodeUrl);
   const result = await api.submitTransaction(tx);
   if (!result.success) {
     throw new Error(result.error);
@@ -73,5 +107,6 @@ export {
   apiVersionForNode,
   createApi,
   createTransactionContext,
+  requireDeFiContext,
   submitTransaction,
 };
