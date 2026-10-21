@@ -13,18 +13,15 @@ import {
   setLedgerPanelRoute,
 } from "./session";
 import { askBackgroundToReopenToolbar } from "../utils/passkeyHandoff";
+import {
+  chromeSidePanelApi,
+  firefoxSidebarApi,
+  isExtensionSidePanel,
+} from "../utils/extensionNav";
 
 const SHELL_KEY = "warthogLedgerShell";
 
 let dockWindowId: number | null = null;
-
-type SidePanelApi = {
-  open?: (details: { windowId: number }) => Promise<void>;
-};
-
-function sidePanelApi(): SidePanelApi | undefined {
-  return (globalThis as { chrome?: { sidePanel?: SidePanelApi } }).chrome?.sidePanel;
-}
 
 /** Remember this browser window so a click can dock the panel immediately. */
 export function warmDockWindow(): void {
@@ -40,7 +37,12 @@ export function warmDockWindow(): void {
 
 /** Open the docked panel during the click, before any await. */
 export function openDockedWalletNow(): void {
-  const open = sidePanelApi()?.open;
+  const sidebar = firefoxSidebarApi();
+  if (sidebar?.open) {
+    void sidebar.open().catch(() => {});
+    return;
+  }
+  const open = chromeSidePanelApi()?.open;
   if (!open || dockWindowId == null) return;
   void open({ windowId: dockWindowId });
 }
@@ -69,11 +71,25 @@ export function openToolbarDropdownNow(): void {
 }
 
 /**
- * Dock the wallet. The first await is sidePanel.open so the click still counts.
- * hashPath is consumed by the panel once it is open.
+ * Dock the wallet. The first await is the panel opening so the click still
+ * counts. hashPath is consumed by the panel once it is open.
  */
 export async function openLedgerInSidePanel(hashPath: string): Promise<boolean> {
-  const open = sidePanelApi()?.open;
+  const sidebar = firefoxSidebarApi();
+  if (sidebar?.open) {
+    // Firefox: the panel is a fixed page, so the route travels through storage
+    // and the panel picks it up when it loads. The sidebar only opens from
+    // inside a user action, so it goes first.
+    try {
+      await sidebar.open();
+    } catch (err) {
+      console.warn("[warthog] sidebar open failed", err);
+      return false;
+    }
+    await setLedgerPanelRoute(hashPath);
+    return true;
+  }
+  const open = chromeSidePanelApi()?.open;
   if (!open || dockWindowId == null) return false;
   try {
     await open({ windowId: dockWindowId });
@@ -94,15 +110,6 @@ export function markLedgerShell(): void {
     sessionStorage.setItem(SHELL_KEY, "1");
   } catch {
     /* ignore */
-  }
-}
-
-/** The wallet page Brave docks beside the browser. It stays up while the device list is open. */
-export function isExtensionSidePanel(): boolean {
-  try {
-    return new URLSearchParams(location.search).get("sidepanel") === "1";
-  } catch {
-    return false;
   }
 }
 

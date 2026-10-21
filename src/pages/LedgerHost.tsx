@@ -18,9 +18,11 @@ import {
 import { finishLedgerDeviceStep, markLedgerShell } from "../ledger/shell";
 import { submitTransaction } from "../utils";
 import { approveRequest } from "../utils/extensionApi";
+import { hostBrowserName } from "../utils/browserName";
 import type { PathType } from "../utils/walletKeys";
 
 function LedgerHost() {
+  const browserName = hostBrowserName();
   const { loginWithLedger, ledgerAccount, nodeList, sessionReady } = useWallet();
   const navigate = useNavigate();
   const location = useLocation();
@@ -126,11 +128,11 @@ function LedgerHost() {
         <p className="text-white/55 text-xs leading-relaxed">
           {op === "sign"
             ? windowMode === "sidepanel"
-              ? "Brave asks for the Nano S+. Confirm the amount, fee, and recipient on the device. The Warthog app must be open. The wallet then opens in the side panel."
-              : "Leave this tab open. Brave asks for the Nano S+. Confirm the amount, fee, and recipient on the device. The Warthog app must be open. This tab then closes and the wallet opens under the toolbar icon."
+              ? `${browserName} asks for the Nano S+. Confirm the amount, fee, and recipient on the device. The Warthog app must be open. The wallet then opens in the side panel.`
+              : `Leave this tab open. ${browserName} asks for the Nano S+. Confirm the amount, fee, and recipient on the device. The Warthog app must be open. This tab then closes and the wallet opens under the toolbar icon.`
             : windowMode === "sidepanel"
-              ? "Unlock the Nano and open the Warthog app. Brave lists the Nano S+. Choose it and click Connect. After you approve the address, the wallet opens in the side panel."
-              : "Unlock the Nano and open the Warthog app. Brave lists the Nano S+. Choose it and click Connect. After you approve the address, this tab closes and the wallet opens under the toolbar icon."}
+              ? `Unlock the Nano and open the Warthog app. ${browserName} lists the Nano S+. Choose it and click Connect. After you approve the address, the wallet opens in the side panel.`
+              : `Unlock the Nano and open the Warthog app. ${browserName} lists the Nano S+. Choose it and click Connect. After you approve the address, this tab closes and the wallet opens under the toolbar icon.`}
         </p>
         {summary && <p className="text-white text-sm break-all">{summary}</p>}
         {txHash && (

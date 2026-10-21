@@ -37,7 +37,7 @@ import ActivityDetailPage from "./pages/ActivityDetailPage";
 import PasskeyHost from "./pages/PasskeyHost";
 import LedgerHost from "./pages/LedgerHost";
 import { takeLedgerPanelRoute } from "./ledger/session";
-import { isExtensionSidePanel } from "./ledger/shell";
+import { isExtensionSidePanel } from "./utils/extensionNav";
 
 const App: React.FC = () => {
   const {

@@ -5,6 +5,8 @@ import {
   type LedgerWindowMode,
 } from "../ledger/session";
 import { openDockedWalletNow, openToolbarDropdownNow, warmDockWindow } from "../ledger/shell";
+import { isFirefoxBrowser } from "../utils/browserName";
+import { hasDockedPanel } from "../utils/extensionNav";
 
 /**
  * Public preference. Dropdown is the toolbar menu. Side panel is the
@@ -16,6 +18,10 @@ export default function LedgerWindowSetting({
   onChange?: (mode: LedgerWindowMode) => void;
 }) {
   const [mode, setMode] = useState<LedgerWindowMode>("dropdown");
+  const isFirefox = isFirefoxBrowser();
+  // Chrome has a side panel, Firefox a sidebar. Elsewhere there is nowhere
+  // to dock, so the choice is not offered.
+  const canDock = hasDockedPanel();
 
   useEffect(() => {
     warmDockWindow();
@@ -44,9 +50,13 @@ export default function LedgerWindowSetting({
       <p className="text-white/45 text-xs mt-1 leading-relaxed">
         {mode === "dropdown"
           ? "The toolbar icon opens the small menu. A tab opens while the Nano connects or signs, then the wallet returns to that menu."
-          : "The toolbar icon opens a panel docked on the side of the browser. The Nano connects there."}
+          : isFirefox
+            ? "The Nano connects in the sidebar next to the page. The toolbar icon still opens the small menu."
+            : "The toolbar icon opens a panel docked on the side of the browser. The Nano connects there."}
       </p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div
+        className={`mt-2 grid gap-2 ${canDock ? "grid-cols-2" : "grid-cols-1"}`}
+      >
         <button
           type="button"
           onClick={() => choose("dropdown")}
@@ -58,17 +68,19 @@ export default function LedgerWindowSetting({
         >
           Dropdown
         </button>
-        <button
-          type="button"
-          onClick={() => choose("sidepanel")}
-          className={`rounded-lg border px-3 py-2 text-sm ${
-            mode === "sidepanel"
-              ? "border-primary bg-primary/20 text-white"
-              : "border-white/20 text-white/60"
-          }`}
-        >
-          Side panel
-        </button>
+        {canDock && (
+          <button
+            type="button"
+            onClick={() => choose("sidepanel")}
+            className={`rounded-lg border px-3 py-2 text-sm ${
+              mode === "sidepanel"
+                ? "border-primary bg-primary/20 text-white"
+                : "border-white/20 text-white/60"
+            }`}
+          >
+            {isFirefox ? "Sidebar" : "Side panel"}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -22,11 +22,11 @@ import {
 import { ledgerWartSubmitJson, signWartTransferOnLedger } from "../ledger/warthogApp";
 import { readLedgerWindowMode, storeLedgerSignJob, type LedgerWindowMode } from "../ledger/session";
 import {
-  isExtensionSidePanel,
   isToolbarActionPopup,
   openLedgerHost,
   openLedgerInSidePanel,
 } from "../ledger/shell";
+import { isExtensionSidePanel } from "../utils/extensionNav";
 
 interface AccountType {
   id: number;

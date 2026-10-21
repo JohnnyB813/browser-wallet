@@ -7,6 +7,7 @@
  */
 import browser from "webextension-polyfill";
 import type { PathType } from "../utils/walletKeys";
+import { hasDockedPanel } from "../utils/extensionNav";
 import type { LedgerSession } from "./warthogApp";
 
 const SESSION_KEY = "warthogLedgerSession";
@@ -290,7 +291,9 @@ export async function readLedgerWindowMode(): Promise<LedgerWindowMode> {
   try {
     const local = await browser.storage.local.get(WINDOW_KEY);
     const value = local?.[WINDOW_KEY];
-    return value === "sidepanel" || value === "tab" ? "sidepanel" : "dropdown";
+    if (value !== "sidepanel" && value !== "tab") return "dropdown";
+    // Only keep the docked mode where the wallet can dock.
+    return hasDockedPanel() ? "sidepanel" : "dropdown";
   } catch {
     return "dropdown";
   }
@@ -307,16 +310,22 @@ type ChromeAction = {
 /** Icon opens the dropdown, or the docked panel when that option is on. */
 export async function applyLedgerWindowMode(mode: LedgerWindowMode): Promise<void> {
   const chromeApi = (globalThis as { chrome?: ChromeAction }).chrome;
+  const sidePanel = chromeApi?.sidePanel;
   if (mode === "sidepanel") {
-    await chromeApi?.action?.setPopup?.({ popup: "" });
-    await chromeApi?.sidePanel?.setOptions?.({
-      path: "index.html?sidepanel=1",
-      enabled: true,
-    });
-    await chromeApi?.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true });
+    // Only Chrome can hand the toolbar icon over to the docked panel. Firefox
+    // keeps the dropdown and opens the sidebar when the Nano needs it, so the
+    // popup must stay there.
+    if (sidePanel) {
+      await chromeApi?.action?.setPopup?.({ popup: "" });
+      await sidePanel.setOptions?.({
+        path: "index.html?sidepanel=1",
+        enabled: true,
+      });
+      await sidePanel.setPanelBehavior?.({ openPanelOnActionClick: true });
+    }
     return;
   }
-  await chromeApi?.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: false });
+  await sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: false });
   await chromeApi?.action?.setPopup?.({ popup: "index.html" });
 }
 

@@ -24,10 +24,12 @@ import {
   openLedgerHost,
   openLedgerInSidePanel,
 } from "../ledger/shell";
+import { hostBrowserName } from "../utils/browserName";
 
 type AccessPath = "hub" | "login" | "create" | "have" | "derive" | "import" | "load" | "ledger";
 
 function StartedPage() {
+  const browserName = hostBrowserName();
   const navigate = useNavigate();
   const { newWallet, importWallet, importPrivateKey, loginWithLedger } = useWallet();
   const [path, setPath] = useState<AccessPath>("hub");
@@ -446,9 +448,9 @@ function StartedPage() {
         {path === "ledger" && (
           <div className="flex flex-col gap-3 mt-1">
             <p className="text-white/45 text-xs">
-              Open the Warthog app on the Nano. Brave lists the device, then the
-              Nano shows the address. This session can send WART. Swaps stay on
-              a software wallet.
+              Open the Warthog app on the Nano. {browserName} lists the device,
+              then the Nano shows the address. This session can send WART. Swaps
+              stay on a software wallet.
             </p>
             <LedgerWindowSetting />
             <div>
