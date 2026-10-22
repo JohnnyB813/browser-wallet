@@ -2,6 +2,7 @@ import CryptoJS from 'crypto-js';
 import { SECURE_STORE_KEYS } from '../../constants';
 import { storage } from '../storage';
 import { ExchangeError, requestJson } from './http';
+import { requestSafeTradeIpv4 } from './ipv4Host';
 
 const ROOT = 'https://safe.trade/api/v2';
 const MARKET = 'wartusdt';
@@ -180,10 +181,16 @@ async function call(
     headers['X-Auth-Signature'] = sign(creds.apiKey, creds.secret, nonce);
   }
   const method = init?.method ?? 'GET';
-  return requestJson(endpoint(path, Boolean(creds)), {
+  const body = init?.body == null ? undefined : JSON.stringify(init.body);
+  // The browser prefers IPv6 for safe.trade. Signed calls go through the
+  // local forwarder so SafeTrade sees this computer's public IPv4.
+  if (creds) {
+    return requestSafeTradeIpv4(path, method, headers, body);
+  }
+  return requestJson(endpoint(path), {
     method,
     headers,
-    body: init?.body == null ? undefined : JSON.stringify(init.body),
+    body,
   });
 }
 
@@ -192,8 +199,7 @@ function floorDecimals(value: number, places: number): number {
   return Math.floor(value * factor + 1e-9) / factor;
 }
 
-/** Signed web calls go through the dev server. safe.trade rejects those headers from a page. */
-function endpoint(path: string, _signed: boolean): string {
+function endpoint(path: string): string {
   return `${ROOT}${path}`;
 }
 

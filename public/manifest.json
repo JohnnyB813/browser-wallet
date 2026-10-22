@@ -17,7 +17,7 @@
       "32": "/logo-32.png"
     }
   },
-  "permissions": ["tabs", "storage", "scripting", "activeTab", "cookies"],
+  "permissions": ["tabs", "storage", "scripting", "activeTab", "cookies", "nativeMessaging"],
   "host_permissions": [
     "https://warthognode.duckdns.org/*",
     "https://mainnet.wartnode.com/*",
