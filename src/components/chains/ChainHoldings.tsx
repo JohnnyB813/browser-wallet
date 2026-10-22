@@ -12,6 +12,7 @@ import {
 import type { BrowserChain } from "../../chains/useChainAccounts";
 import { toast } from "../../utils/toast";
 import { formatDisplayNumber, loadNumberDisplayPrefs } from "../../utils/numberDisplay";
+import ChainActivity from "./ChainActivity";
 import TokenMark, { tokenMark } from "./TokenMark";
 
 function short(value: string): string {
@@ -22,13 +23,6 @@ function short(value: string): string {
 function showAmount(value: string | null, failed: boolean): string {
   if (value == null) return failed ? "—" : "…";
   return formatDisplayNumber(value, loadNumberDisplayPrefs(), { fallback: value });
-}
-
-function activityUrl(chain: Exclude<BrowserChain, "wart">, address: string): string {
-  if (chain === "ethereum") return `https://etherscan.io/address/${address}`;
-  if (chain === "hemi") return `https://explorer.hemi.xyz/address/${address}`;
-  if (chain === "bitcoin") return `https://mempool.space/address/${address}`;
-  return `https://solscan.io/account/${address}`;
 }
 
 const LABELS: Record<Exclude<BrowserChain, "wart">, string> = {
@@ -67,11 +61,13 @@ export default function ChainHoldings({
   const [draft, setDraft] = useState("");
   const [addError, setAddError] = useState("");
   const [addBusy, setAddBusy] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     setAdding(false);
     setDraft("");
     setAddError("");
+    setActivityOpen(false);
   }, [chain]);
 
   useEffect(() => {
@@ -207,8 +203,9 @@ export default function ChainHoldings({
           </button>
           <button
             type="button"
-            className={actionBtn}
-            onClick={() => window.open(activityUrl(chain, address), "_blank", "noopener,noreferrer")}
+            className={`${actionBtn} ${activityOpen ? "bg-[#E79300]/30" : ""}`}
+            aria-expanded={activityOpen}
+            onClick={() => setActivityOpen((open) => !open)}
           >
             Activity
           </button>
@@ -223,6 +220,16 @@ export default function ChainHoldings({
             </button>
           ) : null}
         </div>
+      ) : null}
+      {activityOpen && address ? (
+        <ChainActivity
+          chain={chain}
+          address={address}
+          ethAddress={ethAddress}
+          btcAddress={btcAddress}
+          solAddress={solAddress}
+          refreshTick={refreshTick}
+        />
       ) : null}
       {note ? <p className="mt-2 text-[11px] text-zinc-500">{note}</p> : null}
       {adding && network ? (

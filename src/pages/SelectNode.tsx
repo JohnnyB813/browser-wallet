@@ -234,23 +234,13 @@ function SelectNode() {
       <div className="h-[55vh] overflow-y-scroll">
         {filteredNodes.length > 0 ? (
           filteredNodes.map((node) => (
-            <div key={node.id} className="relative">
-              <span
-                className={`absolute right-3 top-3 z-10 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                  node.network === "defi-testnet"
-                    ? "bg-amber-500/20 text-amber-300"
-                    : "bg-emerald-500/15 text-emerald-300"
-                }`}
-              >
-                {node.network === "defi-testnet" ? "DeFi" : "Mainnet"}
-              </span>
-              <NodeCard
-                {...node}
-                setPrimaryNode={setPrimaryNode}
-                removeNode={removeNode}
-                moveNode={moveNode}
-              />
-            </div>
+            <NodeCard
+              key={node.id}
+              {...node}
+              setPrimaryNode={setPrimaryNode}
+              removeNode={removeNode}
+              moveNode={moveNode}
+            />
           ))
         ) : (
           <div className="text-center text-white/50 mt-6">No nodes found</div>
