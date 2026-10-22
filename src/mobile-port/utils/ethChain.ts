@@ -4,9 +4,9 @@ import { formatRawAmount } from './ethHoldings';
 import { signEthereumOnLedger } from './ledger/ethereum';
 import { LedgerError } from './ledger/protocol';
 import { getLedgerSession, getSessionMnemonic } from './sessionVault';
-import { ETH_CHAIN_ID, ETH_RPC, ETH_USDT, ETH_WETH, SUSHI_ROUTER } from './ethTokens';
+import { ETH_CHAIN_ID, ETH_RPC, ETH_USDC, ETH_USDT, ETH_WETH, SUSHI_ROUTER } from './ethTokens';
 
-export type EthSendAsset = 'ETH' | 'USDT';
+export type EthSendAsset = 'ETH' | 'USDT' | 'USDC';
 export type SwapDirection = 'ETH_TO_USDT' | 'USDT_TO_ETH';
 
 export interface SubmittedEthTx {
@@ -297,15 +297,16 @@ export async function sendEthAsset(asset: EthSendAsset, to: string, amount: stri
       return { hash: tx.hash, blockNumber: await confirmedBlock(tx) };
     }
     const value = parseTokenAmount(amount, 6);
-    const token = new ethers.Contract(ETH_USDT, ERC20_ABI, spender.client);
+    const tokenAddress = asset === 'USDC' ? ETH_USDC : ETH_USDT;
+    const token = new ethers.Contract(tokenAddress, ERC20_ABI, spender.client);
     const balance = await token.balanceOf(spender.address) as bigint;
     if (value > balance) {
-      throw new Error(`Only ${formatRawAmount(balance, 6, 6)} USDT is in this wallet.`);
+      throw new Error(`Only ${formatRawAmount(balance, 6, 6)} ${asset} is in this wallet.`);
     }
     const data = token.interface.encodeFunctionData('transfer', [recipient, value]);
-    const gasLimit = (await spender.estimate({ to: ETH_USDT, data })) * 12n / 10n;
+    const gasLimit = (await spender.estimate({ to: tokenAddress, data })) * 12n / 10n;
     await assertGas(spender.client, spender.address, gasLimit);
-    const tx = await spender.send({ to: ETH_USDT, data, gasLimit, ...fees });
+    const tx = await spender.send({ to: tokenAddress, data, gasLimit, ...fees });
     return { hash: tx.hash, blockNumber: await confirmedBlock(tx) };
   } finally {
     spender.client.destroy();

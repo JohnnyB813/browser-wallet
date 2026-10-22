@@ -411,7 +411,7 @@ export default function SafeTradePage() {
             throw new Error(`This wallet cannot send ${pay.symbol} on Solana yet.`);
           }
         } else {
-          await sendEthAsset(pay.currency === "eth" ? "ETH" : "USDT", dest, amount.trim());
+          await sendEthAsset(pay.currency === "eth" ? "ETH" : pay.currency === "usdc" ? "USDC" : "USDT", dest, amount.trim());
         }
         const sent = `${amount.trim()} ${pay.symbol} sent to SafeTrade.`;
         setNotice(sent);

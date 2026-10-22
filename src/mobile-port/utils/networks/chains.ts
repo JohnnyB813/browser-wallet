@@ -34,6 +34,8 @@ export const MEMPOOL = 'https://mempool.space';
 /**
  * First host that answers is used. mainnet-beta is first because token
  * lookups use getTokenAccountsByOwner, and publicnode rejects that call.
+ * mainnet-beta 403s any request carrying an Origin header, so
+ * public/solana-rpc-rules.json strips Origin on those calls (the phone app sends none).
  */
 export const SOLANA_RPCS = [
   'https://api.mainnet-beta.solana.com',
