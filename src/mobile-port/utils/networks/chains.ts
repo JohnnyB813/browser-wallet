@@ -31,10 +31,13 @@ export const L2_MESSAGE_PASSER = '0x4200000000000000000000000000000000000016';
 export const BRIDGE_MIN_GAS = 200_000;
 
 export const MEMPOOL = 'https://mempool.space';
-/** First host that answers is used. publicnode failed TLS on the solana-rpc hostname. */
+/**
+ * First host that answers is used. mainnet-beta is first because token
+ * lookups use getTokenAccountsByOwner, and publicnode rejects that call.
+ */
 export const SOLANA_RPCS = [
-  'https://solana.publicnode.com',
   'https://api.mainnet-beta.solana.com',
+  'https://solana.publicnode.com',
 ] as const;
 export const SOLANA_EXPLORER = 'https://solscan.io';
 

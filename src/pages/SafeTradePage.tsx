@@ -13,6 +13,7 @@ import { fetchBalanceAndPin } from "../utils/warthogNode";
 import { deriveAccountAtIndex } from "../utils/walletKeys";
 import { DEFAULT_FEE_WART } from "../config";
 import { sendEthAsset } from "../mobile-port/utils/ethChain";
+import { ETH_USDC, ETH_USDT } from "../mobile-port/utils/ethTokens";
 import { explainExchangeFailure } from "../mobile-port/utils/exchange/http";
 import {
   SAFE_ROUTES,
@@ -36,8 +37,13 @@ import {
   type SafeTradeCredentials,
   type SpotBalance,
 } from "../mobile-port/utils/exchange/safetrade";
-import { sendBtc } from "../mobile-port/utils/networks/btc";
-import { sendSol } from "../mobile-port/utils/networks/solana";
+import { fetchBtcBalance, formatBtc, maxSendableBtc, sendBtc } from "../mobile-port/utils/networks/btc";
+import { USDC_MINT, USDT_MINT } from "../mobile-port/utils/networks/chains";
+import { fetchSolBalance, formatSol, maxSolPayment, sendSol } from "../mobile-port/utils/networks/solana";
+import { sendSpl } from "../mobile-port/utils/networks/solswap";
+import { formatUnits } from "../mobile-port/utils/networks/units";
+import { readOneBalance } from "../mobile-port/utils/tokenBalances";
+import type { WalletNode } from "../config/network";
 import { useChainAccounts } from "../chains/useChainAccounts";
 
 const field = "w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-primary";
@@ -96,6 +102,56 @@ function freeLockedMessage(symbol: string, available: number, locked: number): s
   return `Only ${formatBalance(available)} ${symbol} is free on SafeTrade.`;
 }
 
+type WalletHold = { text: string; max: string; failed: boolean };
+
+/** On-chain amount this wallet can spend. Same read the swap panel uses. */
+async function walletHold(
+  route: SafeRoute,
+  owners: { wart: string; eth: string; btc: string; sol: string },
+  node: WalletNode | null | undefined,
+): Promise<WalletHold> {
+  if (route.chain === "wart") {
+    if (!owners.wart || !node) return { text: "0", max: "", failed: false };
+    const live = await fetchBalanceAndPin(node, owners.wart);
+    const free = Number(live.available);
+    const fee = Number(DEFAULT_FEE_WART);
+    const max = Number.isFinite(free) && free > fee ? trimAmount(free - fee) : "";
+    return { text: live.available || "0", max, failed: false };
+  }
+  if (route.chain === "bitcoin") {
+    if (!owners.btc) return { text: "0", max: "", failed: false };
+    const [balance, max] = await Promise.all([
+      fetchBtcBalance(owners.btc),
+      maxSendableBtc(owners.btc),
+    ]);
+    return { text: formatBtc(balance), max: max > 0n ? formatBtc(max) : "", failed: false };
+  }
+  if (route.chain === "solana") {
+    if (!owners.sol) return { text: "0", max: "", failed: false };
+    if (route.currency === "sol") {
+      const [balance, max] = await Promise.all([
+        fetchSolBalance(owners.sol),
+        maxSolPayment(owners.sol),
+      ]);
+      return { text: formatSol(balance), max: max > 0n ? formatSol(max) : "", failed: false };
+    }
+    const mint = route.currency === "usdc" ? USDC_MINT : USDT_MINT;
+    const raw = await readOneBalance("solana", owners.sol, { native: false, address: mint });
+    const text = formatUnits(raw, route.decimals);
+    return { text, max: raw > 0n ? text : "", failed: false };
+  }
+  if (!owners.eth) return { text: "0", max: "", failed: false };
+  if (route.currency === "eth") {
+    const raw = await readOneBalance("ethereum", owners.eth, { native: true, address: "native" });
+    const text = formatUnits(raw, 18);
+    return { text, max: raw > 0n ? text : "", failed: false };
+  }
+  const token = route.currency === "usdc" ? ETH_USDC : ETH_USDT;
+  const raw = await readOneBalance("ethereum", owners.eth, { native: false, address: token });
+  const text = formatUnits(raw, route.decimals);
+  return { text, max: raw > 0n ? text : "", failed: false };
+}
+
 export default function SafeTradePage() {
   const wallet = useWallet();
   const { accounts } = useChainAccounts();
@@ -117,6 +173,7 @@ export default function SafeTradePage() {
   const [notice, setNotice] = useState("");
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<SpotBalance[] | null>(null);
+  const [walletHolds, setWalletHolds] = useState<Record<string, WalletHold>>({});
   const [checkError, setCheckError] = useState("");
   const [checking, setChecking] = useState(false);
   const [price, setPrice] = useState(0);
@@ -193,6 +250,29 @@ export default function SafeTradePage() {
     return accounts?.solAddress || "";
   };
 
+  useEffect(() => {
+    let alive = true;
+    const owners = {
+      wart: wallet.wallet || "",
+      eth: accounts?.ethAddress || "",
+      btc: accounts?.btcAddress || "",
+      sol: accounts?.solAddress || "",
+    };
+    void Promise.all(SAFE_ROUTES.map(async (route) => {
+      try {
+        const hold = await walletHold(route, owners, selectedNode);
+        return [route.id, hold] as const;
+      } catch {
+        return [route.id, { text: "—", max: "", failed: true }] as const;
+      }
+    })).then((pairs) => {
+      if (alive) setWalletHolds(Object.fromEntries(pairs));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [wallet.wallet, accounts?.ethAddress, accounts?.btcAddress, accounts?.solAddress, selectedNode, notice]);
+
   const checkBalances = async () => {
     setChecking(true);
     setCheckError("");
@@ -254,6 +334,12 @@ export default function SafeTradePage() {
       if (!pay.canDeposit) return `${pay.symbol} cannot be deposited from this wallet.`;
       if (pay.chain === "wart" && isDefiNode(selectedNode)) return "WART deposits use the mainnet node.";
       if (!addressFor(pay) && pay.chain !== "wart") return "This wallet has no address on that network.";
+      const held = walletHolds[pay.id];
+      if (!held) return "Checking the wallet balance.";
+      if (held.failed) return `${pay.network} ${pay.symbol} balance unavailable.`;
+      if (held.text !== "—" && Number(amount) > Number(held.text) + 1e-9) {
+        return `Only ${held.text} ${pay.symbol} is in this wallet.`;
+      }
       return "";
     }
     if (!addressFor(pay)) return "This wallet has no address to withdraw to.";
@@ -311,7 +397,19 @@ export default function SafeTradePage() {
         } else if (pay.chain === "bitcoin") {
           await sendBtc(dest, amount.trim());
         } else if (pay.chain === "solana") {
-          await sendSol(dest, amount.trim());
+          if (pay.currency === "sol") {
+            await sendSol(dest, amount.trim());
+          } else if (pay.currency === "usdc" || pay.currency === "usdt") {
+            await sendSpl({
+              mint: pay.currency === "usdc" ? USDC_MINT : USDT_MINT,
+              decimals: pay.decimals,
+              toOwner: dest,
+              amount: amount.trim(),
+              symbol: pay.symbol,
+            });
+          } else {
+            throw new Error(`This wallet cannot send ${pay.symbol} on Solana yet.`);
+          }
         } else {
           await sendEthAsset(pay.currency === "eth" ? "ETH" : "USDT", dest, amount.trim());
         }
@@ -388,6 +486,18 @@ export default function SafeTradePage() {
     return trimAmount(value);
   };
 
+  const held = pay ? walletHolds[pay.id] : undefined;
+  const depositHint = !held
+    ? "Available …"
+    : held.failed
+      ? "Balance unavailable"
+      : `Available ${held.text} ${pay?.symbol ?? ""} in this wallet`;
+  const walletRows = routesOn(network).flatMap((route) => {
+    const row = walletHolds[route.id];
+    if (!row || row.failed || !(Number(row.text) > 0)) return [];
+    return [{ route, row }];
+  });
+
   return (
     <div className="container space-y-3 pb-8">
       <Header title="SafeTrade" />
@@ -460,6 +570,26 @@ export default function SafeTradePage() {
         </div>
       ) : null}
       {checkError ? <p className="text-sm text-red-400">{checkError}</p> : null}
+      <div className="rounded-lg border border-white/10 px-3 py-2">
+        <p className="text-[10px] font-semibold tracking-[1.2px] text-zinc-500 uppercase">
+          In this wallet · {network}
+        </p>
+        {walletRows.length === 0 ? (
+          <p className="mt-1 text-xs text-zinc-500">
+            {Object.keys(walletHolds).length === 0 ? "Checking wallet balances…" : `No token balance on ${network} yet.`}
+          </p>
+        ) : walletRows.map(({ route, row }) => (
+          <button
+            key={route.id}
+            type="button"
+            className="mt-1 flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setPayId(route.id)}
+          >
+            <span className="text-sm font-semibold text-white">{route.symbol}</span>
+            <span className="font-mono text-sm text-zinc-200">{row.text}</span>
+          </button>
+        ))}
+      </div>
       <SwapStyleCard
         title={panel === "limit" ? "Limit" : panel === "swap" ? "Swap" : moveDir === "deposit" ? "Deposit" : "Withdraw"}
         subtitle={trading
@@ -500,18 +630,22 @@ export default function SafeTradePage() {
             </select>
           </div>
         )}
-        payHint={!rows
-          ? "Check balances first."
-          : panel === "move" && moveDir === "deposit"
-            ? "From this wallet"
+        payHint={panel === "move" && moveDir === "deposit"
+          ? depositHint
+          : !rows
+            ? "Check balances first."
             : pay
               ? balanceLine(rows, pay.symbol)
               : "Check balances first."}
-        onMax={panel === "move" && moveDir === "deposit" || !pay || !rows
-          ? undefined
-          : (balanceOf(pay.symbol)?.available ?? 0) > 0
-            ? () => setAmount(formatBalance(balanceOf(pay.symbol)?.available ?? 0))
-            : undefined}
+        onMax={panel === "move" && moveDir === "deposit"
+          ? (pay && walletHolds[pay.id]?.max
+            ? () => setAmount(walletHolds[pay.id].max)
+            : undefined)
+          : !pay || !rows
+            ? undefined
+            : (balanceOf(pay.symbol)?.available ?? 0) > 0
+              ? () => setAmount(formatBalance(balanceOf(pay.symbol)?.available ?? 0))
+              : undefined}
         amount={amount}
         onAmount={setAmount}
         paySymbol={pay?.symbol ?? "—"}

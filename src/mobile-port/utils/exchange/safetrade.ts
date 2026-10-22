@@ -65,8 +65,8 @@ export const SAFE_ROUTES: SafeRoute[] = [
   { id: 'usdt:erc20_key', currency: 'usdt', symbol: 'USDT', chain: 'ethereum', network: 'Ethereum', blockchainKey: 'erc20_key', canDeposit: true, minDeposit: 50, minWithdraw: 50, fee: 3, confirmations: 7, decimals: 6 },
   { id: 'usdc:erc20_key', currency: 'usdc', symbol: 'USDC', chain: 'ethereum', network: 'Ethereum', blockchainKey: 'erc20_key', canDeposit: false, minDeposit: 50, minWithdraw: 50, fee: 7, confirmations: 7, decimals: 6 },
   { id: 'sol:spl-key', currency: 'sol', symbol: 'SOL', chain: 'solana', network: 'Solana', blockchainKey: 'spl-key', canDeposit: true, minDeposit: 0.005, minWithdraw: 0.01, fee: 0.009, confirmations: 32, decimals: 8 },
-  { id: 'usdt:spl-key', currency: 'usdt', symbol: 'USDT', chain: 'solana', network: 'Solana', blockchainKey: 'spl-key', canDeposit: false, minDeposit: 0.01, minWithdraw: 2, fee: 1, confirmations: 32, decimals: 6 },
-  { id: 'usdc:spl-key', currency: 'usdc', symbol: 'USDC', chain: 'solana', network: 'Solana', blockchainKey: 'spl-key', canDeposit: false, minDeposit: 0.001, minWithdraw: 1, fee: 3, confirmations: 32, decimals: 6 },
+  { id: 'usdt:spl-key', currency: 'usdt', symbol: 'USDT', chain: 'solana', network: 'Solana', blockchainKey: 'spl-key', canDeposit: true, minDeposit: 0.01, minWithdraw: 2, fee: 1, confirmations: 32, decimals: 6 },
+  { id: 'usdc:spl-key', currency: 'usdc', symbol: 'USDC', chain: 'solana', network: 'Solana', blockchainKey: 'spl-key', canDeposit: true, minDeposit: 0.001, minWithdraw: 1, fee: 3, confirmations: 32, decimals: 6 },
 ];
 
 /** Direct market for two SafeTrade currencies. Null when the pair is not listed. */
