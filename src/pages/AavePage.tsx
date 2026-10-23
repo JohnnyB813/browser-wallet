@@ -6,6 +6,7 @@ import { useChainAccounts } from "../chains/useChainAccounts";
 import {
   AAVE_MAIN_SPOKE,
   MIN_SAFE_HEALTH_FACTOR,
+  WETH_RESERVE_ID,
   formatHealth,
   healthAfterBorrow,
   healthAfterRepay,
@@ -14,6 +15,7 @@ import {
   loadAaveMarket,
   maxSafeBorrow,
   maxSafeWithdraw,
+  maxWrappableEth,
   parseAaveAmount,
   planBorrow,
   planRepay,
@@ -35,11 +37,13 @@ const chipOn = "swap-chip-btn swap-chip-btn--active";
 
 type Action = "supply" | "borrow" | "repay" | "withdraw";
 
+/** Key of the supply source that wraps plain ETH into WETH. Other keys are reserve ids. */
+const ETH_KEY = "eth";
+
 type Pending = {
   title: string;
   steps: AaveStep[];
   rows: { label: string; value: string }[];
-  doneTitle: string;
   doneMessage: string;
 };
 
@@ -75,6 +79,10 @@ function explainAave(error: unknown): string {
   return base;
 }
 
+function roomText(row: AaveReserveState): string {
+  return row.borrowRoom === ethers.MaxUint256 ? "no cap" : `${amountText(row.borrowRoom, row.decimals, 2)} ${row.symbol}`;
+}
+
 export default function AavePage() {
   const { accounts } = useChainAccounts();
   const flow = useSpendFlow();
@@ -84,7 +92,7 @@ export default function AavePage() {
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<Action>("supply");
-  const [reserveId, setReserveId] = useState(1);
+  const [assetKey, setAssetKey] = useState<string>(ETH_KEY);
   const [amount, setAmount] = useState("");
   const [maxMode, setMaxMode] = useState(false);
   const [unwrap, setUnwrap] = useState(true);
@@ -112,19 +120,48 @@ export default function AavePage() {
     void refresh();
   }, [refresh]);
 
-  const weth = market?.reserves.find((row) => row.symbol === "WETH");
-  const collateral = useMemo(
-    () => (market?.reserves ?? []).filter((row) => row.role === "collateral"),
+  const weth = market?.reserves.find((row) => row.id === WETH_RESERVE_ID);
+  const supplyList = useMemo(
+    () => (market?.reserves ?? []).filter((row) => row.collateral && row.collateralFactorBps > 0 && !row.frozen && !row.paused),
     [market],
   );
-  const selected: AaveReserveState | undefined = action === "supply" || action === "withdraw"
-    ? collateral.find((row) => row.id === reserveId) ?? collateral[0]
-    : weth;
+  const collateralList = useMemo(
+    () => (market?.reserves ?? []).filter((row) => row.collateral && (row.collateralFactorBps > 0 || row.supplied > 0n)),
+    [market],
+  );
+  const borrowList = useMemo(() => (market?.reserves ?? []).filter((row) => row.canBorrow), [market]);
+  const debtList = useMemo(() => (market?.reserves ?? []).filter((row) => row.debt > 0n), [market]);
+
+  /** Assets the picker offers for the current action. */
+  const choices = useMemo((): { key: string; label: string }[] => {
+    if (action === "supply") {
+      return [
+        ...(weth ? [{ key: ETH_KEY, label: "ETH (wrapped to WETH for you)" }] : []),
+        ...supplyList.map((row) => ({ key: String(row.id), label: row.symbol })),
+      ];
+    }
+    if (action === "withdraw") return collateralList.map((row) => ({ key: String(row.id), label: row.symbol }));
+    if (action === "borrow") {
+      return borrowList.map((row) => ({
+        key: String(row.id),
+        label: `${row.symbol}${row.id === WETH_RESERVE_ID ? " / ETH" : ""} · ~${rateToPercent(row.drawnRateRay)} APR`,
+      }));
+    }
+    return debtList.map((row) => ({ key: String(row.id), label: `${row.symbol} · debt ${amountText(row.debt, row.decimals, 4)}` }));
+  }, [action, weth, supplyList, collateralList, borrowList, debtList]);
+
+  const activeKey = choices.some((c) => c.key === assetKey) ? assetKey : choices[0]?.key ?? "";
+  const fromEth = action === "supply" && activeKey === ETH_KEY;
+  const selected: AaveReserveState | undefined = market?.reserves.find(
+    (row) => String(row.id) === (fromEth ? String(WETH_RESERVE_ID) : activeKey),
+  );
+  const isWeth = selected?.id === WETH_RESERVE_ID;
 
   const priceDecimals = market?.priceDecimals ?? 8;
   const account = market?.account;
   const collateralUsd = account ? Number(account.totalCollateralValue / 10n ** 18n) / 10 ** priceDecimals : 0;
   const debtUsd = account ? Number(account.totalDebtValueRay / 10n ** 45n) / 10 ** priceDecimals : 0;
+  const symbolShown = fromEth ? "ETH" : selected?.symbol ?? "";
 
   const parsed = useMemo((): bigint | null => {
     if (!selected || !amount.trim()) return null;
@@ -136,14 +173,14 @@ export default function AavePage() {
   }, [selected, amount]);
 
   const projected = useMemo((): { text: string; wad: bigint | null } | null => {
-    if (!market || !weth || !selected || parsed == null) return null;
+    if (!market || !selected || parsed == null) return null;
     if (action === "borrow") {
-      const wad = healthAfterBorrow(market, weth, parsed);
+      const wad = healthAfterBorrow(market, selected, parsed);
       return { text: formatHealth(wad), wad };
     }
     if (action === "repay") {
-      const sent = parsed > weth.debt ? weth.debt : parsed;
-      const wad = healthAfterRepay(market, weth, sent);
+      const sent = parsed > selected.debt ? selected.debt : parsed;
+      const wad = healthAfterRepay(market, selected, sent);
       return { text: formatHealth(wad), wad };
     }
     if (action === "withdraw") {
@@ -151,34 +188,37 @@ export default function AavePage() {
       return { text: formatHealth(wad), wad };
     }
     return null;
-  }, [market, weth, selected, parsed, action]);
+  }, [market, selected, parsed, action]);
 
   const room = (): string => {
-    if (!selected) return "";
-    if (action === "supply") return `In wallet ${amountText(selected.walletBalance, selected.decimals)} ${selected.symbol}`;
+    if (!selected || !market) return "";
+    if (action === "supply") {
+      if (fromEth) {
+        return `ETH in wallet ${amountText(market.ethBalance, 18)} · keeps ${amountText(market.ethGasReserve, 18, 4)} ETH for gas · most you can supply ${amountText(maxWrappableEth(market), 18)}`;
+      }
+      return `In wallet ${amountText(selected.walletBalance, selected.decimals)} ${selected.symbol} · supply room ${selected.supplyRoom === ethers.MaxUint256 ? "no cap" : amountText(selected.supplyRoom, selected.decimals, 2)}`;
+    }
     if (action === "withdraw") {
-      return `Supplied ${amountText(selected.supplied, selected.decimals)} ${selected.symbol} · safe to withdraw ${market ? amountText(maxSafeWithdraw(market, selected), selected.decimals) : "…"}`;
+      return `Supplied ${amountText(selected.supplied, selected.decimals)} ${selected.symbol} · safe to withdraw ${amountText(maxSafeWithdraw(market, selected), selected.decimals)}`;
     }
-    if (action === "borrow" && market && weth) {
-      return `Safe to borrow now ${amountText(maxSafeBorrow(market, weth), 18)} WETH (keeps health factor ≥ ${MIN_SAFE_HEALTH_FACTOR.toFixed(1)})`;
+    if (action === "borrow") {
+      return `Safe to borrow now ${amountText(maxSafeBorrow(market, selected), selected.decimals)} ${selected.symbol} (keeps health factor ≥ ${MIN_SAFE_HEALTH_FACTOR.toFixed(1)}) · room under Aave's limits ${roomText(selected)}`;
     }
-    if (action === "repay" && weth) {
-      return `Debt ${amountText(weth.debt, 18, 8)} WETH · wallet ETH ${market ? amountText(market.ethBalance, 18) : "…"}`;
-    }
-    return "";
+    const base = `Debt ${amountText(selected.debt, selected.decimals, 8)} ${selected.symbol} · in wallet ${amountText(selected.walletBalance, selected.decimals)}`;
+    return isWeth ? `${base} · ETH ${amountText(market.ethBalance, 18)} can be wrapped to cover a shortfall` : base;
   };
 
   const onMax = (): void => {
-    if (!selected || !market || !weth) return;
+    if (!selected || !market) return;
     let raw = 0n;
     let full = false;
-    if (action === "supply") raw = selected.walletBalance;
+    if (action === "supply") raw = fromEth ? maxWrappableEth(market) : selected.walletBalance;
     else if (action === "withdraw") {
       raw = maxSafeWithdraw(market, selected);
       full = raw >= selected.supplied;
-    } else if (action === "borrow") raw = maxSafeBorrow(market, weth);
+    } else if (action === "borrow") raw = maxSafeBorrow(market, selected);
     else {
-      raw = weth.debt;
+      raw = selected.debt;
       full = true;
     }
     setAmount(raw > 0n ? ethers.formatUnits(raw, selected.decimals) : "");
@@ -188,7 +228,7 @@ export default function AavePage() {
   const review = async () => {
     setError("");
     setNotice("");
-    if (!market || !weth || !selected || !owner) return;
+    if (!market || !selected || !owner) return;
     if (!ack) {
       setError("Tick the box to confirm you understand the liquidation risk.");
       return;
@@ -203,55 +243,57 @@ export default function AavePage() {
     setPlanning(true);
     try {
       const sym = selected.symbol;
-      const shown = `${amount.trim()} ${sym}`;
+      const typed = amount.trim();
       let steps: AaveStep[];
       let rows: { label: string; value: string }[];
       let title: string;
       let doneMessage: string;
       if (action === "supply") {
-        steps = await planSupply(owner, selected, raw);
+        steps = await planSupply(owner, market, selected, raw, fromEth);
         title = "Confirm supply";
         rows = [
-          { label: "Supply", value: shown },
+          { label: "Supply", value: fromEth ? `${typed} ETH (wrapped to WETH, then supplied as WETH)` : `${typed} ${sym}` },
           { label: "Collateral", value: `${sym} will be enabled as collateral` },
           { label: "Collateral factor", value: `${(selected.collateralFactorBps / 100).toFixed(0)}%` },
         ];
-        doneMessage = `${shown} supplied to Aave v4.`;
+        doneMessage = `${typed} ${fromEth ? "ETH" : sym} supplied to Aave v4${fromEth ? " as WETH" : ""}.`;
       } else if (action === "borrow") {
-        steps = planBorrow(owner, market, weth, raw, unwrap);
+        const toEth = unwrap && isWeth;
+        steps = planBorrow(owner, market, selected, raw, toEth);
         title = "Confirm borrow";
         rows = [
-          { label: "Borrow", value: `${amount.trim()} WETH${unwrap ? " (unwrapped to ETH)" : ""}` },
-          { label: "Health factor after", value: formatHealth(healthAfterBorrow(market, weth, raw)) },
-          { label: "Variable rate", value: `~${rateToPercent(weth.drawnRateRay)} APR + ${(market.account.riskPremiumBps / 100).toFixed(2)}% risk premium` },
+          { label: "Borrow", value: `${typed} ${sym}${toEth ? " (unwrapped to ETH)" : ""}` },
+          { label: "Health factor after", value: formatHealth(healthAfterBorrow(market, selected, raw)) },
+          { label: "Variable rate", value: `~${rateToPercent(selected.drawnRateRay)} APR + ${(market.account.riskPremiumBps / 100).toFixed(2)}% risk premium` },
         ];
-        doneMessage = `${amount.trim()} WETH borrowed${unwrap ? " and unwrapped to ETH" : ""}.`;
+        doneMessage = `${typed} ${sym} borrowed${toEth ? " and unwrapped to ETH" : ""}.`;
       } else if (action === "repay") {
-        const full = maxMode || raw >= weth.debt;
-        steps = await planRepay(owner, market, weth, raw > weth.debt ? weth.debt : raw, full);
+        const full = maxMode || raw >= selected.debt;
+        steps = await planRepay(owner, market, selected, raw > selected.debt ? selected.debt : raw, full);
         title = "Confirm repayment";
         rows = [
-          { label: "Repay", value: full ? `All WETH debt (~${amountText(weth.debt, 18, 8)} WETH)` : `${amount.trim()} WETH` },
-          { label: "Health factor after", value: formatHealth(healthAfterRepay(market, weth, full ? weth.debt : raw)) },
-          { label: "Paid from", value: "WETH in this wallet. ETH is wrapped first if needed." },
+          { label: "Repay", value: full ? `All ${sym} debt (~${amountText(selected.debt, selected.decimals, 8)} ${sym})` : `${typed} ${sym}` },
+          { label: "Health factor after", value: formatHealth(healthAfterRepay(market, selected, full ? selected.debt : raw)) },
+          { label: "Paid from", value: isWeth ? "WETH in this wallet. ETH is wrapped first if needed." : `${sym} in this wallet` },
         ];
-        doneMessage = full ? "WETH debt repaid." : `${amount.trim()} WETH repaid.`;
+        doneMessage = full ? `${sym} debt repaid.` : `${typed} ${sym} repaid.`;
       } else {
         const full = maxMode || raw >= selected.supplied;
-        steps = planWithdraw(owner, market, selected, raw, full);
+        const toEth = unwrap && isWeth;
+        steps = planWithdraw(owner, market, selected, raw, full, toEth);
         title = "Confirm withdrawal";
         rows = [
-          { label: "Withdraw", value: full ? `All ${sym} (${amountText(selected.supplied, selected.decimals)})` : shown },
+          { label: "Withdraw", value: `${full ? `All ${sym} (${amountText(selected.supplied, selected.decimals)})` : `${typed} ${sym}`}${toEth ? " (unwrapped to ETH)" : ""}` },
           { label: "Health factor after", value: formatHealth(healthAfterWithdraw(market, selected, full ? selected.supplied : raw)) },
         ];
-        doneMessage = `${shown} withdrawn from Aave v4.`;
+        doneMessage = `${typed} ${sym} withdrawn from Aave v4${toEth ? " and unwrapped to ETH" : ""}.`;
       }
       rows.push(
         { label: "Transactions", value: `${steps.length}: ${steps.map((step) => step.label).join(" → ")}` },
         { label: "Contract", value: `Aave v4 Main Spoke ${shortAddress(AAVE_MAIN_SPOKE)}` },
         { label: "Network fee", value: "Paid in ETH for every transaction above. Estimated when each one is sent." },
       );
-      setPending({ title, steps, rows, doneTitle: title.replace("Confirm", "Done:"), doneMessage });
+      setPending({ title, steps, rows, doneMessage });
     } catch (err) {
       setError(explainAave(err));
     } finally {
@@ -281,28 +323,42 @@ export default function AavePage() {
     }
   };
 
+  const pickAction = (id: Action): void => {
+    setAction(id);
+    setAssetKey("");
+    setAmount("");
+    setMaxMode(false);
+    setError("");
+  };
+
   const hfNow = account?.healthFactorWad ?? null;
+  const amountPlaceholder = `Amount of ${symbolShown}`;
 
   return (
     <div className="container space-y-3 pb-8">
       <Header title="Aave v4" />
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-white">Borrow ETH on Aave v4</p>
+        <p className="text-sm font-semibold text-white">Borrow on Aave v4</p>
         <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">
           Ethereum mainnet
         </span>
       </div>
       <p className="text-xs leading-relaxed text-white/50">
-        Supply collateral to the Aave v4 Main Spoke ({shortAddress(AAVE_MAIN_SPOKE)}) and borrow WETH against it.
+        Supply collateral to the Aave v4 Main Spoke ({shortAddress(AAVE_MAIN_SPOKE)}) and borrow against it.
         Signing uses this wallet&apos;s Ethereum account. Only the assets listed below are shown; anything else
         you hold on this Spoke still counts in the health factor.
+      </p>
+      <p className="text-xs leading-relaxed text-white/70">
+        Aave holds WETH, a 1:1 wrapped version of ETH, so this wallet wraps your ETH for you when you supply it,
+        and unwraps back to ETH when you borrow or withdraw WETH if you leave that option on.
       </p>
 
       <div className="space-y-1 rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-xs leading-relaxed text-amber-100">
         <p className="font-semibold">Read before you borrow</p>
         <p>
           If the health factor falls below 1.00 your collateral can be liquidated, with a penalty. Prices move, interest
-          accrues every block, and your rate can change. This wallet blocks a borrow or withdrawal that would leave the
+          accrues every block, and your rate can change. Borrowing a volatile asset (WETH, WBTC, cbBTC) against other
+          collateral adds price risk both ways. This wallet blocks a borrow or withdrawal that would leave the
           health factor under {MIN_SAFE_HEALTH_FACTOR.toFixed(1)}, but staying safe afterwards is up to you.
         </p>
         <p>
@@ -330,19 +386,21 @@ export default function AavePage() {
               <>
                 <div className="flex justify-between"><span className="text-white/60">Collateral value</span><span className="font-mono text-white">{usd(collateralUsd)}</span></div>
                 <div className="flex justify-between"><span className="text-white/60">Debt</span><span className="font-mono text-white">{usd(debtUsd)}</span></div>
+                {debtList.map((row) => (
+                  <div key={row.id} className="flex justify-between pl-3 text-xs">
+                    <span className="text-white/50">{row.symbol} owed</span>
+                    <span className="font-mono text-white/80">{amountText(row.debt, row.decimals, 6)} · ~{rateToPercent(row.drawnRateRay)} APR</span>
+                  </div>
+                ))}
                 <div className="flex justify-between">
                   <span className="text-white/60">Health factor</span>
                   <span className={`font-mono font-semibold ${healthColor(hfNow)}`}>{formatHealth(hfNow)}</span>
                 </div>
-                {weth ? (
-                  <div className="flex justify-between">
-                    <span className="text-white/60">WETH borrow rate</span>
-                    <span className="font-mono text-white">
-                      ~{rateToPercent(weth.drawnRateRay)} APR{account.riskPremiumBps > 0 ? ` + ${(account.riskPremiumBps / 100).toFixed(2)}% premium` : ""}
-                    </span>
-                  </div>
+                {account.riskPremiumBps > 0 ? (
+                  <div className="flex justify-between"><span className="text-white/60">Risk premium on borrows</span><span className="font-mono text-white">+{(account.riskPremiumBps / 100).toFixed(2)}%</span></div>
                 ) : null}
                 <div className="flex justify-between"><span className="text-white/60">ETH in wallet</span><span className="font-mono text-white">{amountText(market.ethBalance, 18)}</span></div>
+                <div className="flex justify-between"><span className="text-white/60">WETH in wallet</span><span className="font-mono text-white">{weth ? amountText(weth.walletBalance, 18) : "—"}</span></div>
                 {market.skipped.length > 0 ? (
                   <p className="text-xs text-amber-300">Aave no longer lists {market.skipped.join(", ")} at the expected id, so it is hidden.</p>
                 ) : null}
@@ -353,14 +411,14 @@ export default function AavePage() {
           {market ? (
             <div className="space-y-1 rounded-lg border border-white/10 px-3 py-2">
               <p className="text-[10px] font-semibold uppercase tracking-[1.2px] text-zinc-500">Collateral · wallet · supplied</p>
-              {collateral.map((row) => (
+              {collateralList.map((row) => (
                 <button
                   key={row.id}
                   type="button"
                   className="flex w-full items-center justify-between gap-3 text-left"
                   onClick={() => {
-                    setReserveId(row.id);
-                    if (action !== "supply" && action !== "withdraw") setAction("supply");
+                    setAction(action === "withdraw" ? "withdraw" : "supply");
+                    setAssetKey(String(row.id));
                     setAmount("");
                     setMaxMode(false);
                   }}
@@ -376,11 +434,23 @@ export default function AavePage() {
                   </span>
                 </button>
               ))}
-              {weth ? (
-                <p className="pt-1 text-xs text-white/50">
-                  WETH debt {amountText(weth.debt, 18, 6)} · borrow room {weth.borrowRoom === ethers.MaxUint256 ? "no cap" : `${amountText(weth.borrowRoom, 18, 2)} WETH`}
-                </p>
-              ) : null}
+              <p className="pt-1 text-[10px] uppercase tracking-[1.2px] text-zinc-500">Borrow markets · rate · room</p>
+              {borrowList.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                  onClick={() => {
+                    setAction("borrow");
+                    setAssetKey(String(row.id));
+                    setAmount("");
+                    setMaxMode(false);
+                  }}
+                >
+                  <span className="text-sm font-semibold text-white">{row.symbol}</span>
+                  <span className="font-mono text-xs text-zinc-300">~{rateToPercent(row.drawnRateRay)} APR · {roomText(row)}</span>
+                </button>
+              ))}
             </div>
           ) : null}
 
@@ -391,34 +461,31 @@ export default function AavePage() {
                   key={id}
                   type="button"
                   className={action === id ? chipOn : chip}
-                  onClick={() => {
-                    setAction(id);
-                    setAmount("");
-                    setMaxMode(false);
-                    setError("");
-                  }}
+                  onClick={() => pickAction(id)}
                 >
-                  {id === "supply" ? "Supply" : id === "borrow" ? "Borrow ETH" : id === "repay" ? "Repay" : "Withdraw"}
+                  {id === "supply" ? "Supply" : id === "borrow" ? "Borrow" : id === "repay" ? "Repay" : "Withdraw"}
                 </button>
               ))}
             </div>
-            {action === "supply" || action === "withdraw" ? (
+            {choices.length > 0 ? (
               <select
                 className={field}
-                value={selected?.id ?? ""}
-                onChange={(event) => { setReserveId(Number(event.target.value)); setAmount(""); setMaxMode(false); }}
+                value={activeKey}
+                onChange={(event) => { setAssetKey(event.target.value); setAmount(""); setMaxMode(false); }}
               >
-                {collateral.map((row) => <option key={row.id} value={row.id}>{row.symbol}</option>)}
+                {choices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
               </select>
             ) : (
-              <p className="text-xs text-white/60">{action === "borrow" ? "Borrow WETH (can be unwrapped to ETH)" : "Repay WETH debt"}</p>
+              <p className="text-xs text-white/60">
+                {action === "repay" ? "You have no debt on this Spoke." : "Nothing available yet."}
+              </p>
             )}
             <div className="flex gap-2">
               <input
                 className={field}
                 value={amount}
                 onChange={(event) => { setAmount(event.target.value.replace(/[^0-9.]/g, "")); setMaxMode(false); }}
-                placeholder={`Amount of ${action === "borrow" || action === "repay" ? "WETH" : selected?.symbol ?? ""}`}
+                placeholder={amountPlaceholder}
                 inputMode="decimal"
                 autoCapitalize="none"
                 autoCorrect="off"
@@ -427,19 +494,21 @@ export default function AavePage() {
               <button type="button" className={chip} onClick={onMax}>Max</button>
             </div>
             <p className="text-xs text-white/50">{room()}</p>
-            {action === "borrow" ? (
+            {(action === "borrow" || action === "withdraw") && isWeth ? (
               <label className="flex items-center gap-2 text-xs text-white/70">
                 <input type="checkbox" checked={unwrap} onChange={(event) => setUnwrap(event.target.checked)} />
-                Unwrap to ETH after borrowing (one extra transaction)
+                Unwrap to ETH after {action === "borrow" ? "borrowing" : "withdrawing"} (one extra transaction)
               </label>
             ) : null}
             {projected && action !== "supply" ? (
               <p className="text-xs text-white/70">
                 Health factor after:{" "}
                 <span className={`font-mono font-semibold ${healthColor(projected.wad)}`}>{projected.text}</span>
-                {action === "borrow" && (healthToNumber(projected.wad) ?? Infinity) < MIN_SAFE_HEALTH_FACTOR ? (
-                  <span className="text-red-400"> — below {MIN_SAFE_HEALTH_FACTOR.toFixed(1)}, blocked</span>
-                ) : null}
+                {(action === "borrow" || action === "withdraw")
+                  && projected.wad != null
+                  && (healthToNumber(projected.wad) ?? Infinity) < MIN_SAFE_HEALTH_FACTOR ? (
+                    <span className="text-red-400"> — below {MIN_SAFE_HEALTH_FACTOR.toFixed(1)}, blocked</span>
+                  ) : null}
               </p>
             ) : null}
             <label className="flex items-start gap-2 text-xs text-white/70">
@@ -451,7 +520,7 @@ export default function AavePage() {
             <button
               type="button"
               className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-black disabled:opacity-60"
-              disabled={!market || planning || flow.busy || !amount.trim()}
+              disabled={!market || !selected || planning || flow.busy || !amount.trim()}
               onClick={() => void review()}
             >
               {planning ? "Checking…" : action === "supply" ? "Review supply" : action === "borrow" ? "Review borrow" : action === "repay" ? "Review repayment" : "Review withdrawal"}
