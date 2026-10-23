@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ethers } from "ethers";
 import Header from "../components/Header";
 import SpendConfirm, { useSpendFlow } from "../components/SpendConfirm";
 import TokenMark from "../components/chains/TokenMark";
+import {
+  Accordion,
+  AddressRow,
+  AssetCard,
+  Card,
+  DetailRow,
+  MarketCard,
+  Segmented,
+  StatTile,
+} from "../components/aave/AaveParts";
 import { useChainAccounts } from "../chains/useChainAccounts";
 import {
+  AAVE_CORE_HUB,
   AAVE_MAIN_SPOKE,
   MIN_SAFE_HEALTH_FACTOR,
   WETH_RESERVE_ID,
@@ -24,6 +35,7 @@ import {
   planWithdraw,
   rateToPercent,
   runAaveSteps,
+  safeBorrowHeadroomValue,
   usdOf,
   type AaveMarket,
   type AaveReserveState,
@@ -34,7 +46,6 @@ import { formatRawAmount } from "../mobile-port/utils/ethHoldings";
 
 const field = "w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-primary";
 const chip = "swap-chip-btn";
-const chipOn = "swap-chip-btn swap-chip-btn--active";
 
 type Action = "supply" | "borrow" | "repay" | "withdraw";
 
@@ -90,57 +101,6 @@ function healthBadge(wad: bigint | null): { label: string; cls: string } {
   if (n < 1.2) return { label: "At risk", cls: "bg-red-400/15 text-red-300" };
   if (n < MIN_SAFE_HEALTH_FACTOR) return { label: "Caution", cls: "bg-amber-400/15 text-amber-300" };
   return { label: "Healthy", cls: "bg-emerald-400/15 text-emerald-300" };
-}
-
-function Section({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[1.2px] text-zinc-400">{title}</h2>
-        {right}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/** Icon, symbol and a right-aligned value. Used for every asset row so columns line up. */
-function AssetRow({
-  symbol,
-  sub,
-  value,
-  onClick,
-}: {
-  symbol: string;
-  sub?: string;
-  value: ReactNode;
-  onClick?: () => void;
-}) {
-  const body = (
-    <>
-      <TokenMark symbol={symbol} size={26} />
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold leading-tight text-white">{symbol}</span>
-        {sub ? <span className="block text-[11px] leading-tight text-white/40">{sub}</span> : null}
-      </span>
-      <span className="text-right font-mono text-xs leading-tight text-zinc-200">{value}</span>
-    </>
-  );
-  const cls = "flex w-full items-center gap-3 rounded-lg px-1 py-1.5 text-left";
-  return onClick ? (
-    <button type="button" className={`${cls} hover:bg-white/5`} onClick={onClick}>{body}</button>
-  ) : (
-    <div className={cls}>{body}</div>
-  );
-}
-
-function Stat({ label, value, tone }: { label: string; value: ReactNode; tone?: string }) {
-  return (
-    <div className="rounded-lg bg-black/30 px-3 py-2">
-      <p className="text-[10px] uppercase tracking-wide text-white/40">{label}</p>
-      <p className={`font-mono text-sm ${tone ?? "text-white"}`}>{value}</p>
-    </div>
-  );
 }
 
 export default function AavePage() {
@@ -407,237 +367,304 @@ export default function AavePage() {
             : `Review ${verb}`;
   const ctaDisabled = !market || !selected || planning || flow.busy || !amount.trim();
 
+  const suppliedRows = (market?.reserves ?? []).filter((row) => row.supplied > 0n);
+  const suppliedUsd = suppliedRows.reduce(
+    (sum, row) => sum + usdOf(row.supplied, row.price, row.decimals, priceDecimals),
+    0,
+  );
+  const borrowCapacityUsd = market ? Number(safeBorrowHeadroomValue(market) / 10n ** 18n) / 10 ** priceDecimals : 0;
+  const walletRows = (market?.reserves ?? []).filter((row) => row.walletBalance > 0n);
+
+  const pickAsset = (nextAction: Action, id: number): void => {
+    setAction(nextAction);
+    setAssetKey(String(id));
+    setAmount("");
+    setMaxMode(false);
+    setError("");
+  };
+
   return (
-    <div className="container space-y-3 pb-8">
+    <div className="container min-w-0 space-y-3 pb-8">
       <Header title="Aave v4" />
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-white">Borrow on Aave v4</p>
-        <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">
-          Ethereum mainnet
-        </span>
-      </div>
-      <p className="text-xs leading-relaxed text-white/50">
-        Supply collateral to the Aave v4 Main Spoke ({shortAddress(AAVE_MAIN_SPOKE)}) and borrow against it.
-        Signing uses this wallet&apos;s Ethereum account. Only the assets listed below are shown; anything else
-        you hold on this Spoke still counts in the health factor.
-      </p>
-      <p className="text-xs leading-relaxed text-white/70">
-        Aave holds WETH, a 1:1 wrapped version of ETH, so this wallet wraps your ETH for you when you supply it,
-        and unwraps back to ETH when you borrow or withdraw WETH if you leave that option on.
-      </p>
 
-      <div className="space-y-1 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-xs leading-relaxed text-amber-100">
-        <p className="font-semibold">Read before you borrow</p>
-        <p>
-          If the health factor falls below 1.00 your collateral can be liquidated, with a penalty. Prices move, interest
-          accrues every block, and your rate can change. Borrowing a volatile asset (WETH, WBTC, cbBTC) against other
-          collateral adds price risk both ways. This wallet blocks a borrow or withdrawal that would leave the
-          health factor under {MIN_SAFE_HEALTH_FACTOR.toFixed(1)}, but staying safe afterwards is up to you.
-        </p>
-        <p>
-          Amounts offered are conservative: the largest borrow keeps the health factor at {MIN_SAFE_HEALTH_FACTOR.toFixed(1)}
-          {" "}and uses at most 90% of the remaining borrow cap or pool liquidity. Every step is a separate Ethereum
-          transaction and pays gas. This integration has not been tested with real funds, so start with a small amount.
-        </p>
-      </div>
-
-      {!owner ? (
-        <p className="rounded-xl border border-white/10 p-3 text-sm text-white/70">
-          This wallet has no Ethereum account. Aave needs the account derived from the recovery phrase or an added Nano Ethereum account.
-        </p>
-      ) : (
-        <>
-          <Section
-            title="Your position"
-            right={(
-              <button type="button" className="text-xs text-primary disabled:opacity-50" onClick={() => void refresh()} disabled={loading}>
-                {loading ? "Loading…" : "Refresh"}
-              </button>
-            )}
+      {/* Summary */}
+      <Card className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-white/15 bg-black/30 px-2.5 py-1 text-[11px] text-white/70">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
+            <span className="truncate">Aave v4 · Main Spoke · Ethereum</span>
+          </span>
+          <button
+            type="button"
+            className="shrink-0 text-xs font-semibold text-primary disabled:opacity-50"
+            onClick={() => void refresh()}
+            disabled={loading || !owner}
           >
-            {loadError ? (
-              <div className="space-y-2 rounded-lg border border-red-400/30 bg-red-400/10 p-3">
-                <p className="text-xs text-red-300">{loadError}</p>
-                <button type="button" className="text-xs font-semibold text-primary" onClick={() => void refresh()}>Try again</button>
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
+        {!owner ? (
+          <p className="text-sm text-white/70">
+            This wallet has no Ethereum account. Aave needs the account derived from the recovery phrase or an added Nano Ethereum account.
+          </p>
+        ) : loadError ? (
+          <div className="space-y-2 rounded-lg border border-red-400/30 bg-red-400/10 p-3">
+            <p className="text-xs text-red-300">{loadError}</p>
+            <button type="button" className="text-xs font-semibold text-primary" onClick={() => void refresh()}>Try again</button>
+          </div>
+        ) : market && account ? (
+          <>
+            <div className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-white/40">Health factor</p>
+                <p className={`font-mono text-2xl font-semibold leading-tight ${healthColor(hfNow)}`}>{formatHealth(hfNow)}</p>
               </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <StatTile label="Supplied" value={usd(suppliedUsd)} />
+              <StatTile label="Borrowed" value={usd(debtUsd)} />
+              <StatTile label="Can borrow" value={usd(borrowCapacityUsd)} />
+            </div>
+            <p className="text-[11px] leading-snug text-white/40">
+              Can borrow is the most that keeps the health factor at {MIN_SAFE_HEALTH_FACTOR.toFixed(1)}.
+              Collateral counted by Aave: {usd(collateralUsd)}.
+            </p>
+            {market.skipped.length > 0 ? (
+              <p className="text-xs text-amber-300">Aave no longer lists {market.skipped.join(", ")} at the expected id, so it is hidden.</p>
             ) : null}
-            {market && account ? (
-              <>
-                <div className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide text-white/40">Health factor</p>
-                    <p className={`font-mono text-2xl font-semibold leading-tight ${healthColor(hfNow)}`}>{formatHealth(hfNow)}</p>
-                  </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Stat label="Collateral" value={usd(collateralUsd)} />
-                  <Stat label="Debt" value={usd(debtUsd)} />
-                  <Stat label="ETH in wallet" value={amountText(market.ethBalance, 18)} />
-                  <Stat label="WETH in wallet" value={weth ? amountText(weth.walletBalance, 18) : "—"} />
-                </div>
-                {account.riskPremiumBps > 0 ? (
-                  <p className="text-xs text-white/50">Risk premium on borrows: +{(account.riskPremiumBps / 100).toFixed(2)}%</p>
-                ) : null}
-                {debtList.length > 0 ? (
-                  <div className="space-y-0.5 pt-1">
-                    <p className="text-[10px] uppercase tracking-wide text-white/40">Borrowed</p>
-                    {debtList.map((row) => (
-                      <AssetRow
-                        key={row.id}
-                        symbol={row.symbol}
-                        sub={`~${rateToPercent(row.drawnRateRay)} APR`}
-                        value={amountText(row.debt, row.decimals, 6)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-                {market.skipped.length > 0 ? (
-                  <p className="text-xs text-amber-300">Aave no longer lists {market.skipped.join(", ")} at the expected id, so it is hidden.</p>
-                ) : null}
-              </>
-            ) : !loadError ? (
-              <div className="space-y-2" aria-busy="true">
-                <div className="h-14 animate-pulse rounded-lg bg-white/5" />
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="h-12 animate-pulse rounded-lg bg-white/5" />
-                  <div className="h-12 animate-pulse rounded-lg bg-white/5" />
-                </div>
-                <p className="text-xs text-zinc-500">Reading Aave…</p>
-              </div>
-            ) : null}
-          </Section>
+          </>
+        ) : (
+          <div className="space-y-2" aria-busy="true">
+            <div className="h-14 animate-pulse rounded-lg bg-white/5" />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="h-11 animate-pulse rounded-lg bg-white/5" />
+              <div className="h-11 animate-pulse rounded-lg bg-white/5" />
+              <div className="h-11 animate-pulse rounded-lg bg-white/5" />
+            </div>
+          </div>
+        )}
+      </Card>
 
-          {market ? (
-            <Section title="Collateral" right={<span className="text-[10px] text-white/40">wallet · supplied</span>}>
-              {collateralList.map((row) => (
-                <AssetRow
-                  key={row.id}
-                  symbol={row.symbol}
-                  sub={`LTV ${(row.collateralFactorBps / 100).toFixed(0)}%${row.supplied > 0n ? (row.enabledAsCollateral ? " · collateral on" : " · collateral off") : ""}`}
-                  value={(
-                    <>
-                      <span className="block">{amountText(row.walletBalance, row.decimals, 4)} · {amountText(row.supplied, row.decimals, 4)}</span>
-                      <span className="block text-[10px] text-white/40">≈ {usd(usdOf(row.supplied, row.price, row.decimals, priceDecimals))}</span>
-                    </>
-                  )}
-                  onClick={() => {
-                    setAction(action === "withdraw" ? "withdraw" : "supply");
-                    setAssetKey(String(row.id));
-                    setAmount("");
-                    setMaxMode(false);
-                  }}
-                />
-              ))}
-            </Section>
-          ) : null}
-
-          {market ? (
-            <Section title="Borrow markets" right={<span className="text-[10px] text-white/40">rate · room</span>}>
-              {borrowList.map((row) => (
-                <AssetRow
-                  key={row.id}
-                  symbol={row.symbol}
-                  value={`~${rateToPercent(row.drawnRateRay)} APR · ${roomText(row)}`}
-                  onClick={() => {
-                    setAction("borrow");
-                    setAssetKey(String(row.id));
-                    setAmount("");
-                    setMaxMode(false);
-                  }}
-                />
-              ))}
-            </Section>
-          ) : null}
-
-          <Section title="Action">
-            <div className="flex flex-wrap gap-2">
-              {(["supply", "borrow", "repay", "withdraw"] as Action[]).map((id) => (
+      {/* Actions */}
+      {owner ? (
+        <Card className="space-y-3">
+          <Segmented<Action>
+            value={action}
+            options={[
+              { id: "supply", label: "Supply" },
+              { id: "borrow", label: "Borrow" },
+              { id: "repay", label: "Repay" },
+              { id: "withdraw", label: "Withdraw" },
+            ]}
+            onChange={pickAction}
+          />
+          {choices.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2" role="listbox" aria-label="Asset">
+              {choices.map((choice) => (
                 <button
-                  key={id}
+                  key={choice.key}
                   type="button"
-                  className={action === id ? chipOn : chip}
-                  onClick={() => pickAction(id)}
+                  role="option"
+                  aria-selected={choice.key === activeKey}
+                  className={`flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1.5 text-left ${
+                    choice.key === activeKey ? "border-primary bg-primary/10" : "border-white/10 bg-black/20"
+                  }`}
+                  onClick={() => { setAssetKey(choice.key); setAmount(""); setMaxMode(false); }}
                 >
-                  {id === "supply" ? "Supply" : id === "borrow" ? "Borrow" : id === "repay" ? "Repay" : "Withdraw"}
+                  <TokenMark symbol={choice.symbol} size={22} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold leading-tight text-white">{choice.symbol}</span>
+                    <span className="block truncate text-[10px] leading-tight text-white/40">{choice.sub}</span>
+                  </span>
                 </button>
               ))}
             </div>
-            {choices.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2" role="listbox" aria-label="Asset">
-                {choices.map((choice) => (
-                  <button
-                    key={choice.key}
-                    type="button"
-                    role="option"
-                    aria-selected={choice.key === activeKey}
-                    className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left ${
-                      choice.key === activeKey ? "border-primary bg-primary/10" : "border-white/10 bg-black/20"
-                    }`}
-                    onClick={() => { setAssetKey(choice.key); setAmount(""); setMaxMode(false); }}
-                  >
-                    <TokenMark symbol={choice.symbol} size={22} />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold leading-tight text-white">{choice.symbol}</span>
-                      <span className="block truncate text-[10px] leading-tight text-white/40">{choice.sub}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-white/60">
-                {!market ? "Loading assets…" : action === "repay" ? "You have no debt on this Spoke." : "Nothing available yet."}
-              </p>
-            )}
-            <div className="flex items-center gap-2">
-              {symbolShown ? <TokenMark symbol={symbolShown} size={24} /> : null}
-              <input
-                className={field}
-                value={amount}
-                onChange={(event) => { setAmount(event.target.value.replace(/[^0-9.]/g, "")); setMaxMode(false); }}
-                placeholder={amountPlaceholder}
-                inputMode="decimal"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              <button type="button" className={chip} onClick={onMax} disabled={!selected || !market}>Max</button>
-            </div>
-            <p className="text-xs leading-relaxed text-white/50">{room()}</p>
-            {(action === "borrow" || action === "withdraw") && isWeth ? (
-              <label className="flex items-center gap-2 text-xs text-white/70">
-                <input type="checkbox" checked={unwrap} onChange={(event) => setUnwrap(event.target.checked)} />
-                Unwrap to ETH after {action === "borrow" ? "borrowing" : "withdrawing"} (one extra transaction)
-              </label>
-            ) : null}
-            {projected && action !== "supply" ? (
-              <p className="text-xs text-white/70">
-                Health factor after:{" "}
+          ) : (
+            <p className="rounded-lg bg-black/25 px-3 py-2 text-xs text-white/60">
+              {!market ? "Loading assets…" : action === "repay" ? "You have no debt on this Spoke." : "Nothing available yet."}
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            {symbolShown ? <TokenMark symbol={symbolShown} size={24} /> : null}
+            <input
+              className={field}
+              value={amount}
+              onChange={(event) => { setAmount(event.target.value.replace(/[^0-9.]/g, "")); setMaxMode(false); }}
+              placeholder={amountPlaceholder}
+              inputMode="decimal"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <button type="button" className={chip} onClick={onMax} disabled={!selected || !market}>Max</button>
+          </div>
+          <p className="text-xs leading-relaxed text-white/50">{room()}</p>
+          {(action === "borrow" || action === "withdraw") && isWeth ? (
+            <label className="flex items-center gap-2 text-xs text-white/70">
+              <input type="checkbox" checked={unwrap} onChange={(event) => setUnwrap(event.target.checked)} />
+              Unwrap to ETH after {action === "borrow" ? "borrowing" : "withdrawing"} (one extra transaction)
+            </label>
+          ) : null}
+          {projected && action !== "supply" ? (
+            <div className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2 text-xs">
+              <span className="text-white/60">Health factor after</span>
+              <span className="text-right">
                 <span className={`font-mono font-semibold ${healthColor(projected.wad)}`}>{projected.text}</span>
                 {(action === "borrow" || action === "withdraw")
                   && projected.wad != null
                   && (healthToNumber(projected.wad) ?? Infinity) < MIN_SAFE_HEALTH_FACTOR ? (
-                    <span className="text-red-400"> — below {MIN_SAFE_HEALTH_FACTOR.toFixed(1)}, blocked</span>
+                    <span className="block text-red-400">Below {MIN_SAFE_HEALTH_FACTOR.toFixed(1)}, blocked</span>
                   ) : null}
+              </span>
+            </div>
+          ) : null}
+          <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] leading-snug text-amber-100">
+            Borrowing can get your collateral liquidated if the health factor falls below 1.00. Details are under
+            &quot;Risk and rates&quot; below.
+          </p>
+          <label className="flex items-start gap-2 text-xs text-white/70">
+            <input type="checkbox" className="mt-0.5" checked={ack} onChange={(event) => setAck(event.target.checked)} />
+            I understand my collateral can be liquidated and that this has not been tested with real funds.
+          </label>
+          {error ? <p className="text-sm text-red-400">{error}</p> : null}
+          {notice ? <p className="text-sm text-emerald-300">{notice}</p> : null}
+          <button
+            type="button"
+            className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-black disabled:opacity-60"
+            disabled={ctaDisabled}
+            onClick={() => void review()}
+          >
+            {ctaLabel}
+          </button>
+        </Card>
+      ) : null}
+
+      {owner ? (
+        <div className="space-y-2">
+          <Accordion
+            title="Your positions"
+            hint={market ? `${suppliedRows.length} supplied · ${debtList.length} borrowed` : "Loading…"}
+            defaultOpen
+          >
+            {!market ? (
+              <p className="text-xs text-white/50">Reading Aave…</p>
+            ) : (
+              <>
+                <p className="text-[10px] uppercase tracking-wide text-white/40">Supplied</p>
+                {suppliedRows.length === 0 ? <p className="text-xs text-white/50">Nothing supplied yet.</p> : null}
+                {suppliedRows.map((row) => (
+                  <AssetCard
+                    key={row.id}
+                    symbol={row.symbol}
+                    value={amountText(row.supplied, row.decimals, 6)}
+                    sub={`≈ ${usd(usdOf(row.supplied, row.price, row.decimals, priceDecimals))}`}
+                    badge={row.enabledAsCollateral ? "Collateral on" : "Collateral off"}
+                    onClick={() => pickAsset("withdraw", row.id)}
+                  />
+                ))}
+                <p className="pt-1 text-[10px] uppercase tracking-wide text-white/40">Borrowed</p>
+                {debtList.length === 0 ? <p className="text-xs text-white/50">No debt.</p> : null}
+                {debtList.map((row) => (
+                  <AssetCard
+                    key={row.id}
+                    symbol={row.symbol}
+                    value={amountText(row.debt, row.decimals, 6)}
+                    sub={`~${rateToPercent(row.drawnRateRay)} APR`}
+                    badge={`≈ ${usd(usdOf(row.debt, row.price, row.decimals, priceDecimals))}`}
+                    onClick={() => pickAsset("repay", row.id)}
+                  />
+                ))}
+                <p className="pt-1 text-[10px] uppercase tracking-wide text-white/40">In this wallet</p>
+                <AssetCard symbol="ETH" value={amountText(market.ethBalance, 18)} sub="Plain ETH" />
+                {walletRows.map((row) => (
+                  <AssetCard
+                    key={row.id}
+                    symbol={row.symbol}
+                    value={amountText(row.walletBalance, row.decimals, 6)}
+                    sub={row.id === WETH_RESERVE_ID ? "Wrapped ETH" : undefined}
+                    onClick={row.collateral && row.collateralFactorBps > 0 ? () => pickAsset("supply", row.id) : undefined}
+                  />
+                ))}
+              </>
+            )}
+          </Accordion>
+
+          <Accordion title="Borrow markets" hint={market ? `${borrowList.length} assets you can borrow` : undefined}>
+            {!market ? (
+              <p className="text-xs text-white/50">Reading Aave…</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {borrowList.map((row) => (
+                  <MarketCard
+                    key={row.id}
+                    symbol={row.symbol}
+                    rate={rateToPercent(row.drawnRateRay)}
+                    room={roomText(row)}
+                    onClick={() => pickAsset("borrow", row.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </Accordion>
+
+          <Accordion title="Risk and rates details" hint="Collateral factors, caps, liquidation">
+            <div className="space-y-2 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs leading-relaxed text-amber-100">
+              <p className="font-semibold">Liquidation risk</p>
+              <p>
+                If the health factor falls below 1.00 your collateral can be liquidated, with a penalty. Prices move,
+                interest accrues every block, and your rate can change. Borrowing a volatile asset (WETH, WBTC, cbBTC)
+                against other collateral adds price risk both ways.
               </p>
+              <p>
+                This wallet blocks a borrow or withdrawal that would leave the health factor under {MIN_SAFE_HEALTH_FACTOR.toFixed(1)},
+                and offers at most 90% of the remaining borrow cap or pool liquidity. Staying safe afterwards is up to you.
+                Every step is a separate Ethereum transaction and pays gas. This has not been tested with real funds, so
+                start small.
+              </p>
+            </div>
+            <p className="text-xs leading-relaxed text-white/60">
+              Health factor is your collateral, weighted by each asset&apos;s collateral factor, divided by your debt.
+              1.00 is the liquidation line. Higher is safer.
+            </p>
+            {market ? (
+              <>
+                {account ? (
+                  <DetailRow
+                    label="Risk premium on borrows"
+                    value={`+${(account.riskPremiumBps / 100).toFixed(2)}%`}
+                  />
+                ) : null}
+                <p className="pt-1 text-[10px] uppercase tracking-wide text-white/40">Collateral factors and supply room</p>
+                {collateralList.map((row) => (
+                  <DetailRow
+                    key={row.id}
+                    label={row.symbol}
+                    value={`${(row.collateralFactorBps / 100).toFixed(0)}% · room ${row.supplyRoom === ethers.MaxUint256 ? "no cap" : amountText(row.supplyRoom, row.decimals, 2)}`}
+                  />
+                ))}
+                <p className="pt-1 text-[10px] uppercase tracking-wide text-white/40">Borrow limits (cap and pool liquidity)</p>
+                {borrowList.map((row) => (
+                  <DetailRow key={row.id} label={row.symbol} value={`${roomText(row)} · ~${rateToPercent(row.drawnRateRay)} APR`} />
+                ))}
+              </>
             ) : null}
-            <label className="flex items-start gap-2 text-xs text-white/70">
-              <input type="checkbox" className="mt-0.5" checked={ack} onChange={(event) => setAck(event.target.checked)} />
-              I understand my collateral can be liquidated and that this has not been tested with real funds.
-            </label>
-            {error ? <p className="text-sm text-red-400">{error}</p> : null}
-            {notice ? <p className="text-sm text-emerald-300">{notice}</p> : null}
-            <button
-              type="button"
-              className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-black disabled:opacity-60"
-              disabled={ctaDisabled}
-              onClick={() => void review()}
-            >
-              {ctaLabel}
-            </button>
-          </Section>
-        </>
-      )}
+          </Accordion>
+
+          <Accordion title="How ETH and WETH work" hint="Why this wallet wraps for you">
+            <p className="text-xs leading-relaxed text-white/70">
+              Aave holds WETH, a 1:1 wrapped version of ETH, so this wallet wraps your ETH for you when you supply it,
+              and unwraps back to ETH when you borrow or withdraw WETH if you leave that option on. It keeps a small
+              ETH reserve back for gas, so you cannot wrap your whole balance.
+            </p>
+          </Accordion>
+
+          <Accordion title="Contract details" hint="Addresses on Ethereum mainnet">
+            <AddressRow label="Aave v4 Main Spoke" address={AAVE_MAIN_SPOKE} />
+            <AddressRow label="Aave v4 Core Hub" address={AAVE_CORE_HUB} />
+          </Accordion>
+        </div>
+      ) : null}
 
       <SpendConfirm
         open={pending != null}
