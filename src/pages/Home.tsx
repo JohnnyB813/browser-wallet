@@ -584,6 +584,15 @@ const Home: React.FC = () => {
                   </div>
                 </>
               ) : null}
+              {chain === "ethereum" ? (
+                <div
+                  className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
+                  onClick={() => navigate("/aave")}
+                >
+                  <IoWater className="text-2xl text-primary" />
+                  <p className="text-white text-sm font-semibold">Aave</p>
+                </div>
+              ) : null}
             </div>
             {ledgerNote && (
               <p className="text-amber-200/90 text-xs text-center px-2">{ledgerNote}</p>
