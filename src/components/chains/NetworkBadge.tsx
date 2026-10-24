@@ -5,17 +5,15 @@ import type { NodeNetwork } from "../../config/network";
  *
  * With a handler this is a button that moves the wallet to the other
  * family. Without one it is a plain label, for the screens that only ever
- * show mainnet.
+ * show one network.
  */
 export default function NetworkBadge({
   network,
   onSwitch,
-  disabled = false,
   title,
 }: {
   network: NodeNetwork;
   onSwitch?: () => void;
-  disabled?: boolean;
   title?: string;
 }) {
   const mainnet = network === "mainnet";
@@ -35,17 +33,9 @@ export default function NetworkBadge({
     <button
       type="button"
       onClick={onSwitch}
-      disabled={disabled}
-      title={
-        title ??
-        (disabled
-          ? "Switch to Warthog to change the network"
-          : `Switch to ${mainnet ? "the DeFi testnet" : "mainnet"}`)
-      }
+      title={title ?? `Switch to ${mainnet ? "the DeFi testnet" : "mainnet"}`}
       aria-label={`${label}. Switch network`}
-      className={`${className} transition-opacity ${
-        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:opacity-80"
-      }`}
+      className={`${className} transition-opacity cursor-pointer hover:opacity-80`}
     >
       {label}
     </button>

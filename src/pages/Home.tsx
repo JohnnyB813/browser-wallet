@@ -496,6 +496,42 @@ const Home: React.FC = () => {
     checkPendingApproval();
   }, []);
 
+  /**
+   * Show the card as refreshing.
+   *
+   * The network switch goes through here too, so the card shows the same
+   * pending state as a manual refresh rather than changing under the user
+   * with nothing to show for it.
+   */
+  const showRefreshing = useCallback(() => {
+    setRefreshing(true);
+    window.setTimeout(() => setRefreshing(false), 800);
+  }, []);
+
+  /**
+   * Refresh the card, the way the refresh button does.
+   */
+  const refreshCard = useCallback(() => {
+    showRefreshing();
+    updateBalance();
+    updateBalanceUSD();
+    setHoldingsTick((tick) => tick + 1);
+  }, [showRefreshing, updateBalance, updateBalanceUSD]);
+
+  /**
+   * Move to the other family and refresh what the card shows.
+   *
+   * The balance effect refetches on its own when the node changes, because
+   * the selected index is one of its dependencies. Only the pending state
+   * is set here: the state update is not applied yet, so fetching now
+   * would read the node being left.
+   */
+  const switchNetworkAndRefresh = useCallback(() => {
+    switchNetwork();
+    showRefreshing();
+    setHoldingsTick((tick) => tick + 1);
+  }, [switchNetwork, showRefreshing]);
+
   useEffect(() => {
     if (wallet) {
       updateBalance();
@@ -524,12 +560,13 @@ const Home: React.FC = () => {
               <div className="flex items-center justify-between gap-2">
                 {/* The network switch is a Warthog setting. A testnet asset
                     is not on the Warthog chain, so there is no network to
-                    switch and the badge does not apply. */}
-                {isWart ? (
+                    switch and the badge does not apply. Off the Warthog
+                    chain the card shows that chain's coins, and the
+                    Warthog node's family says nothing about them. */}
+                {chain === "wart" && isWart ? (
                   <NetworkBadge
                     network={activeNetwork}
-                    onSwitch={switchNetwork}
-                    disabled={chain !== "wart"}
+                    onSwitch={switchNetworkAndRefresh}
                   />
                 ) : (
                   <span />
@@ -537,13 +574,7 @@ const Home: React.FC = () => {
                 <button
                   type="button"
                   className="main-balance-refresh"
-                  onClick={() => {
-                    setRefreshing(true);
-                    updateBalance();
-                    updateBalanceUSD();
-                    setHoldingsTick((tick) => tick + 1);
-                    window.setTimeout(() => setRefreshing(false), 800);
-                  }}
+                  onClick={refreshCard}
                 >
                   <span className="text-[#FDB913]">{refreshing ? "…" : "⟳"}</span>
                   {refreshing ? "Refreshing…" : "Refresh"}
