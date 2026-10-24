@@ -16,10 +16,9 @@ export function nodeVersionPath(node: WalletNode): string {
  * How a node's version is written on the card.
  *
  * The node reports a version and a commit. The commit is the hash the node
- * was built from, but only when it was built from a checkout: a release
- * build has no git information, so the field holds the version string
- * instead. Showing that would read `v0.8.20 (0.8.20)`, which says the
- * same thing twice.
+ * was built from, but only when the build knew it: a build without a
+ * checkout reports "unknown", and an older build reports the version
+ * string there instead, because the fallback it used was the version.
  *
  * So the hash is shown only when it says something the version does not.
  */
@@ -30,6 +29,6 @@ export function formatNodeVersion(
   const dotted = String(version ?? "").trim();
   if (!dotted) return "";
   const hash = String(commit ?? "").trim();
-  if (!hash || hash === dotted) return `v${dotted}`;
+  if (!hash || hash === dotted || hash === "unknown") return `v${dotted}`;
   return `v${dotted} (${hash})`;
 }
