@@ -600,6 +600,13 @@ function DefiHub() {
         >
           Select DeFi node
         </button>
+        <button
+          type="button"
+          className="defi-btn-primary mt-2"
+          onClick={() => navigate("/aave")}
+        >
+          Aave v4 (Ethereum)
+        </button>
       </div>
     );
   }
@@ -697,6 +704,13 @@ function DefiHub() {
               onClick={() => setTab("send-asset")}
             >
               Send Asset
+            </button>
+            <button
+              type="button"
+              className="defi-btn-gold"
+              onClick={() => navigate("/aave")}
+            >
+              Aave v4 (ETH)
             </button>
             <button
               type="button"

@@ -53,6 +53,22 @@ const MARKS: Record<string, string> = {
 };
 
 
+/**
+ * Bundled PNG marks for Aave assets, served from public/icons/tokens (no runtime network fetch).
+ * Sources and licensing: public/icons/tokens/SOURCES.md.
+ */
+const PNG_MARKS: Record<string, string> = {
+  WETH: "/icons/tokens/weth.png",
+  WSTETH: "/icons/tokens/wsteth.png",
+  WEETH: "/icons/tokens/weeth.png",
+  CBBTC: "/icons/tokens/cbbtc.png",
+  EURC: "/icons/tokens/eurc.png",
+  RLUSD: "/icons/tokens/rlusd.png",
+  USDG: "/icons/tokens/usdg.png",
+  FRXUSD: "/icons/tokens/frxusd.png",
+  GHO: "/icons/tokens/gho.png",
+};
+
 const LETTER_COLORS = ['#627EEA', '#26A17B', '#F7931A', '#2775CA', '#FF4600', '#14F195', '#9945FF'];
 
 function markName(symbol: string): string {
@@ -100,6 +116,19 @@ export default function TokenMark({
     );
   }
   const key = markName(symbol);
+  const png = PNG_MARKS[key];
+  if (png) {
+    return (
+      <img
+        src={png}
+        alt={symbol}
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   const xml = MARKS[key];
   if (xml) {
     return (

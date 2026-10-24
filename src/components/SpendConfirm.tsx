@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "../utils/toast";
+import TokenMark from "./chains/TokenMark";
 
-type Row = { label: string; value: string };
+type Row = { label: string; value: string; /** Optional token symbol shown as an icon beside the value. */ icon?: string };
 
 export type SpendOutcome = {
   ok: boolean;
@@ -133,7 +134,10 @@ export default function SpendConfirm({
             {rows.map((row) => (
               <div key={row.label}>
                 <dt className="text-[10px] uppercase tracking-wide text-zinc-500">{row.label}</dt>
-                <dd className="break-all font-mono text-sm text-white">{row.value}</dd>
+                <dd className="flex items-center gap-2 break-all font-mono text-sm text-white">
+                  {row.icon ? <TokenMark symbol={row.icon} size={20} /> : null}
+                  <span>{row.value}</span>
+                </dd>
               </div>
             ))}
           </dl>

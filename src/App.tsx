@@ -35,6 +35,7 @@ import DefiHub from "./pages/DefiHub";
 import SwapPage from "./pages/SwapPage";
 import ChainSend from "./pages/ChainSend";
 import SafeTradePage from "./pages/SafeTradePage";
+import AavePage from "./pages/AavePage";
 import AppToast from "./components/AppToast";
 import { useChainAccounts } from "./chains/useChainAccounts";
 import ActivityDetailPage from "./pages/ActivityDetailPage";
@@ -194,6 +195,7 @@ const App: React.FC = () => {
       <Route path="/swap" element={<SwapPage />} />
       <Route path="/chain-send" element={<ChainSend />} />
       <Route path="/safetrade" element={<SafeTradePage />} />
+      <Route path="/aave" element={<AavePage />} />
       <Route path="/activity-details" element={<ActivityDetailPage />} />
       <Route path="/account-details" element={<AccountDetails />} />
       <Route path="/private-key" element={<ShowPrivateKey />} />
