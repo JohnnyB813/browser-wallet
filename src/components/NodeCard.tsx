@@ -1,4 +1,4 @@
-import { IoMdSwap, IoMdTrash } from "react-icons/io";
+import { IoMdTrash } from "react-icons/io";
 import type { NodeNetwork } from "../config/network";
 import useWallet from "../hooks/useWallet";
 
@@ -11,7 +11,6 @@ const NodeCard = ({
   network,
   setPrimaryNode,
   removeNode,
-  moveNode,
 }: {
   id: number;
   name: string;
@@ -21,7 +20,6 @@ const NodeCard = ({
   network: NodeNetwork;
   setPrimaryNode: (id: number) => void;
   removeNode: (id: number) => void;
-  moveNode: (id: number) => void;
 }) => {
   const { selectedNodeIndex } = useWallet();
   const isSelected = selectedNodeIndex === id;
@@ -63,16 +61,6 @@ const NodeCard = ({
         >
           {network === "defi-testnet" ? "DeFi" : "Mainnet"}
         </span>
-        <div
-          title="Move to the other network"
-          onClick={(e) => {
-            e.stopPropagation();
-            moveNode(id);
-          }}
-          className="p-1.5 rounded-sm hover:bg-white/10 transition-colors"
-        >
-          <IoMdSwap className="w-4 h-4 cursor-pointer text-white/40 hover:text-white" />
-        </div>
         <div
           onClick={(e) => {
             e.stopPropagation();

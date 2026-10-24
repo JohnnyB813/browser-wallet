@@ -557,20 +557,25 @@ const Home: React.FC = () => {
         return (
           <div className="space-y-4">
             <div className="home-wallet-card">
+              {/* One row: the chain, the network within it, and the refresh.
+                  The badge belongs beside the chain picker, because the two
+                  answer the same question from different sides: the picker
+                  says which chain, the badge says which network in it. */}
               <div className="flex items-center justify-between gap-2">
-                {/* The network switch is a Warthog setting. A testnet asset
-                    is not on the Warthog chain, so there is no network to
-                    switch and the badge does not apply. Off the Warthog
-                    chain the card shows that chain's coins, and the
-                    Warthog node's family says nothing about them. */}
-                {chain === "wart" && isWart ? (
-                  <NetworkBadge
-                    network={activeNetwork}
-                    onSwitch={switchNetworkAndRefresh}
-                  />
-                ) : (
-                  <span />
-                )}
+                <div className="flex items-center gap-2 min-w-0">
+                  <ChainPicker chains={chains} chain={chain} onChange={setChain} />
+                  {/* The network switch is a Warthog setting. A testnet asset
+                      is not on the Warthog chain, so there is no network to
+                      switch and the badge does not apply. Off the Warthog
+                      chain the card shows that chain's coins, and the
+                      Warthog node's family says nothing about them. */}
+                  {chain === "wart" && isWart ? (
+                    <NetworkBadge
+                      network={activeNetwork}
+                      onSwitch={switchNetworkAndRefresh}
+                    />
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   className="main-balance-refresh"
@@ -580,7 +585,6 @@ const Home: React.FC = () => {
                   {refreshing ? "Refreshing…" : "Refresh"}
                 </button>
               </div>
-              <ChainPicker chains={chains} chain={chain} onChange={setChain} />
               {chain === "wart" || !accounts ? (
                 <>
                   <div className="flex items-center justify-between gap-3">

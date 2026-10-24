@@ -25,7 +25,6 @@ function SelectNode() {
     setNodeList,
     activeNetwork,
     setActiveNetwork,
-    moveNodeToFamily,
   } = useWallet();
 
   const [nodes, setNodes] = useState<NodeType[]>([] as NodeType[]);
@@ -65,28 +64,6 @@ function SelectNode() {
     // Keep at least one node
     if (nodeList.length <= 1) return;
     setNodeList(nodeList.filter((_, index) => index !== id));
-  };
-
-  /** Move a node to the other family. */
-  const moveNode = (id: number) => {
-    const node = nodeList[id];
-    if (!node) return;
-    const target: NodeNetwork =
-      node.network === "defi-testnet" ? "mainnet" : "defi-testnet";
-    setNodeList(
-      nodeList.map((n, index) =>
-        index === id
-          ? {
-              ...n,
-              network: target,
-            }
-          : n,
-      ),
-    );
-    // The selection follows the node. A node that was the mainnet pick and
-    // is now a DeFi node would otherwise stay in the mainnet slot, where it
-    // no longer belongs.
-    moveNodeToFamily(node.url, node.network, target);
   };
 
   // The dialog asks which family the node belongs to. It starts on the tab
@@ -252,7 +229,6 @@ function SelectNode() {
               {...node}
               setPrimaryNode={setPrimaryNode}
               removeNode={removeNode}
-              moveNode={moveNode}
             />
           ))
         ) : (

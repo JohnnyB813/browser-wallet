@@ -162,17 +162,6 @@ interface WalletContextProps {
    * wallet to the DeFi testnet.
    */
   setActiveNetwork: (network: NodeNetwork) => void;
-  /**
-   * Move a node's selection from one family to another.
-   *
-   * The node picker moves a node between families, and the selection has to
-   * follow it, or it stays in a slot whose family it no longer matches.
-   */
-  moveNodeToFamily: (
-    url: string,
-    from: NodeNetwork,
-    to: NodeNetwork,
-  ) => void;
   setVisibleWalletList: (visibleWalletList: boolean[]) => void;
   setSelectedWalletIndex: (selectedWalletIndex: number) => void;
   setInputWordsBackup: (inputWordsBackup: string[]) => void;
@@ -499,25 +488,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       setActiveNetworkKeyState(family);
     },
     [nodeList, selectedNodeUrls, saveToBrowserStorage],
-  );
-
-  /**
-   * Move a node's selection from one family to another.
-   *
-   * The node picker moves a node between families, and the selection has to
-   * follow it, or it stays in a slot whose family it no longer matches.
-   */
-  const moveNodeToFamily = useCallback(
-    (url: string, from: NodeNetwork, to: NodeNetwork): void => {
-      setSelectedNodeUrlsState((prev) => {
-        const next = { ...prev };
-        if (next[from] === url) next[from] = "";
-        next[to] = url;
-        saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
-        return next;
-      });
-    },
-    [saveToBrowserStorage],
   );
 
   const setPassword = (pwd: string): void => {
@@ -1535,7 +1505,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setSelectedNodeUrl,
         switchNetwork,
         setActiveNetwork,
-        moveNodeToFamily,
         setPathType,
         clearWalletData,
         setToken,
