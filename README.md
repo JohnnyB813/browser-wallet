@@ -88,6 +88,8 @@ The manifest is per browser. `public/manifest.json` holds what every browser tak
 
 Chrome runs the background as a service worker and docks the wallet in a side panel. Firefox has no service worker, so its background is an event page, and its docked panel is a sidebar.
 
+Firefox has one wallet view. Its toolbar icon opens and closes the sidebar instead of a popup, so the manifest declares an empty action and the popup is cleared at runtime. The sidebar is marked in the URL with `?sidebar=1`, the way Chrome's side panel uses `?sidepanel=1`, so the two views can be told apart.
+
 The Firefox manifest declares that the extension collects no data. Firefox 140 added that key, so the older builds, the ESR ones among them, report it as an unknown property when the extension is loaded. It is a warning, the extension ignores the key and works.
 
 To build the extension, run:

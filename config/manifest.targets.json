@@ -12,11 +12,12 @@
   },
   "firefox": {
     "manifest": {
+      "action": {},
       "background": {
         "scripts": ["background.js"]
       },
       "sidebar_action": {
-        "default_panel": "index.html",
+        "default_panel": "index.html?sidebar=1",
         "default_title": "WARTHOG NETWORK",
         "default_icon": {
           "16": "/logo-16.png",
