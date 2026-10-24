@@ -189,6 +189,7 @@ const App: React.FC = () => {
       <Route path="/sendstep2" element={<SendFinalStep />} />
       <Route path="/manage-account" element={<ManageAccounts />} />
       <Route path="/select-node" element={<SelectNode />} />
+      <Route path="/mainnet-nodes" element={<SelectNode family="mainnet" />} />
       <Route path="/defi" element={<DefiHub />} />
       <Route path="/swap" element={<SwapPage />} />
       <Route path="/chain-send" element={<ChainSend />} />

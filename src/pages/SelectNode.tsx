@@ -17,7 +17,14 @@ interface NodeType {
   network: NodeNetwork;
 }
 
-function SelectNode() {
+/**
+ * The node list.
+ *
+ * With a family, the page is pinned to it: no tabs, and only that family's
+ * nodes. It edits the same list and the same selection as the unpinned
+ * page, so the two cannot drift apart.
+ */
+function SelectNode({ family }: { family?: NodeNetwork } = {}) {
   const {
     wallet,
     nodeList,
@@ -41,11 +48,11 @@ function SelectNode() {
   // the wallet is on, so the picker reflects where the wallet actually is.
   // The tab is its own state, so a family with no node can still be opened
   // and a node added to it, without switching the wallet.
-  const [tab, setTab] = useState<NodeNetwork>(activeNetwork);
+  const [tab, setTab] = useState<NodeNetwork>(family ?? activeNetwork);
 
   useEffect(() => {
-    setTab(activeNetwork);
-  }, [activeNetwork]);
+    setTab(family ?? activeNetwork);
+  }, [family, activeNetwork]);
 
   const visibleNodes = nodes.filter((node) => {
     if (node.network !== tab) return false;
@@ -73,10 +80,11 @@ function SelectNode() {
   };
 
   // The dialog asks which family the node belongs to. It starts on the tab
-  // the wallet is on, which is where a new node is most likely wanted.
+  // the wallet is on, which is where a new node is most likely wanted. A
+  // pinned page has one family, so the question is not asked.
   useEffect(() => {
-    setNewNodeNetwork(tab);
-  }, [tab]);
+    setNewNodeNetwork(family ?? tab);
+  }, [family, tab]);
 
   const handleAddNode = async () => {
     const urlPattern =
@@ -176,8 +184,16 @@ function SelectNode() {
 
   return (
     <div className="min-h-screen container relative px-4">
-      <Header title="Select A Node" />
+      <Header title={family ? `${familyLabel(family)} Nodes` : "Select A Node"} />
 
+      {family ? (
+        <p className="text-white/45 text-xs mb-3 leading-relaxed">
+          SafeTrade buys on the Warthog mainnet, and there is no Warthog
+          testnet for it, so it needs a mainnet node.
+        </p>
+      ) : null}
+
+      {family ? null : (
       <div className="flex gap-2 mb-3 flex-wrap">
         {(
           [
@@ -207,6 +223,7 @@ function SelectNode() {
           </button>
         ))}
       </div>
+      )}
 
       <div className="relative w-full mb-2">
         <input
@@ -230,7 +247,7 @@ function SelectNode() {
           }`}
           onClick={() => handleAddPresets(tab)}
         >
-          + {tab === "mainnet" ? "Mainnet" : "DeFi testnet"} presets
+          + {familyLabel(tab)} presets
         </button>
       </div>
 
@@ -271,34 +288,46 @@ function SelectNode() {
               Add new Node
             </h3>
             <p className="text-white/50 text-xs mb-2">
-              Mainnet example: https://warthognode.duckdns.org
-              <br />
-              DeFi testnet: https://warthog-defitestnet.duckdns.org
+              {family === "mainnet" ? (
+                "Mainnet example: https://warthognode.duckdns.org"
+              ) : family === "defi-testnet" ? (
+                "DeFi testnet: https://warthog-defitestnet.duckdns.org"
+              ) : (
+                <>
+                  Mainnet example: https://warthognode.duckdns.org
+                  <br />
+                  DeFi testnet: https://warthog-defitestnet.duckdns.org
+                </>
+              )}
             </p>
-            <p className="text-white/50 text-xs mb-1">
-              Which network is this node on?
-            </p>
-            <div className="flex gap-2 mb-2">
-              {(
-                [
-                  ["mainnet", "Mainnet"],
-                  ["defi-testnet", "DeFi Testnet"],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setNewNodeNetwork(id)}
-                  className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${
-                    newNodeNetwork === id
-                      ? "bg-primary/20 border-primary text-primary"
-                      : "border-white/20 text-white/60"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {family ? null : (
+              <>
+                <p className="text-white/50 text-xs mb-1">
+                  Which network is this node on?
+                </p>
+                <div className="flex gap-2 mb-2">
+                  {(
+                    [
+                      ["mainnet", "Mainnet"],
+                      ["defi-testnet", "DeFi Testnet"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setNewNodeNetwork(id)}
+                      className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${
+                        newNodeNetwork === id
+                          ? "bg-primary/20 border-primary text-primary"
+                          : "border-white/20 text-white/60"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <input
               type="text"
               placeholder="Node Name"
