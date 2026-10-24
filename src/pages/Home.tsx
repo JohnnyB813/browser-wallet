@@ -244,6 +244,7 @@ const Home: React.FC = () => {
     activeNetwork,
     switchNetwork,
     setActiveNetwork,
+    nodeError,
   } = useWallet();
   const { accounts, chains, chain, setChain, phrasePending } = useChainAccounts();
   const navigate = useNavigate();
@@ -607,6 +608,7 @@ const Home: React.FC = () => {
                     <p className="font-mono text-sm text-zinc-400">≈ {showAmount(String(usd))} USD</p>
                   ) : null}
                   {balanceError ? <p className="text-xs text-red-300">{balanceError}</p> : null}
+                  {nodeError ? <p className="text-xs text-red-300">{nodeError}</p> : null}
                   {wallet ? (
                     <button
                       type="button"

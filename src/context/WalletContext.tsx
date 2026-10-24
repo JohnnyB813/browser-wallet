@@ -20,6 +20,7 @@ import {
 } from "../config/network";
 import {
   defaultSelection,
+  familyLabel,
   familyOfUrl,
   flattenNodeGroups,
   groupNodeRecords,
@@ -125,6 +126,14 @@ interface WalletContextProps {
   selectedNodeUrls: NodeSelection;
   /** The family the wallet is talking to, from the selected node. */
   activeNetwork: NodeNetwork;
+  /**
+   * Set when a switch found no node for the family it was going to.
+   *
+   * The slot is emptied in that case, so the state says there is no node.
+   * The message says which family is empty, and the card shows it next to
+   * the other node errors.
+   */
+  nodeError: string | null;
   selectedNetworkLabel: "Mainnet" | "DeFi Testnet";
   /** True when setup is complete enough to show the home UI. */
   isAuthenticated: boolean;
@@ -271,6 +280,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   // out of the pair above.
   const [activeNetworkKey, setActiveNetworkKeyState] =
     useState<NodeNetwork>("mainnet");
+  const [nodeError, setNodeError] = useState<string | null>(null);
   const [nameList, setNameListState] = useState<string[]>([]);
   const [nodeList, setNodeListState] = useState<WalletNode[]>([]);
   const [token, setTokenState] = useState<string | null>(null);
@@ -473,12 +483,18 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const switchNetwork = useCallback((): void => {
     const target = otherNetwork(activeNetworkKey);
     const node = nodeForFamily(nodeList, target, selectedNodeUrls);
-    if (!node) return;
     setSelectedNodeUrlsState((prev) => {
-      const next = { ...prev, [target]: node.url };
+      const next = { ...prev, [target]: node?.url ?? "" };
       saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
       return next;
     });
+    if (!node) {
+      // The family has no node, so there is nothing to switch to. The slot
+      // is empty now, and the card says which family is missing a node.
+      setNodeError(`No ${familyLabel(target)} node configured.`);
+      return;
+    }
+    setNodeError(null);
     setActiveNetworkKeyState(target);
   }, [activeNetworkKey, nodeList, selectedNodeUrls, saveToBrowserStorage]);
 
@@ -1498,6 +1514,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         selectedNodeUrl,
         selectedNodeUrls,
         activeNetwork,
+        nodeError,
         selectedNetworkLabel,
         isAuthenticated,
         ledgerAccount,

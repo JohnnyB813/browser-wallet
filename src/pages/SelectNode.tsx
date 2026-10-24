@@ -4,7 +4,7 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import NodeCard from "../components/NodeCard";
 import { PRESET_NODES, type NodeNetwork, type WalletNode } from "../config/network";
-import { labelForNodeUrl, normalizeNodeUrl } from "../utils/nodes";
+import { familyLabel, labelForNodeUrl, normalizeNodeUrl } from "../utils/nodes";
 import { probeNode } from "../utils/warthogNode";
 import { ensureHostPermission } from "../utils/hostAccess";
 
@@ -37,9 +37,15 @@ function SelectNode() {
   const [newNodeNetwork, setNewNodeNetwork] =
     useState<NodeNetwork>("mainnet");
 
-  // The tab is the network the wallet is on. The page opens on the tab of
-  // the selected node, so the picker reflects where the wallet actually is.
-  const tab = activeNetwork;
+  // The tab is which family the list shows. The page opens on the family
+  // the wallet is on, so the picker reflects where the wallet actually is.
+  // The tab is its own state, so a family with no node can still be opened
+  // and a node added to it, without switching the wallet.
+  const [tab, setTab] = useState<NodeNetwork>(activeNetwork);
+
+  useEffect(() => {
+    setTab(activeNetwork);
+  }, [activeNetwork]);
 
   const visibleNodes = nodes.filter((node) => {
     if (node.network !== tab) return false;
@@ -183,7 +189,14 @@ function SelectNode() {
             key={id}
             type="button"
             aria-selected={tab === id}
-            onClick={() => setActiveNetwork(id)}
+            onClick={() => {
+              setTab(id);
+              // Switching the wallet needs a node to switch to. The tab
+              // still opens, so the user can add one.
+              if (nodes.some((node) => node.network === id)) {
+                setActiveNetwork(id);
+              }
+            }}
             className={`text-xs px-3 py-1.5 rounded-full border ${
               tab === id
                 ? "bg-primary/20 border-primary text-primary"
@@ -232,7 +245,11 @@ function SelectNode() {
             />
           ))
         ) : (
-          <div className="text-center text-white/50 mt-6">No nodes found</div>
+          <div className="text-center text-white/50 mt-6">
+            {nodes.some((node) => node.network === tab)
+              ? "No nodes found"
+              : `No ${familyLabel(tab)} node configured`}
+          </div>
         )}
       </div>
 

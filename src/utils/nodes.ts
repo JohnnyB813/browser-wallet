@@ -51,6 +51,16 @@ export function familyOfUrl(
 }
 
 /**
+ * The name of a family, for messages.
+ *
+ * The node label is "Mainnet" and "DeFi Testnet"; the family label is the
+ * same words, so a message reads "No DeFi Testnet node configured."
+ */
+export function familyLabel(network: NodeNetwork): string {
+  return network === "mainnet" ? "Mainnet" : "DeFi Testnet";
+}
+
+/**
  * Group the nodes by family, the way they are stored.
  */
 export function groupNodeRecords(nodes: WalletNode[]): NodeGroups {
