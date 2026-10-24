@@ -199,6 +199,15 @@ interface WalletContextProps {
   ) => Promise<void>;
   /** False until a pending toolbar unlock, if any, has been applied. */
   sessionReady: boolean;
+  /**
+   * True once the stored token has been read.
+   *
+   * The token is read from storage asynchronously, so for a while there is
+   * a token and no session, which is not the same as no session at all.
+   * The app needs to tell the two apart before it treats the absence of a
+   * token as an ended session.
+   */
+  tokenLoaded: boolean;
   /** Finish a passkey save/unlock that was moved out of the toolbar popup. */
   resumePasskeyHandoff: () => Promise<void>;
   /** Open the toolbar dropdown again and close the passkey window. */
@@ -286,6 +295,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const [signingUnlocked, setSigningUnlocked] = useState(false);
   const [ledgerAccount, setLedgerAccount] = useState<LedgerSession | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  // Whether the stored token has been read. The read is asynchronous, so
+  // this is what tells "no session" apart from "not looked yet".
+  const [tokenLoaded, setTokenLoaded] = useState(false);
   const toolbarUnlockRef = useRef<{
     privateKey: string;
     publicKey: string;
@@ -1407,6 +1419,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     });
     loadFromChromeStorage("token", (value) => {
       if (value) setTokenState((current) => current || value);
+      setTokenLoaded(true);
     });
   }, [loadFromChromeStorage, saveToBrowserStorage]);
 
@@ -1541,6 +1554,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         ledgerAccount,
         loginWithLedger,
         sessionReady,
+        tokenLoaded,
         signingUnlocked,
         canAddAccounts,
         accountPath,

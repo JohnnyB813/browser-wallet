@@ -44,14 +44,39 @@ import LedgerHost from "./pages/LedgerHost";
 import { takeLedgerPanelRoute } from "./ledger/session";
 import { isExtensionSidePanel } from "./utils/extensionNav";
 
+/**
+ * The routes that render without a session.
+ *
+ * A route that is not in this list only exists in the authenticated set,
+ * so the app has to leave it when the session ends.
+ *
+ * `/locked` is in the authenticated set but works without a token: it is
+ * the password prompt, and it reads the password from the wallet rather
+ * than from the session. It is here so an expiry while the password
+ * prompt is up does not move the user off it.
+ */
+const ROUTES_WITHOUT_SESSION = [
+  "/",
+  "/intro",
+  "/import",
+  "/import-key",
+  "/login-saved",
+  "/login-file",
+  "/recover",
+  "/validate",
+  "/validate-intro",
+  "/set-password",
+  "/secure-setup",
+  "/locked",
+];
+
 const App: React.FC = () => {
   const {
     seedPhrase,
-    wallet,
-    password,
     token,
     isAuthenticated,
     sessionReady,
+    tokenLoaded,
     clearToken,
     refreshTokenExpiration,
   } = useWallet();
@@ -164,15 +189,35 @@ const App: React.FC = () => {
     };
   }, [token, refreshTokenExpiration]);
 
+  /**
+   * Send the wallet back to the unlock screen when the session ends.
+   *
+   * The token expires after an hour of inactivity, and the expiry check
+   * clears it. That makes `isAuthenticated` false, and the app swaps to the
+   * unauthenticated route set. If the router is left on a route that only
+   * the authenticated set has, such as `/home` or `/select-node`, nothing
+   * matches and the page renders empty: a black panel with no way out.
+   *
+   * So the route it lands on has to exist in the unauthenticated set.
+   * `/login-saved` is the unlock screen and it is in that set.
+   *
+   * The effect used to require a seed phrase, a wallet and a password all
+   * at once, which a session without a seed phrase never has, so the
+   * redirect did not happen and the panel went black instead.
+   *
+   * It waits for the stored token to be read first. The read is
+   * asynchronous, so for a moment there is a token and no session, and
+   * treating that as an ended session would kick a logged-in user out.
+   */
   useEffect(() => {
     if (location.pathname === "/passkey-host" || location.pathname === "/ledger-host") return;
-    if (seedPhrase && wallet && password) {
-      if (!token) {
-        clearToken();
-        navigate("/locked");
-      }
-    }
-  }, [token, clearToken, navigate, seedPhrase, wallet, password, location.pathname]);
+    if (!tokenLoaded) return;
+    if (token) return;
+    // Already on a route that renders without a session. Nothing to do.
+    if (ROUTES_WITHOUT_SESSION.includes(location.pathname)) return;
+    clearToken();
+    navigate("/login-saved", { replace: true });
+  }, [token, tokenLoaded, clearToken, navigate, location.pathname]);
 
   const AuthenticatedRoutes = () => (
     <Routes>

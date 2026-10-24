@@ -5,6 +5,7 @@ import { Buffer } from "buffer";
 import "./index.css";
 import "./styles/defi.css";
 import App from "./App";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { WalletProvider } from "./context/WalletContext";
 import { warmDockWindow } from "./ledger/shell";
 import {
@@ -28,12 +29,18 @@ applyExtensionShellClass(isCompactShellPreferred());
 
 window.Buffer = window.Buffer || Buffer;
 
+// The error boundary sits outside everything. Without it a throw during
+// render unmounts the whole tree and the document shows only the black
+// page background, which in a docked sidebar is a panel the user cannot
+// get back into.
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <HashRouter>
-      <WalletProvider>
-        <App />
-      </WalletProvider>
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <WalletProvider>
+          <App />
+        </WalletProvider>
+      </HashRouter>
+    </ErrorBoundary>
   </StrictMode>,
 );
