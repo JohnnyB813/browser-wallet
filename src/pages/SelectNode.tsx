@@ -12,7 +12,16 @@ import {
 } from "../utils/nodes";
 import { probeNode } from "../utils/warthogNode";
 import { fetchPublicNodes, mergePublicNodes } from "../utils/publicNodes";
+import { formatNodeVersion } from "../utils/nodeVersion";
 import { ensureHostPermission } from "../utils/hostAccess";
+
+/**
+ * How long a node waits before it is asked again.
+ *
+ * The clock starts when the node answered, so the list does not send a
+ * burst of requests every so often.
+ */
+const NODE_POLL_MS = 30_000;
 
 interface NodeType {
   id: number;
@@ -21,6 +30,8 @@ interface NodeType {
   status: string;
   latency: number;
   network: NodeNetwork;
+  /** The version the node reports, once it has answered. */
+  version: string;
 }
 
 /**
@@ -196,6 +207,13 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
     setWarning(false);
   };
 
+  /**
+   * Ask a node how it is doing, and record what it said.
+   *
+   * The version request is the liveness check, so the entry is pending
+   * while it runs. The version is kept with the entry, so the card can
+   * show what the node is.
+   */
   const measureLatency = useCallback(
     async (node: WalletNode, index: number) => {
       const result = await probeNode(node, wallet);
@@ -206,6 +224,9 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
           ...newNodes[index],
           latency: result.latencyMs,
           status: result.online ? "online" : "offline",
+          version: result.version
+            ? formatNodeVersion(result.version.version, result.version.commit)
+            : newNodes[index].version,
         };
         return newNodes;
       });
@@ -227,20 +248,39 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
         status: "Checking",
         latency: 0,
         network: node.network,
+        version: "",
       })),
     );
 
+    // Each node has its own clock, started when that node answered. A
+    // slow node does not hold up the others, and a node that never
+    // answers is asked again on its own schedule.
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    // The list can go away while a request is in flight. The flag stops
+    // the answer from setting a timer that nothing would clear.
+    let cancelled = false;
+
+    const schedule = (node: WalletNode, index: number) => {
+      void (async () => {
+        await measureLatency(node, index);
+        if (cancelled) return;
+        const timer = setTimeout(() => {
+          timers.delete(timer);
+          schedule(node, index);
+        }, NODE_POLL_MS);
+        timers.add(timer);
+      })();
+    };
+
     nodeList.forEach((node, index) => {
-      measureLatency(node, index);
+      schedule(node, index);
     });
 
-    const interval = setInterval(() => {
-      nodeList.forEach((node, index) => {
-        measureLatency(node, index);
-      });
-    }, 10_000);
-
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+    };
   }, [measureLatency, nodeList]);
 
   return (
@@ -348,6 +388,7 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
               address={node.address}
               status={node.status}
               latency={node.latency}
+              version={node.version}
               setPrimaryNode={setPrimaryNode}
               removeNode={removeNode}
             />

@@ -7,6 +7,7 @@ const NodeCard = ({
   address,
   status,
   latency,
+  version,
   setPrimaryNode,
   removeNode,
 }: {
@@ -15,6 +16,8 @@ const NodeCard = ({
   address: string;
   status: string;
   latency: number;
+  /** The version the node reports, empty when it has not answered. */
+  version: string;
   setPrimaryNode: (id: number) => void;
   removeNode: (id: number) => void;
 }) => {
@@ -41,7 +44,14 @@ const NodeCard = ({
           }`}
         />
         <div className="min-w-0">
-          <div className="text-white text-sm font-medium truncate">{name}</div>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <div className="text-white text-sm font-medium truncate">{name}</div>
+            {version ? (
+              <div className="text-white/40 text-[11px] font-mono truncate shrink-0">
+                {version}
+              </div>
+            ) : null}
+          </div>
           <div className="text-white/40 text-xs font-mono truncate">{address.replace(/^https?:\/\//, '')}</div>
         </div>
 </div>

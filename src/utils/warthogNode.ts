@@ -7,6 +7,8 @@ import { DEFAULT_TX_FEE, type WalletNode } from "../config/network";
 import { isDefiNode, normalizeNodeUrl } from "./nodes";
 import { formatBalanceBreakdown } from "./balanceBreakdown";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
+import { NodeVersion } from "warthog-ts";
+import { nodeVersionPath } from "./nodeVersion";
 
 /**
  * How long a node has to answer before the read gives up.
@@ -628,15 +630,30 @@ export async function fetchAccountHistory(
   };
 }
 
-/** Lightweight health/latency check for a node. */
+/**
+ * Health, latency and version check for a node.
+ *
+ * The version request is the liveness check: it is one request, it is
+ * cheap, and it says what the node is as well as that it is up. The
+ * account read stays, because a node on the wrong chain answers the
+ * version request happily but has never heard of this wallet.
+ */
 export async function probeNode(
   node: WalletNode,
   address?: string | null,
-): Promise<{ online: boolean; latencyMs: number }> {
+): Promise<{
+  online: boolean;
+  latencyMs: number;
+  version: NodeVersion | null;
+}> {
   const nodeBase = node.url;
   const start = performance.now();
   try {
-    await nodeGet(nodeBase, "chain/head");
+    const data = await nodeRead<unknown>(nodeBase, nodeVersionPath(node));
+    const version = NodeVersion.parse(data);
+    if (!version) {
+      return { online: false, latencyMs: performance.now() - start, version: null };
+    }
     if (address) {
       if (isDefiNode(node)) {
         await nodeGet(nodeBase, `account/${address}/wart_balance`);
@@ -644,13 +661,13 @@ export async function probeNode(
         try {
           await nodeGet(nodeBase, `account/${address}/balance`);
         } catch {
-          // balance may 404 for empty accounts — head success is enough
+          // balance may 404 for empty accounts — the version is enough
         }
       }
     }
-    return { online: true, latencyMs: performance.now() - start };
+    return { online: true, latencyMs: performance.now() - start, version };
   } catch {
-    return { online: false, latencyMs: performance.now() - start };
+    return { online: false, latencyMs: performance.now() - start, version: null };
   }
 }
 
