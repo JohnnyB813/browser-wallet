@@ -427,6 +427,18 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const setNodeList = (list: WalletNode[]): void => {
     setNodeListState(list);
     saveToBrowserStorage("nodes", JSON.stringify(groupNodeRecords(list)));
+    // A slot may name a node that is no longer in the list. Clear it, so a
+    // removed node does not stay remembered as the choice for its family.
+    setSelectedNodeUrlsState((prev) => {
+      const next: NodeSelection = { ...prev };
+      for (const family of ["mainnet", "defi-testnet"] as NodeNetwork[]) {
+        if (next[family] && !list.some((n) => n.url === next[family])) {
+          next[family] = "";
+        }
+      }
+      saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
+      return next;
+    });
   };
 
   const setNameList = (list: string[]): void => {
@@ -1392,16 +1404,15 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   // right when the list is regrouped, reordered, or gains a node.
   const selectedNodeIndex = useMemo(() => {
     // The remembered node, or the family's first node when the remembered
-    // one is gone. Falling back to the list's first entry would be wrong:
-    // that can be the other family.
+    // one is gone. When the family has no node at all the index is -1:
+    // falling back to the list's first entry would be wrong, because that
+    // can be a node of the other family.
     const node = nodeForFamily(nodeList, activeNetwork, selectedNodeUrls);
-    if (node) {
-      const found = nodeList.findIndex(
-        (n) => normalizeNodeUrl(n.url) === normalizeNodeUrl(node.url),
-      );
-      if (found >= 0) return found;
-    }
-    return 0;
+    if (!node) return -1;
+    const found = nodeList.findIndex(
+      (n) => normalizeNodeUrl(n.url) === normalizeNodeUrl(node.url),
+    );
+    return found >= 0 ? found : -1;
   }, [nodeList, selectedNodeUrls, activeNetwork]);
 
   const lockSessionRef = useRef(lockSession);
@@ -1443,8 +1454,11 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     };
   }, []);
 
+  // Null when the active family has no node. The wallet does not fall back
+  // to a node of the other family, or it would claim to be on a network it
+  // is not talking to.
   const selectedNode: WalletNode | null =
-    nodeList.length > 0 ? nodeList[selectedNodeIndex] || nodeList[0] : null;
+    selectedNodeIndex >= 0 ? nodeList[selectedNodeIndex] ?? null : null;
   const selectedNodeUrl: string | null = selectedNode?.url ?? null;
   const selectedNetworkLabel = networkLabel(selectedNode);
   // Password or session token (passkey-only unlock sets token without password)
