@@ -11,6 +11,7 @@ import {
   normalizeNodeUrl,
 } from "../utils/nodes";
 import { probeNode } from "../utils/warthogNode";
+import { fetchPublicNodes, mergePublicNodes } from "../utils/publicNodes";
 import { ensureHostPermission } from "../utils/hostAccess";
 
 interface NodeType {
@@ -46,6 +47,10 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
   const [newNodeName, setNewNodeName] = useState("");
   const [warning, setWarning] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // What the last update from the public list did. It is its own message
+  // because the dialog's warning means something else.
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   // Which family the node being added belongs to. The user says, not the URL.
   const [newNodeNetwork, setNewNodeNetwork] =
     useState<NodeNetwork>("mainnet");
@@ -140,6 +145,48 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
       }
     }
     setNodeList(next);
+  };
+
+  /**
+   * Add the nodes of the open tab's family from the public list.
+   *
+   * The public list only adds. A node the wallet already has keeps the
+   * name it has and is not added twice. The family comes from the file the
+   * list is read from, so it is never guessed from an address.
+   */
+  const handleUpdateFromPublicData = async () => {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    setUpdateMessage(null);
+    try {
+      const incoming = await fetchPublicNodes(tab);
+      const result = mergePublicNodes(nodeList, incoming);
+      if (result.added.length > 0) {
+        setNodeList([...nodeList, ...result.added]);
+      }
+      const parts: string[] = [];
+      if (result.added.length > 0) {
+        parts.push(
+          `Added ${result.added.length} node${result.added.length === 1 ? "" : "s"} from the public list.`,
+        );
+      }
+      if (result.skipped > 0) {
+        parts.push(
+          `Skipped ${result.skipped} node${result.skipped === 1 ? "" : "s"} already in the list on the other network.`,
+        );
+      }
+      if (parts.length === 0) {
+        setUpdateMessage("Already up to date. The public list has no new nodes.");
+      } else {
+        setUpdateMessage(parts.join(" "));
+      }
+    } catch {
+      setUpdateMessage(
+        "Could not reach the public node list. Check the network and try again.",
+      );
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const handleCancel = () => {
@@ -262,7 +309,25 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
         >
           + {familyLabel(tab)} presets
         </button>
+        <button
+          type="button"
+          disabled={isUpdating}
+          className={`text-xs underline disabled:opacity-50 ${
+            isUpdating
+              ? "text-white/40"
+              : tab === "mainnet"
+                ? "text-primary"
+                : "text-amber-300"
+          }`}
+          onClick={handleUpdateFromPublicData}
+        >
+          {isUpdating ? "Updating..." : "Update from public data"}
+        </button>
       </div>
+
+      {updateMessage ? (
+        <p className="text-xs text-white/50 mb-2">{updateMessage}</p>
+      ) : null}
 
       {!tabHasSelection ? (
         <p className="text-xs text-amber-300 mb-2">
