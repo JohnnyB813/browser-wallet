@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import safetradeMark from "../assets/safetrade-favicon.png";
 import { Account, Address, NonceId, RoundedFee, Wart, type TransactionJson } from "warthog-ts";
 import Header from "../components/Header";
 import NetworkBadge from "../components/chains/NetworkBadge";
 import SpendConfirm, { useSpendFlow } from "../components/SpendConfirm";
+import NodeError from "../components/NodeError";
 import SwapStyleCard from "../components/SwapStyleCard";
 import useWallet from "../hooks/useWallet";
 import { createTransactionContext, submitTransaction } from "../utils";
@@ -154,7 +154,6 @@ async function walletHold(
 }
 
 export default function SafeTradePage() {
-  const navigate = useNavigate();
   const wallet = useWallet();
   const { accounts } = useChainAccounts();
   const flow = useSpendFlow();
@@ -531,18 +530,12 @@ export default function SafeTradePage() {
       </p>
       {!mainnetNode ? (
         <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2">
-          <p className="text-xs text-red-200">
-            No mainnet node configured. SafeTrade buys on the Warthog mainnet,
-            and there is no Warthog testnet for it, so it needs a mainnet node
-            even when the wallet is on the testnet.
-          </p>
-          <button
-            type="button"
-            className="mt-2 text-xs text-red-200 underline"
-            onClick={() => navigate("/mainnet-nodes")}
-          >
-            Add a mainnet node
-          </button>
+          <NodeError
+            message="No mainnet node configured. SafeTrade buys on the Warthog mainnet, and there is no Warthog testnet for it, so it needs a mainnet node even when the wallet is on the testnet."
+            to="/mainnet-nodes"
+            linkLabel="Add a mainnet node"
+            className="text-xs text-red-200"
+          />
         </div>
       ) : null}
       <p className="text-xs text-white/70">

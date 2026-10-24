@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import TokenMark from "./chains/TokenMark";
+import NodeError from "./NodeError";
 
 export type SwapTokenChoice = { id: string; symbol: string; mark?: string };
 
@@ -187,7 +188,12 @@ export default function SwapStyleCard({
 
           {extra}
           {summary ? <div className="swap-summary space-y-1.5 text-[11px] text-zinc-500">{summary}</div> : null}
-          {error ? <p className="text-xs text-amber-200/90">{error}</p> : null}
+          {error ? (
+            <NodeError
+              message={error}
+              className="text-xs text-amber-200/90"
+            />
+          ) : null}
           <button type="button" className="swap-cta-btn" disabled={ctaDisabled} onClick={onCta}>
             {cta}
           </button>

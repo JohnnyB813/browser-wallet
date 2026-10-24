@@ -16,6 +16,7 @@ import { useChainAccounts } from "../chains/useChainAccounts";
 import ChainPicker from "../components/chains/ChainPicker";
 import ChainHoldings from "../components/chains/ChainHoldings";
 import NetworkBadge from "../components/chains/NetworkBadge";
+import NodeError from "../components/NodeError";
 import TokenMark from "../components/chains/TokenMark";
 import { toast } from "../utils/toast";
 import { hasPositiveLocked } from "../utils/balanceBreakdown";
@@ -607,8 +608,8 @@ const Home: React.FC = () => {
                   {!selectedToken.hash && usd > 0 ? (
                     <p className="font-mono text-sm text-zinc-400">≈ {showAmount(String(usd))} USD</p>
                   ) : null}
-                  {balanceError ? <p className="text-xs text-red-300">{balanceError}</p> : null}
-                  {nodeError ? <p className="text-xs text-red-300">{nodeError}</p> : null}
+                  <NodeError message={balanceError} />
+                  <NodeError message={nodeError} />
                   {wallet ? (
                     <button
                       type="button"
