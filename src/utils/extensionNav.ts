@@ -45,13 +45,16 @@ export function hasDockedPanel(): boolean {
 }
 
 /**
- * True when this document is the docked panel. Chrome's side panel carries a
- * marker in its URL. Firefox's sidebar panel is a plain index.html, so the
- * marker is not there and the browser is asked which views it holds.
+ * True when this document is the docked panel. Both browsers mark it in the
+ * URL: Chrome's side panel opens `index.html?sidepanel=1`, Firefox's sidebar
+ * `index.html?sidebar=1`. Firefox is also asked which views it holds, as a
+ * fallback for a document that reached the sidebar without the marker.
  */
 export function isExtensionSidePanel(): boolean {
   try {
-    if (new URLSearchParams(location.search).get("sidepanel") === "1") return true;
+    const params = new URLSearchParams(location.search);
+    if (params.get("sidepanel") === "1") return true;
+    if (params.get("sidebar") === "1") return true;
   } catch {
     // ignore
   }

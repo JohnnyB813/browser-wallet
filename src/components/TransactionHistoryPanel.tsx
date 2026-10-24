@@ -4,6 +4,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ActivityItem, { type ActivityRow } from "./ActivityItem";
+import NodeError from "./NodeError";
 import {
   fetchAccountHistory,
   type HistoryItem,
@@ -353,7 +354,7 @@ const TransactionHistoryPanel: React.FC<Props> = ({
       </div>
 
       {historyError && !loadingHistory && (
-        <p className="tx-error">{historyError}</p>
+        <NodeError message={historyError} className="tx-error" />
       )}
 
       {showTransactions && (

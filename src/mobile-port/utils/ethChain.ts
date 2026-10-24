@@ -403,7 +403,7 @@ export async function executeSushiSwap(
     if (quote.amountIn > balance) {
       throw new Error(`Only ${formatRawAmount(balance, 6, 6)} USDT is in this wallet.`);
     }
-    let allowance = await token.allowance(spender.address, SUSHI_ROUTER) as bigint;
+    const allowance = await token.allowance(spender.address, SUSHI_ROUTER) as bigint;
     let approvalHash: string | undefined;
     if (allowance < quote.amountIn) {
       if (allowance > 0n) {

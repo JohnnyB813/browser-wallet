@@ -4,11 +4,12 @@ import { Account, Address, NonceId, RoundedFee, Wart, type TransactionJson } fro
 import Header from "../components/Header";
 import NetworkBadge from "../components/chains/NetworkBadge";
 import SpendConfirm, { useSpendFlow } from "../components/SpendConfirm";
+import NodeError from "../components/NodeError";
 import SwapStyleCard from "../components/SwapStyleCard";
 import useWallet from "../hooks/useWallet";
 import { createTransactionContext, submitTransaction } from "../utils";
 import { amountExceedsAvailable, insufficientFreeBalanceMessage } from "../utils/balanceBreakdown";
-import { isDefiNode } from "../utils/nodes";
+import { nodeForFamily } from "../utils/nodes";
 import { fetchBalanceAndPin } from "../utils/warthogNode";
 import { deriveAccountAtIndex } from "../utils/walletKeys";
 import { DEFAULT_FEE_WART } from "../config";
@@ -181,7 +182,22 @@ export default function SafeTradePage() {
   const balanceOf = (symbol: string): SpotBalance | undefined =>
     rows?.find((row) => row.asset === symbol);
 
-  const selectedNode = wallet.selectedNode;
+  // SafeTrade buys on the Warthog mainnet. There is no Warthog testnet
+  // for it, so it always uses the mainnet node, whichever family the
+  // wallet is currently on.
+  const mainnetNode = nodeForFamily(
+    wallet.nodeList,
+    "mainnet",
+    wallet.selectedNodeUrls,
+  );
+  const mainnetIndex = mainnetNode
+    ? wallet.nodeList.findIndex((n) => n.url === mainnetNode.url)
+    : -1;
+  // Whether there is a mainnet node to pick, or none at all.
+  const mainnetAnyNode = wallet.nodeList.some((n) => n.network === "mainnet");
+  const mainnetReason = mainnetAnyNode
+    ? "No mainnet node selected. SafeTrade buys on the Warthog mainnet, and there is no Warthog testnet for it."
+    : "No mainnet node configured. SafeTrade buys on the Warthog mainnet, and there is no Warthog testnet for it.";
   const pay = SAFE_ROUTES.find((route) => route.id === payId) ?? routesOn(network)[0];
   const trading = panel === "swap" || panel === "limit";
   const receiveChoices = useMemo(() => {
@@ -190,7 +206,8 @@ export default function SafeTradePage() {
   }, [network, trading, pay]);
   const receive = receiveChoices.find((route) => route.id === receiveId) ?? receiveChoices.find((route) => route.id !== pay?.id) ?? receiveChoices[0];
   const pair = pay && receive ? safePair(pay.currency, receive.currency) : null;
-  const mainnet = network !== "Warthog" || !isDefiNode(selectedNode);
+  // The badge is a label here, not a switch: SafeTrade is always on the
+  // Warthog mainnet.
 
   useEffect(() => {
     void loadSafeTradeCredentials().then(setCreds);
@@ -260,7 +277,7 @@ export default function SafeTradePage() {
     };
     void Promise.all(SAFE_ROUTES.map(async (route) => {
       try {
-        const hold = await walletHold(route, owners, selectedNode);
+        const hold = await walletHold(route, owners, mainnetNode);
         return [route.id, hold] as const;
       } catch {
         return [route.id, { text: "—", max: "", failed: true }] as const;
@@ -271,7 +288,7 @@ export default function SafeTradePage() {
     return () => {
       alive = false;
     };
-  }, [wallet.wallet, accounts?.ethAddress, accounts?.btcAddress, accounts?.solAddress, selectedNode, notice]);
+  }, [wallet.wallet, accounts?.ethAddress, accounts?.btcAddress, accounts?.solAddress, mainnetNode, notice]);
 
   const checkBalances = async () => {
     setChecking(true);
@@ -332,7 +349,13 @@ export default function SafeTradePage() {
     }
     if (moveDir === "deposit") {
       if (!pay.canDeposit) return `${pay.symbol} cannot be deposited from this wallet.`;
-      if (pay.chain === "wart" && isDefiNode(selectedNode)) return "WART deposits use the mainnet node.";
+      // A WART deposit goes on the Warthog mainnet. Without a mainnet node
+      // there is nothing to deposit from.
+      if (pay.chain === "wart" && !mainnetNode) {
+        return mainnetAnyNode
+          ? "No mainnet node selected. SafeTrade has no Warthog testnet."
+          : "No mainnet node configured. SafeTrade has no Warthog testnet.";
+      }
       if (!addressFor(pay) && pay.chain !== "wart") return "This wallet has no address on that network.";
       const held = walletHolds[pay.id];
       if (!held) return "Checking the wallet balance.";
@@ -452,7 +475,10 @@ export default function SafeTradePage() {
   async function sendWart(to: string, wartAmount: string) {
     if (wallet.ledgerAccount) throw new Error("Ledger WART deposits use Send on the Warthog home.");
     if (!wallet.seedPhrase && !wallet.privateKey) throw new Error("Unlock the wallet before depositing WART.");
-    const live = wallet.wallet && selectedNode ? await fetchBalanceAndPin(selectedNode, wallet.wallet) : null;
+    const live =
+      wallet.wallet && mainnetNode
+        ? await fetchBalanceAndPin(mainnetNode, wallet.wallet)
+        : null;
     if (live && amountExceedsAvailable(wartAmount, live.available)) {
       throw new Error(insufficientFreeBalanceMessage({
         available: live.available,
@@ -465,12 +491,12 @@ export default function SafeTradePage() {
       : Account.fromPrivateKeyHex(wallet.privateKey || "");
     const fee = RoundedFee.fromE8(BigInt(Math.round(parseFloat(DEFAULT_FEE_WART) * 1e8)), false);
     if (!fee) throw new Error("Invalid fee.");
-    const context = await createTransactionContext(wallet.nodeList, wallet.selectedNodeIndex, fee, NonceId.random());
+    const context = await createTransactionContext(wallet.nodeList, mainnetIndex, fee, NonceId.random());
     const toAddr = Address.fromHex(to);
     const parsed = Wart.parse(wartAmount);
     if (!toAddr || !parsed) throw new Error("SafeTrade returned an address this wallet cannot pay.");
     const tx = context.transferWart(account, toAddr, parsed);
-    await submitTransaction(wallet.nodeList, wallet.selectedNodeIndex, tx as TransactionJson);
+    await submitTransaction(wallet.nodeList, mainnetIndex, tx as TransactionJson);
   }
 
   const safeReceiveText = (): string => {
@@ -503,12 +529,22 @@ export default function SafeTradePage() {
       <Header title="SafeTrade" />
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-white">SafeTrade</p>
-        <NetworkBadge mainnet={mainnet} />
+        <NetworkBadge network="mainnet" />
       </div>
       <p className="text-xs leading-relaxed text-white/50">
         Checks the WART/USDT account on safe.trade. The key stays in this browser.
         SafeTrade accepts the call only from a trusted IPv4.
       </p>
+      {!mainnetNode ? (
+        <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2">
+          <NodeError
+            message={mainnetReason}
+            to="/mainnet-nodes"
+            linkLabel="Add a mainnet node"
+            className="text-xs text-red-200"
+          />
+        </div>
+      ) : null}
       <p className="text-xs text-white/70">
         {creds ? `Key on this device ${keyHint(creds.apiKey)}` : "No SafeTrade key saved in this browser yet."}
       </p>

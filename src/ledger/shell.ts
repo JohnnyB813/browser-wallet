@@ -52,8 +52,20 @@ export function openDockedWalletNow(): void {
  * resolves with no menu, and waiting for it then window.close() only
  * dismisses the panel. The service worker opens the menu after this
  * document is gone.
+ *
+ * Firefox has no dropdown: the toolbar icon and the sidebar are the same
+ * view, so "the toolbar" means focusing the sidebar.
  */
 export function openToolbarDropdownNow(): void {
+  const sidebar = firefoxSidebarApi();
+  if (sidebar) {
+    if (sidebar.open) {
+      void sidebar.open().catch(() => {
+        /* already open */
+      });
+    }
+    return;
+  }
   const inPanel = isExtensionSidePanel();
   void browser.runtime.sendMessage({ action: "showToolbarDropdown" }).catch((err) => {
     console.warn("[warthog] dropdown message failed", err);
@@ -121,6 +133,8 @@ export function isToolbarActionPopup(): boolean {
   } catch {
     return false;
   }
+  // Firefox's toolbar icon opens the sidebar, never a popup.
+  if (firefoxSidebarApi() && isExtensionSidePanel()) return false;
   try {
     const chromeApi = (
       globalThis as {

@@ -1,4 +1,10 @@
-import { PRESET_NODES, type NodeGroups, type WalletNode } from "../config/network";
+import {
+  PRESET_NODES,
+  type NodeGroups,
+  type NodeNetwork,
+  type NodeSelection,
+  type WalletNode,
+} from "../config/network";
 
 /** Normalize a node base URL from user input. */
 export function normalizeNodeUrl(nodeBase: string | null | undefined): string {
@@ -28,6 +34,33 @@ export function networkLabel(
 }
 
 /**
+ * The family a node URL belongs to.
+ *
+ * The family is a field on the record, so this looks the URL up in the list.
+ * A URL that is not in the list is mainnet, which is the safe default:
+ * the legacy node is the one that accepts a plain WART transfer.
+ */
+export function familyOfUrl(
+  nodes: WalletNode[],
+  url: string | null | undefined,
+): NodeNetwork {
+  const wanted = normalizeNodeUrl(url || "");
+  if (!wanted) return "mainnet";
+  const found = nodes.find((n) => normalizeNodeUrl(n.url) === wanted);
+  return found?.network ?? "mainnet";
+}
+
+/**
+ * The name of a family, for messages.
+ *
+ * The node label is "Mainnet" and "DeFi Testnet"; the family label is the
+ * same words, so a message reads "No DeFi Testnet node configured."
+ */
+export function familyLabel(network: NodeNetwork): string {
+  return network === "mainnet" ? "Mainnet" : "DeFi Testnet";
+}
+
+/**
  * Group the nodes by family, the way they are stored.
  */
 export function groupNodeRecords(nodes: WalletNode[]): NodeGroups {
@@ -43,6 +76,57 @@ export function groupNodeRecords(nodes: WalletNode[]): NodeGroups {
  */
 export function flattenNodeGroups(groups: NodeGroups): WalletNode[] {
   return [...groups.mainnet, ...groups["defi-testnet"]];
+}
+
+/**
+ * The other family.
+ */
+export function otherNetwork(network: NodeNetwork): NodeNetwork {
+  return network === "mainnet" ? "defi-testnet" : "mainnet";
+}
+
+/**
+ * The node a family has selected.
+ *
+ * The remembered one if it is still in the list, otherwise null. There is no
+ * fallback to the family's first node: a family can have nodes and none of
+ * them selected, and that is a state the user can see and fix. Silently
+ * picking another node would hide it.
+ */
+export function nodeForFamily(
+  nodes: WalletNode[],
+  family: NodeNetwork,
+  selection: NodeSelection,
+): WalletNode | null {
+  const remembered = selection[family];
+  if (!remembered) return null;
+  const wanted = normalizeNodeUrl(remembered);
+  const found = nodes.find((n) => normalizeNodeUrl(n.url) === wanted);
+  return found && found.network === family ? found : null;
+}
+
+/**
+ * True when a family has at least one node, selected or not.
+ */
+export function familyHasNodes(
+  nodes: WalletNode[],
+  family: NodeNetwork,
+): boolean {
+  return nodes.some((n) => n.network === family);
+}
+
+/**
+ * The node each family should use, as a selection.
+ *
+ * Used to seed the pair when there is nothing remembered yet.
+ */
+export function defaultSelection(nodes: WalletNode[]): NodeSelection {
+  const selection: NodeSelection = { mainnet: "", "defi-testnet": "" };
+  for (const family of ["mainnet", "defi-testnet"] as NodeNetwork[]) {
+    const node = nodes.find((n) => n.network === family);
+    if (node) selection[family] = node.url;
+  }
+  return selection;
 }
 
 /**

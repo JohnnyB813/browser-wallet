@@ -7,7 +7,7 @@
  */
 import browser from "webextension-polyfill";
 import type { PathType } from "../utils/walletKeys";
-import { hasDockedPanel } from "../utils/extensionNav";
+import { firefoxSidebarApi, hasDockedPanel } from "../utils/extensionNav";
 import type { LedgerSession } from "./warthogApp";
 
 const SESSION_KEY = "warthogLedgerSession";
@@ -288,6 +288,9 @@ export async function consumeLedgerPopupArm(): Promise<boolean> {
 export type LedgerWindowMode = "dropdown" | "sidepanel";
 
 export async function readLedgerWindowMode(): Promise<LedgerWindowMode> {
+  // Firefox has one wallet view, the sidebar. A stored "dropdown" cannot bring
+  // back a popup that the manifest no longer declares.
+  if (firefoxSidebarApi()) return "sidepanel";
   try {
     const local = await browser.storage.local.get(WINDOW_KEY);
     const value = local?.[WINDOW_KEY];
@@ -309,6 +312,18 @@ type ChromeAction = {
 
 /** Icon opens the dropdown, or the docked panel when that option is on. */
 export async function applyLedgerWindowMode(mode: LedgerWindowMode): Promise<void> {
+  if (firefoxSidebarApi()) {
+    // Firefox: the toolbar icon and the sidebar are the same wallet view, so
+    // the icon never opens a second copy in a popup.
+    try {
+      await maybePromise(
+        (browser.action as unknown as IconAction).setPopup?.({ popup: "" }),
+      );
+    } catch (err) {
+      console.warn("[warthog] could not clear the toolbar popup", err);
+    }
+    return;
+  }
   const chromeApi = (globalThis as { chrome?: ChromeAction }).chrome;
   const sidePanel = chromeApi?.sidePanel;
   if (mode === "sidepanel") {
@@ -327,6 +342,17 @@ export async function applyLedgerWindowMode(mode: LedgerWindowMode): Promise<voi
   }
   await sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: false });
   await chromeApi?.action?.setPopup?.({ popup: "index.html" });
+}
+
+type IconAction = {
+  setPopup?: (details: { popup: string }) => Promise<void> | void;
+};
+
+/** webextension-polyfill returns promises; raw chrome APIs may not. */
+async function maybePromise(value: unknown): Promise<void> {
+  if (value && typeof (value as Promise<void>).then === "function") {
+    await value;
+  }
 }
 
 export async function writeLedgerWindowMode(mode: LedgerWindowMode): Promise<void> {

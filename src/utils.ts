@@ -40,10 +40,16 @@ const parsePriceInput = (value: string): Price | null => {
  * field a transfer carries, so a legacy node needs the legacy client. It is
  * part of the node record, so nothing is inferred from the URL.
  */
-const createApi = (node: WalletNode): AnyWarthogApi =>
-  node.network === "defi-testnet"
+const createApi = (node: WalletNode | undefined): AnyWarthogApi => {
+  // The wallet can be on a family that has no node, so the index is -1 and
+  // this is undefined. Say so, rather than failing on the property read.
+  if (!node) {
+    throw new Error("No node is configured for this network. Pick another node.");
+  }
+  return node.network === "defi-testnet"
     ? new WarthogDeFiApi(node.url)
     : new WarthogLegacyApi(node.url);
+};
 
 const createTransactionContext = async (
   nodeList: WalletNode[],

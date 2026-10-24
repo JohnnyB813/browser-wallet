@@ -16,8 +16,10 @@ import { useChainAccounts } from "../chains/useChainAccounts";
 import ChainPicker from "../components/chains/ChainPicker";
 import ChainHoldings from "../components/chains/ChainHoldings";
 import NetworkBadge from "../components/chains/NetworkBadge";
+import NodeError from "../components/NodeError";
 import TokenMark from "../components/chains/TokenMark";
 import { toast } from "../utils/toast";
+import { isDefiNode } from "../utils/nodes";
 import { hasPositiveLocked } from "../utils/balanceBreakdown";
 import { formatDisplayNumber, loadNumberDisplayPrefs } from "../utils/numberDisplay";
 import { FaChevronDown, FaSearch, FaSync } from "react-icons/fa";
@@ -51,7 +53,7 @@ const toToken = (match: AssetInfo): Token => ({
 const RECENT_TOKENS_KEY = 'recent_tokens';
 const MAX_RECENT = 5;
 
-function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: Token; onSelect: (token: Token) => void; nodeUrl: string }) {
+function TokenSelector({ selectedToken, onSelect, nodeUrl, defi }: { selectedToken: Token; onSelect: (token: Token) => void; nodeUrl: string; defi: boolean }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Token[]>([]);
@@ -82,6 +84,13 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
       setSearchResults([]);
       return;
     }
+    // Only a DeFi node has assets. Searching a mainnet node would fail on
+    // an endpoint it does not serve, and the user would see no results for
+    // no reason.
+    if (!defi) {
+      setSearchResults([]);
+      return;
+    }
 
     const search = async () => {
       setSearchLoading(true);
@@ -105,7 +114,7 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
     };
 
     search();
-  }, [searchQuery, nodeUrl]);
+  }, [searchQuery, nodeUrl, defi]);
 
   const handleSelect = (token: Token) => {
     onSelect(token);
@@ -139,25 +148,34 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
       {showDropdown && (
         <div className="home-token-menu">
           <div className="p-2 border-b border-white/10">
-            <div className="relative">
-              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tokens..."
-                className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-hidden focus:border-primary"
-                autoFocus
-              />
-            </div>
+            {defi ? (
+              <div className="relative">
+                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search tokens..."
+                  className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-hidden focus:border-primary"
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <p className="text-[11px] text-white/40 py-1">
+                Assets are on the DeFi testnet. Switch the network to pick one.
+              </p>
+            )}
           </div>
 
           <div className="max-h-64 overflow-y-auto">
             {!searchQuery && recentTokens.length > 0 && (
               <div>
                 <div className="px-3 py-1 text-xs text-white/40 uppercase tracking-wider">Recent</div>
-                {recentTokens.map((token) => (
+                {/* A testnet asset does not belong in a mainnet list. */}
+                {recentTokens
+                  .filter((token) => defi || !token.hash)
+                  .map((token) => (
                   <button
                     key={token.hash || 'wart'}
                     onClick={() => handleSelect(token)}
@@ -218,8 +236,20 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
 }
 
 const Home: React.FC = () => {
-  const { wallet, selectedNodeIndex, nodeList, walletList, nameList, ledgerAccount } = useWallet();
-  const { accounts, chains, chain, setChain, mainnet, phrasePending } = useChainAccounts();
+  const {
+    wallet,
+    selectedNodeIndex,
+    nodeList,
+    walletList,
+    nameList,
+    ledgerAccount,
+    activeNetwork,
+    switchNetwork,
+    setActiveNetwork,
+    nodeError,
+    selectedNode,
+  } = useWallet();
+  const { accounts, chains, chain, setChain, phrasePending } = useChainAccounts();
   const navigate = useNavigate();
   const [balance, setBalance] = useState(0);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -237,6 +267,9 @@ const Home: React.FC = () => {
   const [approvalWalletIndex, setApprovalWalletIndex] = useState(selectedNodeIndex);
   const [isDropdownVisible, setDropdownVisible] = useState(false);
   const [selectedToken, setSelectedToken] = useState<Token>({ spec: 'WART', name: 'WART', hash: null });
+  // WART is the native currency. Any other selection is a DeFi testnet
+  // asset, which only the testnet node knows about.
+  const isWart = !selectedToken.hash;
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Actions);
   const [ledgerNote, setLedgerNote] = useState<string | null>(null);
@@ -250,6 +283,21 @@ const Home: React.FC = () => {
   const openActivity = (item: HistoryActivity) => {
     navigate("/activity-details", { state: item });
   };
+
+  /**
+   * Pick the coin the card shows.
+   *
+   * A DeFi asset only exists on the testnet, so picking one moves the
+   * wallet there. The mainnet node has no asset balances and no asset
+   * search, so a testnet asset on a mainnet node would show nothing.
+   */
+  const selectToken = useCallback(
+    (token: Token) => {
+      setSelectedToken(token);
+      if (token.hash) setActiveNetwork("defi-testnet");
+    },
+    [setActiveNetwork],
+  );
 
   useEffect(() => {
     void readLedgerWindowMode().then((mode) => {
@@ -452,6 +500,42 @@ const Home: React.FC = () => {
     checkPendingApproval();
   }, []);
 
+  /**
+   * Show the card as refreshing.
+   *
+   * The network switch goes through here too, so the card shows the same
+   * pending state as a manual refresh rather than changing under the user
+   * with nothing to show for it.
+   */
+  const showRefreshing = useCallback(() => {
+    setRefreshing(true);
+    window.setTimeout(() => setRefreshing(false), 800);
+  }, []);
+
+  /**
+   * Refresh the card, the way the refresh button does.
+   */
+  const refreshCard = useCallback(() => {
+    showRefreshing();
+    updateBalance();
+    updateBalanceUSD();
+    setHoldingsTick((tick) => tick + 1);
+  }, [showRefreshing, updateBalance, updateBalanceUSD]);
+
+  /**
+   * Move to the other family and refresh what the card shows.
+   *
+   * The balance effect refetches on its own when the node changes, because
+   * the selected index is one of its dependencies. Only the pending state
+   * is set here: the state update is not applied yet, so fetching now
+   * would read the node being left.
+   */
+  const switchNetworkAndRefresh = useCallback(() => {
+    switchNetwork();
+    showRefreshing();
+    setHoldingsTick((tick) => tick + 1);
+  }, [switchNetwork, showRefreshing]);
+
   useEffect(() => {
     if (wallet) {
       updateBalance();
@@ -477,24 +561,34 @@ const Home: React.FC = () => {
         return (
           <div className="space-y-4">
             <div className="home-wallet-card">
+              {/* One row: the chain, the network within it, and the refresh.
+                  The badge belongs beside the chain picker, because the two
+                  answer the same question from different sides: the picker
+                  says which chain, the badge says which network in it. */}
               <div className="flex items-center justify-between gap-2">
-                <NetworkBadge mainnet={mainnet} />
+                <div className="flex items-center gap-2 min-w-0">
+                  <ChainPicker chains={chains} chain={chain} onChange={setChain} />
+                  {/* The network switch is a Warthog setting. A testnet asset
+                      is not on the Warthog chain, so there is no network to
+                      switch and the badge does not apply. Off the Warthog
+                      chain the card shows that chain's coins, and the
+                      Warthog node's family says nothing about them. */}
+                  {chain === "wart" && isWart ? (
+                    <NetworkBadge
+                      network={activeNetwork}
+                      onSwitch={switchNetworkAndRefresh}
+                    />
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   className="main-balance-refresh"
-                  onClick={() => {
-                    setRefreshing(true);
-                    updateBalance();
-                    updateBalanceUSD();
-                    setHoldingsTick((tick) => tick + 1);
-                    window.setTimeout(() => setRefreshing(false), 800);
-                  }}
+                  onClick={refreshCard}
                 >
                   <span className="text-[#FDB913]">{refreshing ? "…" : "⟳"}</span>
                   {refreshing ? "Refreshing…" : "Refresh"}
                 </button>
               </div>
-              <ChainPicker chains={chains} chain={chain} onChange={setChain} />
               {chain === "wart" || !accounts ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
@@ -516,7 +610,16 @@ const Home: React.FC = () => {
                   {!selectedToken.hash && usd > 0 ? (
                     <p className="font-mono text-sm text-zinc-400">≈ {showAmount(String(usd))} USD</p>
                   ) : null}
-                  {balanceError ? <p className="text-xs text-red-300">{balanceError}</p> : null}
+                  <NodeError message={balanceError} />
+                  {/* The family has no node at all, so the picker is the
+                      way out of it. */}
+                  {nodeError ? (
+                    <NodeError
+                      message={nodeError}
+                      linkLabel="Choose a node"
+                      alwaysLink
+                    />
+                  ) : null}
                   {wallet ? (
                     <button
                       type="button"
@@ -528,8 +631,9 @@ const Home: React.FC = () => {
                   ) : null}
                   <TokenSelector
                     selectedToken={selectedToken}
-                    onSelect={setSelectedToken}
+                    onSelect={selectToken}
                     nodeUrl={nodeList[selectedNodeIndex]?.url || ""}
+                    defi={activeNetwork === "defi-testnet"}
                   />
                   {chains.length < 2 && !phrasePending ? (
                     <p className="text-[11px] text-zinc-500">
@@ -559,15 +663,34 @@ const Home: React.FC = () => {
                 <IoSend className="text-2xl text-primary" />
                 <p className="text-white text-sm font-semibold">Send</p>
               </div>
-              <div
-                className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate("/swap")}
-              >
-                <IoTrendingUp className="text-2xl text-primary" />
-                <p className="text-white text-sm font-semibold">Swap</p>
-              </div>
-              {chain === "wart" ? (
+              {/* The Warthog dex swap needs a DeFi node: the mainnet node has
+                  no dex endpoints and cannot build a limit swap. Off the
+                  Warthog chain the swap screen is the cross-chain one, which
+                  does not use a Warthog node at all, so it is always here. */}
+              {chain !== "wart" ? (
+                <div
+                  className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
+                  onClick={() => navigate("/swap")}
+                >
+                  <IoTrendingUp className="text-2xl text-primary" />
+                  <p className="text-white text-sm font-semibold">Swap</p>
+                </div>
+              ) : null}
+              {/* Liquidity and Mint are the Warthog dex actions. They need a
+                  DeFi node: the mainnet node has no dex endpoints and cannot
+                  build a liquidity deposit or an asset creation. They are
+                  for WART on the testnet, so a testnet asset does not show
+                  them either. They are also Warthog chain actions, so they
+                  are hidden on Ethereum, Bitcoin, Hemi and Solana. */}
+              {isWart && chain === "wart" && isDefiNode(selectedNode) ? (
                 <>
+                  <div
+                    className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
+                    onClick={() => navigate("/swap")}
+                  >
+                    <IoTrendingUp className="text-2xl text-primary" />
+                    <p className="text-white text-sm font-semibold">Swap</p>
+                  </div>
                   <div
                     className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
                     onClick={() => navigate("/liquidity")}

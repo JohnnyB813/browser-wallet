@@ -51,6 +51,18 @@ class WarthogBackground {
     } catch (err) {
       console.warn('ledger window read failed', err);
     }
+    // Firefox has one wallet view: the sidebar. The toolbar icon opens and
+    // closes it, so the icon must not also load the popup page.
+    if (browser.sidebarAction) {
+      this.mode = 'sidepanel';
+      try {
+        await this.attachFirefoxToolbarAction();
+      } catch (err) {
+        console.warn('firefox toolbar action setup failed', err);
+      }
+      return;
+    }
+    this.mode = mode;
     const chromeApi = globalThis.chrome;
     const sidePanel = chromeApi && chromeApi.sidePanel;
     const action = chromeApi && chromeApi.action;
@@ -72,6 +84,57 @@ class WarthogBackground {
     } catch (err) {
       console.warn('ledger window apply failed', err);
     }
+  }
+
+  /**
+   * Firefox. Clear the manifest popup so a toolbar click reaches onClicked,
+   * then toggle the sidebar from it. Toggling keeps the second click closing
+   * the wallet, like a dropdown would.
+   */
+  async attachFirefoxToolbarAction() {
+    const action = browser.action;
+    if (action && action.setPopup) {
+      try {
+        await action.setPopup({ popup: '' });
+      } catch (err) {
+        console.warn('toolbar popup clear failed', err);
+      }
+    }
+    if (this.firefoxToolbarBound) return;
+    this.firefoxToolbarBound = true;
+    if (action && action.onClicked) {
+      action.onClicked.addListener(() => {
+        this.toggleFirefoxSidebar().catch((err) => {
+          console.warn('sidebar toggle failed', err);
+        });
+      });
+    }
+  }
+
+  async toggleFirefoxSidebar() {
+    const sidebar = browser.sidebarAction;
+    if (!sidebar) return;
+    if (sidebar.toggle) {
+      await sidebar.toggle();
+      return;
+    }
+    if (sidebar.isOpen && (await sidebar.isOpen())) {
+      if (sidebar.close) await sidebar.close();
+      return;
+    }
+    if (sidebar.open) await sidebar.open();
+  }
+
+  /** Open the sidebar without closing it when it is already docked. */
+  async focusFirefoxSidebar() {
+    const sidebar = browser.sidebarAction;
+    if (!sidebar) return;
+    try {
+      if (sidebar.isOpen && (await sidebar.isOpen())) return;
+    } catch {
+      // Unknown state; open anyway.
+    }
+    if (sidebar.open) await sidebar.open();
   }
 
   setupWindowListeners() {
@@ -187,6 +250,15 @@ class WarthogBackground {
 
   reopenToolbarAfter(windowId) {
     if (this.toolbarReopenPending) return;
+    if (browser.sidebarAction) {
+      this.toolbarReopenPending = true;
+      this.focusFirefoxSidebar()
+        .catch((err) => console.warn('sidebar open failed:', err))
+        .finally(() => {
+          this.toolbarReopenPending = false;
+        });
+      return;
+    }
     this.toolbarReopenPending = true;
     let done = false;
     const open = () => {
@@ -218,6 +290,17 @@ class WarthogBackground {
   async showToolbarDropdown() {
     if (this.toolbarDropdownPending) return { ok: true };
     this.toolbarDropdownPending = true;
+    // Firefox: the toolbar and the sidebar are the same wallet view.
+    if (browser.sidebarAction) {
+      try {
+        await this.focusFirefoxSidebar();
+      } catch (err) {
+        console.warn('sidebar open failed', err);
+      } finally {
+        this.toolbarDropdownPending = false;
+      }
+      return { ok: true };
+    }
     const chromeApi = globalThis.chrome;
     try {
       await this.armLedgerPopupView();

@@ -4,7 +4,12 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import NodeCard from "../components/NodeCard";
 import { PRESET_NODES, type NodeNetwork, type WalletNode } from "../config/network";
-import { labelForNodeUrl, normalizeNodeUrl } from "../utils/nodes";
+import {
+  familyLabel,
+  labelForNodeUrl,
+  nodeForFamily,
+  normalizeNodeUrl,
+} from "../utils/nodes";
 import { probeNode } from "../utils/warthogNode";
 import { ensureHostPermission } from "../utils/hostAccess";
 
@@ -17,12 +22,22 @@ interface NodeType {
   network: NodeNetwork;
 }
 
-function SelectNode() {
+/**
+ * The node list.
+ *
+ * With a family, the page is pinned to it: no tabs, and only that family's
+ * nodes. It edits the same list and the same selection as the unpinned
+ * page, so the two cannot drift apart.
+ */
+function SelectNode({ family }: { family?: NodeNetwork } = {}) {
   const {
     wallet,
     nodeList,
     setSelectedNodeUrl,
     setNodeList,
+    activeNetwork,
+    setActiveNetwork,
+    selectedNodeUrls,
   } = useWallet();
 
   const [nodes, setNodes] = useState<NodeType[]>([] as NodeType[]);
@@ -31,13 +46,30 @@ function SelectNode() {
   const [newNodeName, setNewNodeName] = useState("");
   const [warning, setWarning] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "mainnet" | "defi-testnet">("all");
   // Which family the node being added belongs to. The user says, not the URL.
   const [newNodeNetwork, setNewNodeNetwork] =
     useState<NodeNetwork>("mainnet");
 
-  const filteredNodes = nodes.filter((node) => {
-    if (filter !== "all" && node.network !== filter) return false;
+  // The tab is which family the list shows. The page opens on the family
+  // the wallet is on, so the picker reflects where the wallet actually is.
+  // The tab is its own state, so a family with no node can still be opened
+  // and a node added to it, without switching the wallet.
+  const [tab, setTab] = useState<NodeNetwork>(family ?? activeNetwork);
+
+  useEffect(() => {
+    setTab(family ?? activeNetwork);
+  }, [family, activeNetwork]);
+
+  // Whether the open tab has any node, and whether one of them is the
+  // selected one. A tab can have nodes and none selected, which is the
+  // state the warning is for.
+  const tabHasNodes = nodes.some((node) => node.network === tab);
+  const tabHasSelection = Boolean(
+    nodeForFamily(nodeList, tab, selectedNodeUrls),
+  );
+
+  const visibleNodes = nodes.filter((node) => {
+    if (node.network !== tab) return false;
     const q = searchQuery.toLowerCase();
     if (!q) return true;
     return (
@@ -61,21 +93,12 @@ function SelectNode() {
     setNodeList(nodeList.filter((_, index) => index !== id));
   };
 
-  /** Move a node to the other family. */
-  const moveNode = (id: number) => {
-    const node = nodeList[id];
-    if (!node) return;
-    setNodeList(
-      nodeList.map((n, index) =>
-        index === id
-          ? {
-              ...n,
-              network: n.network === "defi-testnet" ? "mainnet" : "defi-testnet",
-            }
-          : n,
-      ),
-    );
-  };
+  // The dialog asks which family the node belongs to. It starts on the tab
+  // the wallet is on, which is where a new node is most likely wanted. A
+  // pinned page has one family, so the question is not asked.
+  useEffect(() => {
+    setNewNodeNetwork(family ?? tab);
+  }, [family, tab]);
 
   const handleAddNode = async () => {
     const urlPattern =
@@ -175,12 +198,19 @@ function SelectNode() {
 
   return (
     <div className="min-h-screen container relative px-4">
-      <Header title="Select A Node" />
+      <Header title={family ? `${familyLabel(family)} Nodes` : "Select A Node"} />
 
+      {family ? (
+        <p className="text-white/45 text-xs mb-3 leading-relaxed">
+          SafeTrade buys on the Warthog mainnet, and there is no Warthog
+          testnet for it, so it needs a mainnet node.
+        </p>
+      ) : null}
+
+      {family ? null : (
       <div className="flex gap-2 mb-3 flex-wrap">
         {(
           [
-            ["all", "All"],
             ["mainnet", "Mainnet"],
             ["defi-testnet", "DeFi Testnet"],
           ] as const
@@ -188,9 +218,16 @@ function SelectNode() {
           <button
             key={id}
             type="button"
-            onClick={() => setFilter(id)}
+            aria-selected={tab === id}
+            onClick={() => {
+              setTab(id);
+              // The family changes either way, like the badge does. The
+              // card says which family is missing a node, and the tab
+              // still lists it so a node can be added.
+              setActiveNetwork(id);
+            }}
             className={`text-xs px-3 py-1.5 rounded-full border ${
-              filter === id
+              tab === id
                 ? "bg-primary/20 border-primary text-primary"
                 : "border-white/20 text-white/60"
             }`}
@@ -199,6 +236,7 @@ function SelectNode() {
           </button>
         ))}
       </div>
+      )}
 
       <div className="relative w-full mb-2">
         <input
@@ -217,33 +255,38 @@ function SelectNode() {
       <div className="flex gap-2 mb-3">
         <button
           type="button"
-          className="text-xs text-primary underline"
-          onClick={() => handleAddPresets("mainnet")}
+          className={`text-xs underline ${
+            tab === "mainnet" ? "text-primary" : "text-amber-300"
+          }`}
+          onClick={() => handleAddPresets(tab)}
         >
-          + Mainnet presets
-        </button>
-        <button
-          type="button"
-          className="text-xs text-amber-300 underline"
-          onClick={() => handleAddPresets("defi-testnet")}
-        >
-          + DeFi testnet presets
+          + {familyLabel(tab)} presets
         </button>
       </div>
 
+      {!tabHasSelection ? (
+        <p className="text-xs text-amber-300 mb-2">
+          No {familyLabel(tab)} node selected.{" "}
+          {tabHasNodes
+            ? `Pick one to use the ${tab === "mainnet" ? "mainnet" : "testnet"}.`
+            : `Add one to use the ${tab === "mainnet" ? "mainnet" : "testnet"}.`}
+        </p>
+      ) : null}
+
       <div className="h-[55vh] overflow-y-scroll">
-        {filteredNodes.length > 0 ? (
-          filteredNodes.map((node) => (
+        {visibleNodes.length > 0 ? (
+          visibleNodes.map((node) => (
             <NodeCard
               key={node.id}
               {...node}
               setPrimaryNode={setPrimaryNode}
               removeNode={removeNode}
-              moveNode={moveNode}
             />
           ))
         ) : (
-          <div className="text-center text-white/50 mt-6">No nodes found</div>
+          <div className="text-center text-white/50 mt-6">
+            {tabHasNodes ? "No nodes found" : "No nodes yet"}
+          </div>
         )}
       </div>
 
@@ -265,34 +308,46 @@ function SelectNode() {
               Add new Node
             </h3>
             <p className="text-white/50 text-xs mb-2">
-              Mainnet example: https://warthognode.duckdns.org
-              <br />
-              DeFi testnet: https://warthog-defitestnet.duckdns.org
+              {family === "mainnet" ? (
+                "Mainnet example: https://warthognode.duckdns.org"
+              ) : family === "defi-testnet" ? (
+                "DeFi testnet: https://warthog-defitestnet.duckdns.org"
+              ) : (
+                <>
+                  Mainnet example: https://warthognode.duckdns.org
+                  <br />
+                  DeFi testnet: https://warthog-defitestnet.duckdns.org
+                </>
+              )}
             </p>
-            <p className="text-white/50 text-xs mb-1">
-              Which network is this node on?
-            </p>
-            <div className="flex gap-2 mb-2">
-              {(
-                [
-                  ["mainnet", "Mainnet"],
-                  ["defi-testnet", "DeFi Testnet"],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setNewNodeNetwork(id)}
-                  className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${
-                    newNodeNetwork === id
-                      ? "bg-primary/20 border-primary text-primary"
-                      : "border-white/20 text-white/60"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {family ? null : (
+              <>
+                <p className="text-white/50 text-xs mb-1">
+                  Which network is this node on?
+                </p>
+                <div className="flex gap-2 mb-2">
+                  {(
+                    [
+                      ["mainnet", "Mainnet"],
+                      ["defi-testnet", "DeFi Testnet"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setNewNodeNetwork(id)}
+                      className={`flex-1 text-xs px-3 py-1.5 rounded-lg border ${
+                        newNodeNetwork === id
+                          ? "bg-primary/20 border-primary text-primary"
+                          : "border-white/20 text-white/60"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <input
               type="text"
               placeholder="Node Name"

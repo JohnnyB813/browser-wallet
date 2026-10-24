@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
+import NodeError from "../components/NodeError";
 import useWallet from "../hooks/useWallet";
 import { defiSubmitHold, isDefiNode } from "../utils/nodes";
 import { DEFAULT_TX_FEE } from "../config/network";
@@ -746,7 +747,7 @@ function DefiHub() {
       </nav>
 
       {status && <p className="defi-success">{status}</p>}
-      {error && <p className="defi-error">{error}</p>}
+      {error && <NodeError message={error} className="defi-error" />}
 
       {/* ════════ OVERVIEW ════════ */}
       {/* ════════ HISTORY — indexer rich cards ════════ */}

@@ -14,13 +14,20 @@ import { defaultNodes } from "../config/nodes";
 import {
   DEFAULT_NODE_INDEX,
   type NodeGroups,
+  type NodeNetwork,
+  type NodeSelection,
   type WalletNode,
 } from "../config/network";
 import {
+  defaultSelection,
+  familyLabel,
+  familyOfUrl,
   flattenNodeGroups,
   groupNodeRecords,
   networkLabel,
+  nodeForFamily,
   normalizeNodeUrl,
+  otherNetwork,
 } from "../utils/nodes";
 import {
   deriveAccountAtIndex,
@@ -115,6 +122,18 @@ interface WalletContextProps {
   tmpLiquidityType: "add" | "remove";
   inputWordsBackup: string[];
   selectedNodeUrl: string | null;
+  /** The node chosen in each family, by URL. */
+  selectedNodeUrls: NodeSelection;
+  /** The family the wallet is talking to, from the selected node. */
+  activeNetwork: NodeNetwork;
+  /**
+   * Set when a switch found no node for the family it was going to.
+   *
+   * The slot is emptied in that case, so the state says there is no node.
+   * The message says which family is empty, and the card shows it next to
+   * the other node errors.
+   */
+  nodeError: string | null;
   selectedNetworkLabel: "Mainnet" | "DeFi Testnet";
   /** True when setup is complete enough to show the home UI. */
   isAuthenticated: boolean;
@@ -138,6 +157,20 @@ interface WalletContextProps {
   setNameList: (nameList: string[]) => void;
   /** Select a node by its URL. The index is derived from it. */
   setSelectedNodeUrl: (selectedNodeUrl: string) => void;
+  /**
+   * Move to the other family's node.
+   *
+   * Both families keep their own selection, so a round trip returns to the
+   * node that was in use before.
+   */
+  switchNetwork: () => void;
+  /**
+   * Move to a family, using the node remembered for it.
+   *
+   * The node picker's tabs call this: picking the DeFi testnet tab moves the
+   * wallet to the DeFi testnet.
+   */
+  setActiveNetwork: (network: NodeNetwork) => void;
   setVisibleWalletList: (visibleWalletList: boolean[]) => void;
   setSelectedWalletIndex: (selectedWalletIndex: number) => void;
   setInputWordsBackup: (inputWordsBackup: string[]) => void;
@@ -201,7 +234,7 @@ interface WalletContextProps {
   setNodeListState: (nodeList: WalletNode[]) => void;
   setNameListState: (nameList: string[]) => void;
   setSelectedWalletIndexState: (selectedWalletIndex: number) => void;
-  setSelectedNodeUrlState: (selectedNodeUrl: string | null) => void;
+  setSelectedNodeUrlsState: (selectedNodeUrls: NodeSelection) => void;
   setVisibleWalletListState: (visibleWalletList: boolean[]) => void;
   setTmpDestinationWalletState: (tmpDestinationWallet: string) => void;
   setTmpAssetHashState: (tmpAssetHash: string) => void;
@@ -239,9 +272,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const [walletList, setWalletListState] = useState<string[]>([]);
   const [selectedWalletIndex, setSelectedWalletIndexState] =
     useState<number>(0);
-  const [selectedNodeUrl, setSelectedNodeUrlState] = useState<string | null>(
-    null,
-  );
+  const [selectedNodeUrls, setSelectedNodeUrlsState] = useState<NodeSelection>({
+    mainnet: "",
+    "defi-testnet": "",
+  });
+  // Which family the wallet is talking to. The node for that family comes
+  // out of the pair above.
+  const [activeNetworkKey, setActiveNetworkKeyState] =
+    useState<NodeNetwork>("mainnet");
   const [nameList, setNameListState] = useState<string[]>([]);
   const [nodeList, setNodeListState] = useState<WalletNode[]>([]);
   const [token, setTokenState] = useState<string | null>(null);
@@ -398,6 +436,18 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const setNodeList = (list: WalletNode[]): void => {
     setNodeListState(list);
     saveToBrowserStorage("nodes", JSON.stringify(groupNodeRecords(list)));
+    // A slot may name a node that is no longer in the list. Clear it, so a
+    // removed node does not stay remembered as the choice for its family.
+    setSelectedNodeUrlsState((prev) => {
+      const next: NodeSelection = { ...prev };
+      for (const family of ["mainnet", "defi-testnet"] as NodeNetwork[]) {
+        if (next[family] && !list.some((n) => n.url === next[family])) {
+          next[family] = "";
+        }
+      }
+      saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
+      return next;
+    });
   };
 
   const setNameList = (list: string[]): void => {
@@ -412,10 +462,57 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
 
   const setSelectedNodeUrl = useCallback(
     (url: string): void => {
-      setSelectedNodeUrlState(url);
-      saveToBrowserStorage("selectedNodeUrl", url);
+      const family = familyOfUrl(nodeList, url);
+      setSelectedNodeUrlsState((prev) => {
+        const next = { ...prev, [family]: url };
+        saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
+        return next;
+      });
+      setActiveNetworkKeyState(family);
     },
-    [saveToBrowserStorage],
+    [saveToBrowserStorage, nodeList],
+  );
+
+  /**
+   * Move the wallet to the other family's node.
+   *
+   * Each family keeps its own node, so a round trip returns to the one that
+   * was in use before. Nothing happens when the other family has no node.
+   */
+  const switchNetwork = useCallback((): void => {
+    const target = otherNetwork(activeNetworkKey);
+    const node = nodeForFamily(nodeList, target, selectedNodeUrls);
+    setSelectedNodeUrlsState((prev) => {
+      const next = { ...prev, [target]: node?.url ?? "" };
+      saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
+      return next;
+    });
+    // The family changes either way. A family with no node is still a
+    // family the user asked for, and the card says which family is
+    // missing a node so the choice can be undone or a node added.
+    setActiveNetworkKeyState(target);
+  }, [activeNetworkKey, nodeList, selectedNodeUrls, saveToBrowserStorage]);
+
+  /**
+   * Move to a family, using the node remembered for it.
+   *
+   * This is what the node picker's tabs do: picking the DeFi testnet tab
+   * moves the wallet to the DeFi testnet.
+   */
+  const setActiveNetwork = useCallback(
+    (family: NodeNetwork): void => {
+      const node = nodeForFamily(nodeList, family, selectedNodeUrls);
+      setSelectedNodeUrlsState((prev) => {
+        const next = { ...prev, [family]: node?.url ?? "" };
+        saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
+        return next;
+      });
+      // The family changes either way. A family with no node is still a
+      // family the user asked for, and the card says which family is
+      // missing a node.
+      setActiveNetworkKeyState(family);
+    },
+    [nodeList, selectedNodeUrls, saveToBrowserStorage],
   );
 
   const setPassword = (pwd: string): void => {
@@ -479,7 +576,10 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       setPathTypeState(data.pathType);
     }
     setNodeListState([...defaultNodes]);
-    setSelectedNodeUrlState(defaultNodes[0].url);
+    const freshSelection = defaultSelection(defaultNodes);
+    setSelectedNodeUrlsState(freshSelection);
+    saveToBrowserStorage("selectedNodeUrls", JSON.stringify(freshSelection));
+    setActiveNetworkKeyState("mainnet");
     if (opts?.password) {
       setPasswordState(opts.password);
     }
@@ -1209,9 +1309,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         loadFromChromeStorage("nodes", resolve),
       ),
       new Promise<string | null>((resolve) =>
+        loadFromChromeStorage("selectedNodeUrls", resolve),
+      ),
+      new Promise<string | null>((resolve) =>
         loadFromChromeStorage("selectedNodeUrl", resolve),
       ),
-    ]).then(([storedNodes, storedSelection]) => {
+    ]).then(([storedNodes, storedSelection, legacySelection]) => {
       // The nodes are stored as JSON, with the two families apart. There is
       // no older format to read: a wallet without the key starts from the
       // presets.
@@ -1222,18 +1325,74 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       setNodeListState(nodes);
       saveToBrowserStorage("nodes", JSON.stringify(groups));
 
-      const selected =
-        nodes.find((n) => n.url === storedSelection) ??
-        nodes[DEFAULT_NODE_INDEX] ??
-        nodes[0];
-      if (selected) {
-        setSelectedNodeUrlState(selected.url);
-        saveToBrowserStorage("selectedNodeUrl", selected.url);
+      // Each family keeps its own node. An install that predates the pair
+      // has one URL, which belongs to the family it is in; the other family
+      // takes the first node of that family.
+      //
+      // A stored pair is authoritative for every family it names, including
+      // one it leaves empty. An empty slot means the user cleared it, and
+      // seeding it again would undo that on every reload. A family the
+      // stored pair does not mention at all is seeded, which is the fresh
+      // install and the malformed pair.
+      const seeded = defaultSelection(nodes);
+      let selection: NodeSelection = seeded;
+      if (storedSelection) {
+        try {
+          const parsed = JSON.parse(storedSelection) as Partial<NodeSelection>;
+          const hasMainnet = typeof parsed.mainnet === "string";
+          const hasDefi = typeof parsed["defi-testnet"] === "string";
+          if (hasMainnet || hasDefi) {
+            selection = {
+              mainnet: hasMainnet ? parsed.mainnet! : seeded.mainnet,
+              "defi-testnet": hasDefi
+                ? parsed["defi-testnet"]!
+                : seeded["defi-testnet"],
+            };
+          }
+        } catch {
+          // A malformed pair falls back to the defaults.
+        }
+      } else if (legacySelection) {
+        const found = nodes.find((n) => n.url === legacySelection);
+        if (found) selection[found.network] = found.url;
+      }
+
+      // The remembered URL may name a node that is no longer in the list.
+      // Such a slot is cleared rather than pointed at another node.
+      const mainnetNode = nodeForFamily(nodes, "mainnet", selection);
+      const defiNode = nodeForFamily(nodes, "defi-testnet", selection);
+      const settled: NodeSelection = {
+        mainnet:
+          selection.mainnet && !mainnetNode ? "" : selection.mainnet,
+        "defi-testnet":
+          selection["defi-testnet"] && !defiNode
+            ? ""
+            : selection["defi-testnet"],
+      };
+      setSelectedNodeUrlsState(settled);
+      saveToBrowserStorage("selectedNodeUrls", JSON.stringify(settled));
+
+      // The wallet opens on the family the remembered node belongs to. A fresh
+      // install opens on mainnet, which is the chain a plain WART transfer
+      // works on.
+      const legacy = nodes.find((n) => n.url === legacySelection);
+      const family: NodeNetwork = legacy?.network ?? "mainnet";
+      const active = family === "mainnet" ? mainnetNode : defiNode;
+      if (active) {
+        setActiveNetworkKeyState(active.network);
+      } else {
+        const fallback = nodes[DEFAULT_NODE_INDEX] ?? nodes[0];
+        if (fallback) setActiveNetworkKeyState(fallback.network);
       }
     });
     // The node list used to be two comma-joined strings and an index. The
     // nodes are JSON now, and the old keys are dropped rather than read.
-    browser.storage.local.remove(["nodeList", "nodeNameList", "selectedNodeIndex"]);
+    browser.storage.local.remove([
+      "nodeList",
+      "nodeNameList",
+      "selectedNodeIndex",
+      "selectedNodeUrl",
+    ]);
     loadFromChromeStorage("visibleWalletList", (visible) => {
       const boolArray = visible
         ? visible.split(",").map((val) => val === "true")
@@ -1263,14 +1422,35 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     return () => clearInterval(interval);
   }, [loadFromChromeStorage]);
 
-  // The index is derived from the selected node's URL, so it stays right when
-  // the list is regrouped or a node is added.
+  // Which family the wallet is on.
+  //
+  // The family is a field on the node record, so nothing has to guess it
+  // from the URL. The slot for that family names the node.
+  const activeNetwork: NodeNetwork = activeNetworkKey;
+
+  // The active family has no node, so the wallet has nothing to talk to.
+  // Derived, so it cannot go stale when a node is added, removed or picked.
+  const nodeError = useMemo(() => {
+    const node = nodeForFamily(nodeList, activeNetwork, selectedNodeUrls);
+    if (node) return null;
+    return `No ${familyLabel(activeNetwork)} node selected.`;
+  }, [nodeList, activeNetwork, selectedNodeUrls]);
+
+  // The active node is the one the active family's slot points at. The slot
+  // holds a URL, and the URL is looked up in the list, so the index stays
+  // right when the list is regrouped, reordered, or gains a node.
   const selectedNodeIndex = useMemo(() => {
+    // The remembered node, or the family's first node when the remembered
+    // one is gone. When the family has no node at all the index is -1:
+    // falling back to the list's first entry would be wrong, because that
+    // can be a node of the other family.
+    const node = nodeForFamily(nodeList, activeNetwork, selectedNodeUrls);
+    if (!node) return -1;
     const found = nodeList.findIndex(
-      (n) => normalizeNodeUrl(n.url) === normalizeNodeUrl(selectedNodeUrl || ""),
+      (n) => normalizeNodeUrl(n.url) === normalizeNodeUrl(node.url),
     );
-    return found >= 0 ? found : 0;
-  }, [nodeList, selectedNodeUrl]);
+    return found >= 0 ? found : -1;
+  }, [nodeList, selectedNodeUrls, activeNetwork]);
 
   const lockSessionRef = useRef(lockSession);
   lockSessionRef.current = lockSession;
@@ -1311,8 +1491,12 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     };
   }, []);
 
+  // Null when the active family has no node. The wallet does not fall back
+  // to a node of the other family, or it would claim to be on a network it
+  // is not talking to.
   const selectedNode: WalletNode | null =
-    nodeList.length > 0 ? nodeList[selectedNodeIndex] || nodeList[0] : null;
+    selectedNodeIndex >= 0 ? nodeList[selectedNodeIndex] ?? null : null;
+  const selectedNodeUrl: string | null = selectedNode?.url ?? null;
   const selectedNetworkLabel = networkLabel(selectedNode);
   // Password or session token (passkey-only unlock sets token without password)
   const isAuthenticated = Boolean(wallet && signingUnlocked && token);
@@ -1349,6 +1533,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         tmpLiquidityType,
         inputWordsBackup,
         selectedNodeUrl,
+        selectedNodeUrls,
+        activeNetwork,
+        nodeError,
         selectedNetworkLabel,
         isAuthenticated,
         ledgerAccount,
@@ -1368,6 +1555,8 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setVisibleWalletList,
         setSelectedWalletIndex,
         setSelectedNodeUrl,
+        switchNetwork,
+        setActiveNetwork,
         setPathType,
         clearWalletData,
         setToken,
@@ -1380,7 +1569,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         setNodeListState,
         setNameListState,
         setSelectedWalletIndexState,
-        setSelectedNodeUrlState,
+        setSelectedNodeUrlsState,
         setVisibleWalletListState,
         setTmpDestinationWalletState,
         setTmpAssetHashState,
