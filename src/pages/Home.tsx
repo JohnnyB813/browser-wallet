@@ -218,8 +218,17 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
 }
 
 const Home: React.FC = () => {
-  const { wallet, selectedNodeIndex, nodeList, walletList, nameList, ledgerAccount } = useWallet();
-  const { accounts, chains, chain, setChain, mainnet, phrasePending } = useChainAccounts();
+  const {
+    wallet,
+    selectedNodeIndex,
+    nodeList,
+    walletList,
+    nameList,
+    ledgerAccount,
+    activeNetwork,
+    switchNetwork,
+  } = useWallet();
+  const { accounts, chains, chain, setChain, phrasePending } = useChainAccounts();
   const navigate = useNavigate();
   const [balance, setBalance] = useState(0);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -478,7 +487,11 @@ const Home: React.FC = () => {
           <div className="space-y-4">
             <div className="home-wallet-card">
               <div className="flex items-center justify-between gap-2">
-                <NetworkBadge mainnet={mainnet} />
+                <NetworkBadge
+                  network={activeNetwork}
+                  onSwitch={switchNetwork}
+                  disabled={chain !== "wart"}
+                />
                 <button
                   type="button"
                   className="main-balance-refresh"

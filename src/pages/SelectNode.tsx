@@ -23,6 +23,9 @@ function SelectNode() {
     nodeList,
     setSelectedNodeUrl,
     setNodeList,
+    activeNetwork,
+    setActiveNetwork,
+    moveNodeToFamily,
   } = useWallet();
 
   const [nodes, setNodes] = useState<NodeType[]>([] as NodeType[]);
@@ -31,13 +34,16 @@ function SelectNode() {
   const [newNodeName, setNewNodeName] = useState("");
   const [warning, setWarning] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "mainnet" | "defi-testnet">("all");
   // Which family the node being added belongs to. The user says, not the URL.
   const [newNodeNetwork, setNewNodeNetwork] =
     useState<NodeNetwork>("mainnet");
 
-  const filteredNodes = nodes.filter((node) => {
-    if (filter !== "all" && node.network !== filter) return false;
+  // The tab is the network the wallet is on. The page opens on the tab of
+  // the selected node, so the picker reflects where the wallet actually is.
+  const tab = activeNetwork;
+
+  const visibleNodes = nodes.filter((node) => {
+    if (node.network !== tab) return false;
     const q = searchQuery.toLowerCase();
     if (!q) return true;
     return (
@@ -65,17 +71,29 @@ function SelectNode() {
   const moveNode = (id: number) => {
     const node = nodeList[id];
     if (!node) return;
+    const target: NodeNetwork =
+      node.network === "defi-testnet" ? "mainnet" : "defi-testnet";
     setNodeList(
       nodeList.map((n, index) =>
         index === id
           ? {
               ...n,
-              network: n.network === "defi-testnet" ? "mainnet" : "defi-testnet",
+              network: target,
             }
           : n,
       ),
     );
+    // The selection follows the node. A node that was the mainnet pick and
+    // is now a DeFi node would otherwise stay in the mainnet slot, where it
+    // no longer belongs.
+    moveNodeToFamily(node.url, node.network, target);
   };
+
+  // The dialog asks which family the node belongs to. It starts on the tab
+  // the wallet is on, which is where a new node is most likely wanted.
+  useEffect(() => {
+    setNewNodeNetwork(tab);
+  }, [tab]);
 
   const handleAddNode = async () => {
     const urlPattern =
@@ -180,7 +198,6 @@ function SelectNode() {
       <div className="flex gap-2 mb-3 flex-wrap">
         {(
           [
-            ["all", "All"],
             ["mainnet", "Mainnet"],
             ["defi-testnet", "DeFi Testnet"],
           ] as const
@@ -188,9 +205,10 @@ function SelectNode() {
           <button
             key={id}
             type="button"
-            onClick={() => setFilter(id)}
+            aria-selected={tab === id}
+            onClick={() => setActiveNetwork(id)}
             className={`text-xs px-3 py-1.5 rounded-full border ${
-              filter === id
+              tab === id
                 ? "bg-primary/20 border-primary text-primary"
                 : "border-white/20 text-white/60"
             }`}
@@ -217,23 +235,18 @@ function SelectNode() {
       <div className="flex gap-2 mb-3">
         <button
           type="button"
-          className="text-xs text-primary underline"
-          onClick={() => handleAddPresets("mainnet")}
+          className={`text-xs underline ${
+            tab === "mainnet" ? "text-primary" : "text-amber-300"
+          }`}
+          onClick={() => handleAddPresets(tab)}
         >
-          + Mainnet presets
-        </button>
-        <button
-          type="button"
-          className="text-xs text-amber-300 underline"
-          onClick={() => handleAddPresets("defi-testnet")}
-        >
-          + DeFi testnet presets
+          + {tab === "mainnet" ? "Mainnet" : "DeFi testnet"} presets
         </button>
       </div>
 
       <div className="h-[55vh] overflow-y-scroll">
-        {filteredNodes.length > 0 ? (
-          filteredNodes.map((node) => (
+        {visibleNodes.length > 0 ? (
+          visibleNodes.map((node) => (
             <NodeCard
               key={node.id}
               {...node}

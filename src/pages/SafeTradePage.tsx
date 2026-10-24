@@ -43,7 +43,7 @@ import { fetchSolBalance, formatSol, maxSolPayment, sendSol } from "../mobile-po
 import { sendSpl } from "../mobile-port/utils/networks/solswap";
 import { formatUnits } from "../mobile-port/utils/networks/units";
 import { readOneBalance } from "../mobile-port/utils/tokenBalances";
-import type { WalletNode } from "../config/network";
+import type { NodeNetwork, WalletNode } from "../config/network";
 import { useChainAccounts } from "../chains/useChainAccounts";
 
 const field = "w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-primary";
@@ -190,7 +190,10 @@ export default function SafeTradePage() {
   }, [network, trading, pay]);
   const receive = receiveChoices.find((route) => route.id === receiveId) ?? receiveChoices.find((route) => route.id !== pay?.id) ?? receiveChoices[0];
   const pair = pay && receive ? safePair(pay.currency, receive.currency) : null;
-  const mainnet = network !== "Warthog" || !isDefiNode(selectedNode);
+  // SafeTrade buys on mainnet only: there are no testnet tokens to buy.
+  // The badge is a label here, not a switch.
+  const badgeNetwork: NodeNetwork =
+    network !== "Warthog" || !isDefiNode(selectedNode) ? "mainnet" : "defi-testnet";
 
   useEffect(() => {
     void loadSafeTradeCredentials().then(setCreds);
@@ -503,7 +506,7 @@ export default function SafeTradePage() {
       <Header title="SafeTrade" />
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-white">SafeTrade</p>
-        <NetworkBadge mainnet={mainnet} />
+        <NetworkBadge network={badgeNetwork} />
       </div>
       <p className="text-xs leading-relaxed text-white/50">
         Checks the WART/USDT account on safe.trade. The key stays in this browser.

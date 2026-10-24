@@ -1,4 +1,10 @@
-import { PRESET_NODES, type NodeGroups, type WalletNode } from "../config/network";
+import {
+  PRESET_NODES,
+  type NodeGroups,
+  type NodeNetwork,
+  type NodeSelection,
+  type WalletNode,
+} from "../config/network";
 
 /** Normalize a node base URL from user input. */
 export function normalizeNodeUrl(nodeBase: string | null | undefined): string {
@@ -28,6 +34,23 @@ export function networkLabel(
 }
 
 /**
+ * The family a node URL belongs to.
+ *
+ * The family is a field on the record, so this looks the URL up in the list.
+ * A URL that is not in the list is mainnet, which is the safe default:
+ * the legacy node is the one that accepts a plain WART transfer.
+ */
+export function familyOfUrl(
+  nodes: WalletNode[],
+  url: string | null | undefined,
+): NodeNetwork {
+  const wanted = normalizeNodeUrl(url || "");
+  if (!wanted) return "mainnet";
+  const found = nodes.find((n) => normalizeNodeUrl(n.url) === wanted);
+  return found?.network ?? "mainnet";
+}
+
+/**
  * Group the nodes by family, the way they are stored.
  */
 export function groupNodeRecords(nodes: WalletNode[]): NodeGroups {
@@ -43,6 +66,47 @@ export function groupNodeRecords(nodes: WalletNode[]): NodeGroups {
  */
 export function flattenNodeGroups(groups: NodeGroups): WalletNode[] {
   return [...groups.mainnet, ...groups["defi-testnet"]];
+}
+
+/**
+ * The other family.
+ */
+export function otherNetwork(network: NodeNetwork): NodeNetwork {
+  return network === "mainnet" ? "defi-testnet" : "mainnet";
+}
+
+/**
+ * The node a family should use.
+ *
+ * The remembered one if it is still in the list, otherwise the first node of
+ * that family. Null when the family has no nodes at all.
+ */
+export function nodeForFamily(
+  nodes: WalletNode[],
+  family: NodeNetwork,
+  selection: NodeSelection,
+): WalletNode | null {
+  const remembered = selection[family];
+  if (remembered) {
+    const wanted = normalizeNodeUrl(remembered);
+    const found = nodes.find((n) => normalizeNodeUrl(n.url) === wanted);
+    if (found && found.network === family) return found;
+  }
+  return nodes.find((n) => n.network === family) ?? null;
+}
+
+/**
+ * The node each family should use, as a selection.
+ *
+ * Used to seed the pair when there is nothing remembered yet.
+ */
+export function defaultSelection(nodes: WalletNode[]): NodeSelection {
+  const selection: NodeSelection = { mainnet: "", "defi-testnet": "" };
+  for (const family of ["mainnet", "defi-testnet"] as NodeNetwork[]) {
+    const node = nodes.find((n) => n.network === family);
+    if (node) selection[family] = node.url;
+  }
+  return selection;
 }
 
 /**

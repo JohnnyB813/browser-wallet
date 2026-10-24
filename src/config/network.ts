@@ -52,6 +52,15 @@ export type WalletNode = {
 /** The wallet's nodes, kept apart by family. */
 export type NodeGroups = Record<NodeNetwork, WalletNode[]>;
 
+/**
+ * The node selected in each family, by URL.
+ *
+ * The wallet remembers one node per family, so switching between mainnet
+ * and the DeFi testnet does not lose either choice. The URL is the key
+ * because the list can be regrouped or reordered.
+ */
+export type NodeSelection = Record<NodeNetwork, string>;
+
 /** Built-in nodes. Same four the mobile wallet ships. */
 export const PRESET_NODES: WalletNode[] = [
   { url: MAINNET_OFFICIAL_URL, name: "Mainnet", network: "mainnet" },

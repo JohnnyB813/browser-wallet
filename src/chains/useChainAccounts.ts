@@ -25,7 +25,7 @@ function readChain(): BrowserChain {
 }
 
 export function useChainAccounts() {
-  const { seedPhrase, selectedNetworkLabel, canAddAccounts, signingUnlocked } = useWallet();
+  const { seedPhrase, canAddAccounts, signingUnlocked } = useWallet();
   const [recovered, setRecovered] = useState("");
   const [phrasePending, setPhrasePending] = useState(false);
 
@@ -97,7 +97,5 @@ export function useChainAccounts() {
     window.dispatchEvent(new Event(EVENT));
   };
 
-  const mainnet = active === "wart" ? selectedNetworkLabel === "Mainnet" : true;
-
-  return { accounts, chains, chain: active, setChain, mainnet, phrasePending };
+  return { accounts, chains, chain: active, setChain, phrasePending };
 }
