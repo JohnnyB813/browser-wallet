@@ -8,6 +8,15 @@ import { isDefiNode, normalizeNodeUrl } from "./nodes";
 import { formatBalanceBreakdown } from "./balanceBreakdown";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 
+/**
+ * How long a node has to answer before the read gives up.
+ *
+ * A node that accepts the connection and then goes quiet never settles,
+ * and the card would wait on it forever. The read gives up instead and
+ * reports it, so the user sees the error and can pick another node.
+ */
+export const NODE_READ_TIMEOUT_MS = 10_000;
+
 export type BalanceResult = {
   /** Total holdings (available + locked). Kept for backward compatibility. */
   balance: string;
@@ -120,10 +129,45 @@ export function validateWarthogAddress(raw: string): boolean {
 }
 
 /**
+ * Run a read with a ceiling on how long it may take.
+ *
+ * The timeout is on the whole read, not on each request inside it, because
+ * the balance read makes several requests one after another and a ceiling
+ * on each would multiply out. The request itself is not aborted: the
+ * caller stops waiting on it, and it finishes or fails on its own.
+ */
+async function withTimeout<T>(read: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      read,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Node did not answer within ${ms / 1000}s`)),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/**
  * Fetch WART balance + chain pin (mainnet `/balance` vs DeFi `/wart_balance`).
  * Returns total / available / locked so UIs can show free vs open-order locks.
  */
-export async function fetchBalanceAndPin(
+export function fetchBalanceAndPin(
+  node: WalletNode,
+  address: string,
+): Promise<BalanceResult> {
+  return withTimeout(
+    fetchBalanceAndPinInner(node, address),
+    NODE_READ_TIMEOUT_MS,
+  );
+}
+
+async function fetchBalanceAndPinInner(
   node: WalletNode,
   address: string,
 ): Promise<BalanceResult> {
@@ -622,5 +666,5 @@ export async function nodeRead<T = unknown>(
   nodeBase: string,
   path: string,
 ): Promise<T> {
-  return nodeGet<T>(nodeBase, path);
+  return withTimeout(nodeGet<T>(nodeBase, path), NODE_READ_TIMEOUT_MS);
 }

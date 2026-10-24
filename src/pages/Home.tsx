@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { searchAssetsDetailed, type AssetInfo } from "../utils/defiClient";
 import { fetchWartUsdPrice } from "../utils/wartPrice";
+import { shouldStartUpdate } from "../utils/updatePending";
 import { fetchBalanceAndPin, nodeRead } from "../utils/warthogNode";
 import ProfileHeader from "../components/ProfileHeader";
 import TabNavigation, { Tab } from "../components/TabNavigation";
@@ -260,7 +261,21 @@ const Home: React.FC = () => {
     total: "0",
     hasLocked: false,
   });
-  const [refreshing, setRefreshing] = useState(false);
+  // The node that has an update running. The node URL carries the network
+  // with it, because a node belongs to one family. An update is assigned
+  // to the node it was started for, so a second request for the same node
+  // is not started while the first is still running.
+  const [pendingNodeUrl, setPendingNodeUrl] = useState<string | null>(null);
+  // The same thing as a ref, so the read can read it without the effect
+  // that starts the read having to depend on it.
+  const pendingNodeRef = useRef<string | null>(null);
+  // The node the wallet is on. A read that finishes after the wallet moved
+  // to another node must not overwrite what that node says.
+  //
+  // It is set while rendering, not in an effect, so it is right on the
+  // first render too and never lags a commit behind the state.
+  const currentNodeRef = useRef<string | null>(selectedNode?.url ?? null);
+  currentNodeRef.current = selectedNode?.url ?? null;
   const [holdingsTick, setHoldingsTick] = useState(0);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [showApprovalBanner, setShowApprovalBanner] = useState(false);
@@ -270,6 +285,11 @@ const Home: React.FC = () => {
   // WART is the native currency. Any other selection is a DeFi testnet
   // asset, which only the testnet node knows about.
   const isWart = !selectedToken.hash;
+  // The card is pending while the update of the node the wallet is on is
+  // running. An update of another node does not make this one wait.
+  const refreshing = Boolean(
+    pendingNodeUrl && pendingNodeUrl === currentNodeRef.current,
+  );
 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.Actions);
   const [ledgerNote, setLedgerNote] = useState<string | null>(null);
@@ -424,58 +444,75 @@ const Home: React.FC = () => {
     setPendingApproval(null);
   };
 
-  const updateBalance = useCallback(() => {
-    if (wallet && nodeList[selectedNodeIndex]) {
+  /**
+   * Read the balance from the node the wallet is on.
+   *
+   * The read is awaited so the pending state can follow it, and it is
+   * assigned to the node it was started for. A result that arrives after
+   * the wallet moved to another node is dropped: it says what the old
+   * node thought, and the card now shows the new one.
+   */
+  const updateBalance = useCallback(
+    async (ownsPending: boolean): Promise<void> => {
       const node = nodeList[selectedNodeIndex];
+      if (!wallet || !node) return;
       const nodeUrl = node.url;
-      if (selectedToken.hash) {
-        const tokenSpec = `asset:${selectedToken.hash}`;
-        nodeRead<{
-          balance?: { total?: { u64?: number; decimals?: number } };
-        }>(nodeUrl, `account/${wallet}/balance/${tokenSpec}`)
-          .then((data) => {
-            if (data?.balance?.total?.u64 !== undefined) {
-              const decimals = data.balance.total.decimals || 8;
-              const amount = data.balance.total.u64 / Math.pow(10, decimals);
-              setBalance(amount);
-              setWartSpend({
-                available: String(amount),
-                locked: "0",
-                total: String(amount),
-                hasLocked: false,
-              });
-              setBalanceError(null);
-            }
-          })
-          .catch((error) => {
-            console.error("Error fetching token balance:", error);
-            const message = error instanceof Error ? error.message : "Could not load the balance";
-            if (/failed to fetch/i.test(message) && reloadDocumentOnce()) return;
-            setBalance(0);
-            setBalanceError(message);
-          });
-      } else {
-        fetchBalanceAndPin(node, wallet)
-          .then((result) => {
-            setBalance(parseFloat(result.balance) || 0);
+      const isCurrentNode = () => currentNodeRef.current === nodeUrl;
+
+      try {
+        if (selectedToken.hash) {
+          const tokenSpec = `asset:${selectedToken.hash}`;
+          const data = await nodeRead<{
+            balance?: { total?: { u64?: number; decimals?: number } };
+          }>(nodeUrl, `account/${wallet}/balance/${tokenSpec}`);
+          if (!isCurrentNode()) return;
+          if (data?.balance?.total?.u64 !== undefined) {
+            const decimals = data.balance.total.decimals || 8;
+            const amount = data.balance.total.u64 / Math.pow(10, decimals);
+            setBalance(amount);
             setWartSpend({
-              available: result.available,
-              locked: result.locked,
-              total: result.balance,
-              hasLocked: result.hasLocked,
+              available: String(amount),
+              locked: "0",
+              total: String(amount),
+              hasLocked: false,
             });
             setBalanceError(null);
-          })
-          .catch((error) => {
-            console.error("Error fetching WART balance:", error);
-            const message = error instanceof Error ? error.message : "Could not load the balance";
-            if (/failed to fetch/i.test(message) && reloadDocumentOnce()) return;
-            setBalance(0);
-            setBalanceError(message);
+          }
+        } else {
+          const result = await fetchBalanceAndPin(node, wallet);
+          if (!isCurrentNode()) return;
+          setBalance(parseFloat(result.balance) || 0);
+          setWartSpend({
+            available: result.available,
+            locked: result.locked,
+            total: result.balance,
+            hasLocked: result.hasLocked,
           });
+          setBalanceError(null);
+        }
+      } catch (error) {
+        console.error("Error fetching balance:", error);
+        const message =
+          error instanceof Error ? error.message : "Could not load the balance";
+        if (/failed to fetch/i.test(message) && reloadDocumentOnce()) return;
+        if (!isCurrentNode()) return;
+        setBalance(0);
+        setBalanceError(message);
+      } finally {
+        // The update is over, whether it read the balance or failed. The
+        // pending state ends here, so the card does not wait for a node
+        // that never answers.
+        //
+        // Only the read that owns the pending state ends it. A background
+        // poll reads the same node and must not cut the user's update short.
+        if (ownsPending && pendingNodeRef.current === nodeUrl) {
+          pendingNodeRef.current = null;
+          setPendingNodeUrl(null);
+        }
       }
-    }
-  }, [wallet, nodeList, selectedNodeIndex, selectedToken]);
+    },
+    [wallet, nodeList, selectedNodeIndex, selectedToken],
+  );
 
   const updateBalanceUSD = useCallback(() => {
     // wartPrice tries CoinGecko, falls back to CoinPaprika, and caches. Home
@@ -501,46 +538,73 @@ const Home: React.FC = () => {
   }, []);
 
   /**
-   * Show the card as refreshing.
+   * Start an update for the node the wallet is on, if it is not already
+   * running for it.
    *
-   * The network switch goes through here too, so the card shows the same
-   * pending state as a manual refresh rather than changing under the user
-   * with nothing to show for it.
+   * The update is assigned to the node. An update that is already running
+   * for that node is not started again, so toggling back to a node that is
+   * still being read does not queue a second read of it.
    */
-  const showRefreshing = useCallback(() => {
-    setRefreshing(true);
-    window.setTimeout(() => setRefreshing(false), 800);
+  const startUpdate = useCallback((nodeUrl: string | null): boolean => {
+    if (!shouldStartUpdate(nodeUrl, pendingNodeRef.current)) return false;
+    pendingNodeRef.current = nodeUrl;
+    setPendingNodeUrl(nodeUrl);
+    return true;
   }, []);
 
   /**
    * Refresh the card, the way the refresh button does.
+   *
+   * The pending state lasts as long as the read does, so the card says it
+   * is working for as long as the node takes to answer.
    */
   const refreshCard = useCallback(() => {
-    showRefreshing();
-    updateBalance();
+    // An update already running for this node is not started again.
+    if (!startUpdate(currentNodeRef.current)) return;
+    updateBalance(true);
     updateBalanceUSD();
     setHoldingsTick((tick) => tick + 1);
-  }, [showRefreshing, updateBalance, updateBalanceUSD]);
+  }, [startUpdate, updateBalance, updateBalanceUSD]);
 
   /**
    * Move to the other family and refresh what the card shows.
    *
-   * The balance effect refetches on its own when the node changes, because
-   * the selected index is one of its dependencies. Only the pending state
-   * is set here: the state update is not applied yet, so fetching now
-   * would read the node being left.
+   * The read itself happens in the balance effect, which re-runs when the
+   * selected node changes. This cannot fetch: the state has not changed
+   * yet, so it would read the node being left. The pending state is set
+   * by that effect, once it knows which node the wallet landed on.
    */
   const switchNetworkAndRefresh = useCallback(() => {
     switchNetwork();
-    showRefreshing();
     setHoldingsTick((tick) => tick + 1);
-  }, [switchNetwork, showRefreshing]);
+  }, [switchNetwork]);
+
+  // Read the balance when the node changes.
+  //
+  // This is where the update of a switched-to node starts: the switch
+  // itself cannot fetch, because at that moment the state has not changed
+  // and it would read the node being left. Here the new node is known, so
+  // the update is assigned to it and the card is pending for it.
+  //
+  // An update that is already running for this node is not started again,
+  // so toggling back to a node that is still being read does not queue a
+  // second read of it.
+  useEffect(() => {
+    if (!wallet) return;
+    const nodeUrl = selectedNode?.url ?? null;
+    if (!nodeUrl) return;
+    if (!shouldStartUpdate(nodeUrl, pendingNodeRef.current)) return;
+    pendingNodeRef.current = nodeUrl;
+    setPendingNodeUrl(nodeUrl);
+    void updateBalance(true);
+  }, [wallet, selectedNode?.url, updateBalance]);
 
   useEffect(() => {
     if (wallet) {
-      updateBalance();
       const intervalIdPrice = setInterval(updateBalanceUSD, 1500);
-      const intervalId = setInterval(updateBalance, 1500);
+      // A poll is a background refresh, not something the user asked for,
+      // so it does not own the pending state.
+      const intervalId = setInterval(() => void updateBalance(false), 1500);
       return () => {
         clearInterval(intervalIdPrice);
         clearInterval(intervalId);
@@ -583,6 +647,7 @@ const Home: React.FC = () => {
                 <button
                   type="button"
                   className="main-balance-refresh"
+                  disabled={refreshing}
                   onClick={refreshCard}
                 >
                   <span className="text-[#FDB913]">{refreshing ? "…" : "⟳"}</span>
