@@ -278,7 +278,11 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
           visibleNodes.map((node) => (
             <NodeCard
               key={node.id}
-              {...node}
+              id={node.id}
+              name={node.name}
+              address={node.address}
+              status={node.status}
+              latency={node.latency}
               setPrimaryNode={setPrimaryNode}
               removeNode={removeNode}
             />

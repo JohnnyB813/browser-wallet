@@ -1,5 +1,4 @@
 import { IoMdTrash } from "react-icons/io";
-import type { NodeNetwork } from "../config/network";
 import useWallet from "../hooks/useWallet";
 
 const NodeCard = ({
@@ -8,7 +7,6 @@ const NodeCard = ({
   address,
   status,
   latency,
-  network,
   setPrimaryNode,
   removeNode,
 }: {
@@ -17,7 +15,6 @@ const NodeCard = ({
   address: string;
   status: string;
   latency: number;
-  network: NodeNetwork;
   setPrimaryNode: (id: number) => void;
   removeNode: (id: number) => void;
 }) => {
@@ -52,15 +49,6 @@ const NodeCard = ({
         {latency > 0 && (
           <div className="text-white/30 text-xs tabular-nums">{Math.round(latency)}ms</div>
         )}
-        <span
-          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${
-            network === "defi-testnet"
-              ? "bg-amber-500/20 text-amber-300"
-              : "bg-emerald-500/15 text-emerald-300"
-          }`}
-        >
-          {network === "defi-testnet" ? "DeFi" : "Mainnet"}
-        </span>
         <div
           onClick={(e) => {
             e.stopPropagation();
