@@ -264,10 +264,12 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
         </button>
       </div>
 
-      {tabHasNodes && !tabHasSelection ? (
+      {!tabHasSelection ? (
         <p className="text-xs text-amber-300 mb-2">
-          No {familyLabel(tab)} node selected. Pick one to use the{" "}
-          {tab === "mainnet" ? "mainnet" : "testnet"}.
+          No {familyLabel(tab)} node selected.{" "}
+          {tabHasNodes
+            ? `Pick one to use the ${tab === "mainnet" ? "mainnet" : "testnet"}.`
+            : `Add one to use the ${tab === "mainnet" ? "mainnet" : "testnet"}.`}
         </p>
       ) : null}
 
@@ -283,7 +285,7 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
           ))
         ) : (
           <div className="text-center text-white/50 mt-6">
-            {tabHasNodes ? "No nodes found" : `No ${familyLabel(tab)} node configured`}
+            {tabHasNodes ? "No nodes found" : "No nodes yet"}
           </div>
         )}
       </div>

@@ -1433,7 +1433,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const nodeError = useMemo(() => {
     const node = nodeForFamily(nodeList, activeNetwork, selectedNodeUrls);
     if (node) return null;
-    return `No ${familyLabel(activeNetwork)} node configured.`;
+    return `No ${familyLabel(activeNetwork)} node selected.`;
   }, [nodeList, activeNetwork, selectedNodeUrls]);
 
   // The active node is the one the active family's slot points at. The slot
