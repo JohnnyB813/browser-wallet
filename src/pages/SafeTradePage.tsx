@@ -193,6 +193,11 @@ export default function SafeTradePage() {
   const mainnetIndex = mainnetNode
     ? wallet.nodeList.findIndex((n) => n.url === mainnetNode.url)
     : -1;
+  // Whether there is a mainnet node to pick, or none at all.
+  const mainnetAnyNode = wallet.nodeList.some((n) => n.network === "mainnet");
+  const mainnetReason = mainnetAnyNode
+    ? "No mainnet node selected. SafeTrade buys on the Warthog mainnet, and there is no Warthog testnet for it."
+    : "No mainnet node configured. SafeTrade buys on the Warthog mainnet, and there is no Warthog testnet for it.";
   const pay = SAFE_ROUTES.find((route) => route.id === payId) ?? routesOn(network)[0];
   const trading = panel === "swap" || panel === "limit";
   const receiveChoices = useMemo(() => {
@@ -347,7 +352,9 @@ export default function SafeTradePage() {
       // A WART deposit goes on the Warthog mainnet. Without a mainnet node
       // there is nothing to deposit from.
       if (pay.chain === "wart" && !mainnetNode) {
-        return "No mainnet node configured. SafeTrade has no Warthog testnet.";
+        return mainnetAnyNode
+          ? "No mainnet node selected. SafeTrade has no Warthog testnet."
+          : "No mainnet node configured. SafeTrade has no Warthog testnet.";
       }
       if (!addressFor(pay) && pay.chain !== "wart") return "This wallet has no address on that network.";
       const held = walletHolds[pay.id];
@@ -531,7 +538,7 @@ export default function SafeTradePage() {
       {!mainnetNode ? (
         <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2">
           <NodeError
-            message="No mainnet node configured. SafeTrade buys on the Warthog mainnet, and there is no Warthog testnet for it, so it needs a mainnet node even when the wallet is on the testnet."
+            message={mainnetReason}
             to="/mainnet-nodes"
             linkLabel="Add a mainnet node"
             className="text-xs text-red-200"

@@ -4,7 +4,12 @@ import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
 import NodeCard from "../components/NodeCard";
 import { PRESET_NODES, type NodeNetwork, type WalletNode } from "../config/network";
-import { familyLabel, labelForNodeUrl, normalizeNodeUrl } from "../utils/nodes";
+import {
+  familyLabel,
+  labelForNodeUrl,
+  nodeForFamily,
+  normalizeNodeUrl,
+} from "../utils/nodes";
 import { probeNode } from "../utils/warthogNode";
 import { ensureHostPermission } from "../utils/hostAccess";
 
@@ -32,6 +37,7 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
     setNodeList,
     activeNetwork,
     setActiveNetwork,
+    selectedNodeUrls,
   } = useWallet();
 
   const [nodes, setNodes] = useState<NodeType[]>([] as NodeType[]);
@@ -53,6 +59,14 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
   useEffect(() => {
     setTab(family ?? activeNetwork);
   }, [family, activeNetwork]);
+
+  // Whether the open tab has any node, and whether one of them is the
+  // selected one. A tab can have nodes and none selected, which is the
+  // state the warning is for.
+  const tabHasNodes = nodes.some((node) => node.network === tab);
+  const tabHasSelection = Boolean(
+    nodeForFamily(nodeList, tab, selectedNodeUrls),
+  );
 
   const visibleNodes = nodes.filter((node) => {
     if (node.network !== tab) return false;
@@ -250,6 +264,13 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
         </button>
       </div>
 
+      {tabHasNodes && !tabHasSelection ? (
+        <p className="text-xs text-amber-300 mb-2">
+          No {familyLabel(tab)} node selected. Pick one to use the{" "}
+          {tab === "mainnet" ? "mainnet" : "testnet"}.
+        </p>
+      ) : null}
+
       <div className="h-[55vh] overflow-y-scroll">
         {visibleNodes.length > 0 ? (
           visibleNodes.map((node) => (
@@ -262,9 +283,7 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
           ))
         ) : (
           <div className="text-center text-white/50 mt-6">
-            {nodes.some((node) => node.network === tab)
-              ? "No nodes found"
-              : `No ${familyLabel(tab)} node configured`}
+            {tabHasNodes ? "No nodes found" : `No ${familyLabel(tab)} node configured`}
           </div>
         )}
       </div>

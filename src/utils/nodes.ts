@@ -86,10 +86,12 @@ export function otherNetwork(network: NodeNetwork): NodeNetwork {
 }
 
 /**
- * The node a family should use.
+ * The node a family has selected.
  *
- * The remembered one if it is still in the list, otherwise the first node of
- * that family. Null when the family has no nodes at all.
+ * The remembered one if it is still in the list, otherwise null. There is no
+ * fallback to the family's first node: a family can have nodes and none of
+ * them selected, and that is a state the user can see and fix. Silently
+ * picking another node would hide it.
  */
 export function nodeForFamily(
   nodes: WalletNode[],
@@ -97,12 +99,20 @@ export function nodeForFamily(
   selection: NodeSelection,
 ): WalletNode | null {
   const remembered = selection[family];
-  if (remembered) {
-    const wanted = normalizeNodeUrl(remembered);
-    const found = nodes.find((n) => normalizeNodeUrl(n.url) === wanted);
-    if (found && found.network === family) return found;
-  }
-  return nodes.find((n) => n.network === family) ?? null;
+  if (!remembered) return null;
+  const wanted = normalizeNodeUrl(remembered);
+  const found = nodes.find((n) => normalizeNodeUrl(n.url) === wanted);
+  return found && found.network === family ? found : null;
+}
+
+/**
+ * True when a family has at least one node, selected or not.
+ */
+export function familyHasNodes(
+  nodes: WalletNode[],
+  family: NodeNetwork,
+): boolean {
+  return nodes.some((n) => n.network === family);
 }
 
 /**

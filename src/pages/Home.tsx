@@ -611,7 +611,15 @@ const Home: React.FC = () => {
                     <p className="font-mono text-sm text-zinc-400">≈ {showAmount(String(usd))} USD</p>
                   ) : null}
                   <NodeError message={balanceError} />
-                  <NodeError message={nodeError} />
+                  {/* The family has no node at all, so the picker is the
+                      way out of it. */}
+                  {nodeError ? (
+                    <NodeError
+                      message={nodeError}
+                      linkLabel="Choose a node"
+                      alwaysLink
+                    />
+                  ) : null}
                   {wallet ? (
                     <button
                       type="button"
