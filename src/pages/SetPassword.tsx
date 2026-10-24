@@ -4,6 +4,7 @@ import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
 import { IoEye, IoEyeOff } from "react-icons/io5";
+import { isFirefoxBrowser } from "../utils/browserName";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
 import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
@@ -28,11 +29,13 @@ const SetPassword: React.FC = () => {
   }>({});
   const [busy, setBusy] = useState(false);
 
+  const preferPasskey = !isFirefoxBrowser();
+
   useEffect(() => {
     const ok = isWebAuthnAvailable();
     setPasskeysSupported(ok);
-    setEnablePasskey(ok);
-  }, []);
+    if (ok && preferPasskey) setEnablePasskey(true);
+  }, [preferPasskey]);
 
   const validatePasswords = () => {
     const newErrors: {
@@ -147,7 +150,8 @@ const SetPassword: React.FC = () => {
               }}
             />
             <span className="text-white text-sm">
-              Enable passkey unlock (recommended)
+              Enable passkey unlock
+              {preferPasskey ? " · preferred" : ""}
             </span>
           </label>
         )}

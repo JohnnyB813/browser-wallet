@@ -17,10 +17,20 @@
       "32": "/logo-32.png"
     }
   },
-  "permissions": ["tabs", "storage", "scripting", "activeTab", "cookies"],
+  "permissions": [
+    "tabs",
+    "storage",
+    "scripting",
+    "activeTab",
+    "cookies",
+    "nativeMessaging",
+    "declarativeNetRequestWithHostAccess"
+  ],
   "host_permissions": [
     "https://warthognode.duckdns.org/*",
+    "https://mainnet.wartnode.com/*",
     "https://warthog-defitestnet.duckdns.org/*",
+    "https://testnet.wartnode.com/*",
     "https://warthog-defitestnet.duckdns.org:4445/*",
     "https://wartscan.io/*",
     "https://api.coingecko.com/*",
@@ -31,20 +41,40 @@
     "http://209.127.34.202:3001/*",
     "*://*/*"
   ],
-  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
   "options_page": "index.html",
   "homepage_url": "https://wartscan.io/",
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content-script.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content-script.js"
+      ],
       "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content-script.js"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "content-script.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
-  ]
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "solana_rpc",
+        "enabled": true,
+        "path": "solana-rpc-rules.json"
+      }
+    ]
+  }
 }

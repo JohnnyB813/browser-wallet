@@ -995,9 +995,9 @@ select.defi-input {
   border: 1px solid #3f3f46;
   border-radius: 14px;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
   position: relative;
   overflow: visible;
 }
@@ -1444,7 +1444,8 @@ select.defi-input {
     0 0 0 1px rgba(253, 185, 19, 0.14),
     0 0 0 1px rgba(255, 255, 255, 0.03) inset,
     0 12px 28px -18px rgba(0, 0, 0, 0.55);
-  overflow: hidden;
+  /* The ticker menu opens past the card. The radius still clips the fill. */
+  overflow: visible;
 }
 .swap-page .swap-panel {
   border-radius: 1rem;
@@ -1486,6 +1487,7 @@ select.defi-input {
 }
 .swap-page .swap-amount-row > .swap-chip-btn,
 .swap-page .swap-amount-row > .swap-token-btn,
+.swap-page .swap-amount-row > .swap-token-menu,
 .swap-page .swap-amount-row > .swap-token-static {
   flex-shrink: 0;
 }
@@ -1556,6 +1558,45 @@ select.defi-input {
   border: 1px solid rgba(113, 113, 122, 0.9);
   font-size: 0.875rem;
   font-weight: 600;
+}
+.swap-page .swap-token-menu {
+  position: relative;
+}
+.swap-page .swap-token-menu--open {
+  z-index: 30;
+}
+.swap-page .swap-token-list {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 30;
+  min-width: 9.5rem;
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.25rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(113, 113, 122, 0.9);
+  background: #18181b;
+  box-shadow: 0 16px 32px -18px rgba(0, 0, 0, 0.9);
+}
+.swap-page .swap-token-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: transparent;
+  color: #fafafa;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+}
+.swap-page .swap-token-option:hover,
+.swap-page .swap-token-option--active {
+  background: rgba(253, 185, 19, 0.12);
+  color: #fdb913;
 }
 .swap-page .swap-token-static {
   flex-shrink: 0;

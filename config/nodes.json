@@ -1,30 +1,30 @@
 {
-  "explorerBaseUrl": "http://localhost:3000",
+  "explorerBaseUrl": "https://wartscan.io",
   "nodes": [
     {
-      "url": "http://localhost:3101",
-      "label": "Localhost + CORS Proxy",
+      "url": "https://warthognode.duckdns.org",
+      "label": "Mainnet",
+      "network": "mainnet"
+    },
+    {
+      "url": "https://mainnet.wartnode.com",
+      "label": "Wartnode Mainnet",
+      "network": "mainnet"
+    },
+    {
+      "url": "https://warthog-defitestnet.duckdns.org",
+      "label": "DeFi Testnet",
       "network": "defi-testnet"
     },
     {
-      "url": "http://localhost:3100",
-      "label": "localhost",
-      "network": "mainnet"
+      "url": "https://testnet.wartnode.com",
+      "label": "Wartnode Testnet",
+      "network": "defi-testnet"
     },
     {
-      "url": "http://51.75.21.134:3001",
-      "label": "polaire",
-      "network": "mainnet"
-    },
-    {
-      "url": "http://62.72.44.89:3001",
-      "label": "blu & Asia",
-      "network": "mainnet"
-    },
-    {
-      "url": "http://dev.node-s.com:3001",
-      "label": "johnnyb Us East",
-      "network": "mainnet"
+      "url": "http://104.251.219.14:3001",
+      "label": "Testnet",
+      "network": "defi-testnet"
     }
   ]
 }

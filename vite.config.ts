@@ -70,6 +70,24 @@ function writeManifest(target: string): Plugin {
 // has to be bundled rather than copied verbatim from `public/`. Run in
 // `closeBundle` so it lands *after* Vite has finished writing (and emptying)
 // `build/` — an earlier hook would be wiped.
+/**
+ * Vite marks scripts and stylesheets crossorigin. Firefox then loads those
+ * extension files as CORS requests and rejects them with SecurityError
+ * "The operation is insecure." Same-origin extension assets do not need it.
+ */
+function stripCrossorigin(): Plugin {
+  return {
+    name: "strip-crossorigin",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(html) {
+        return html.replace(/\s+crossorigin(?:="[^"]*")?/g, "");
+      },
+    },
+  };
+}
+
 function bundleBackground(): Plugin {
   let root = process.cwd();
   let outDir = "build";
@@ -103,6 +121,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      stripCrossorigin(),
       bundleBackground(),
       viteStaticCopy({
         targets: [

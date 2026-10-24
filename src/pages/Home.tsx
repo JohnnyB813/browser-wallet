@@ -12,6 +12,14 @@ import CancelConfirmModal from "../components/CancelConfirmModal";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
 import { IoSend, IoTrendingUp, IoWater, IoDiamond, IoCloseCircleOutline } from "react-icons/io5";
+import { useChainAccounts } from "../chains/useChainAccounts";
+import ChainPicker from "../components/chains/ChainPicker";
+import ChainHoldings from "../components/chains/ChainHoldings";
+import NetworkBadge from "../components/chains/NetworkBadge";
+import TokenMark from "../components/chains/TokenMark";
+import { toast } from "../utils/toast";
+import { hasPositiveLocked } from "../utils/balanceBreakdown";
+import { formatDisplayNumber, loadNumberDisplayPrefs } from "../utils/numberDisplay";
 import { FaChevronDown, FaSearch, FaSync } from "react-icons/fa";
 import Jazzicon from "react-jazzicon";
 import { getPendingApproval, approveRequest, rejectRequest, PendingApproval } from "../utils/extensionApi";
@@ -119,10 +127,10 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
     : 'WART';
 
   return (
-    <div className="contents" ref={dropdownRef}>
+    <div className="relative w-full" ref={dropdownRef}>
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="shrink-0 px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-left flex items-center justify-between gap-2 hover:bg-white/15 transition-colors"
+        className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-left transition-colors hover:bg-white/15"
       >
         <span className="text-primary font-medium">{displayName}</span>
         <FaChevronDown className={`text-white/50 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
@@ -211,10 +219,19 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl }: { selectedToken: To
 
 const Home: React.FC = () => {
   const { wallet, selectedNodeIndex, nodeList, walletList, nameList, ledgerAccount } = useWallet();
+  const { accounts, chains, chain, setChain, mainnet, phrasePending } = useChainAccounts();
   const navigate = useNavigate();
   const [balance, setBalance] = useState(0);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [balanceUSD, setBalanceUSD] = useState(0);
+  const [wartSpend, setWartSpend] = useState({
+    available: "0",
+    locked: "0",
+    total: "0",
+    hasLocked: false,
+  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [holdingsTick, setHoldingsTick] = useState(0);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [showApprovalBanner, setShowApprovalBanner] = useState(false);
   const [approvalWalletIndex, setApprovalWalletIndex] = useState(selectedNodeIndex);
@@ -361,7 +378,8 @@ const Home: React.FC = () => {
 
   const updateBalance = useCallback(() => {
     if (wallet && nodeList[selectedNodeIndex]) {
-      const nodeUrl = nodeList[selectedNodeIndex].url;
+      const node = nodeList[selectedNodeIndex];
+      const nodeUrl = node.url;
       if (selectedToken.hash) {
         const tokenSpec = `asset:${selectedToken.hash}`;
         nodeRead<{
@@ -370,7 +388,14 @@ const Home: React.FC = () => {
           .then((data) => {
             if (data?.balance?.total?.u64 !== undefined) {
               const decimals = data.balance.total.decimals || 8;
-              setBalance(data.balance.total.u64 / Math.pow(10, decimals));
+              const amount = data.balance.total.u64 / Math.pow(10, decimals);
+              setBalance(amount);
+              setWartSpend({
+                available: String(amount),
+                locked: "0",
+                total: String(amount),
+                hasLocked: false,
+              });
               setBalanceError(null);
             }
           })
@@ -382,9 +407,15 @@ const Home: React.FC = () => {
             setBalanceError(message);
           });
       } else {
-        fetchBalanceAndPin(nodeList[selectedNodeIndex], wallet)
+        fetchBalanceAndPin(node, wallet)
           .then((result) => {
             setBalance(parseFloat(result.balance) || 0);
+            setWartSpend({
+              available: result.available,
+              locked: result.locked,
+              total: result.balance,
+              hasLocked: result.hasLocked,
+            });
             setBalanceError(null);
           })
           .catch((error) => {
@@ -435,32 +466,95 @@ const Home: React.FC = () => {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case Tab.Actions:
+      case Tab.Actions: {
+        const showAmount = (value: string) =>
+          formatDisplayNumber(value, loadNumberDisplayPrefs(), { fallback: value || "0" });
+        const usd = balance * balanceUSD;
+        const copyAddress = (value: string) => {
+          void navigator.clipboard.writeText(value);
+          toast.success("Copied", value);
+        };
         return (
           <div className="space-y-4">
             <div className="home-wallet-card">
-              <div className="min-w-0 flex-1">
-                <p className="text-white/50 text-sm mb-1">Wallet</p>
-                <p className="text-white text-2xl font-semibold wrap-break-word">
-                  {balance ? parseFloat(balance.toFixed(2)) : '0.00'} {selectedToken.name}
-                </p>
-                <p className="text-white/50 text-sm">
-                  ${(balance * balanceUSD).toFixed(2)}
-                </p>
-                {balanceError && (
-                  <p className="text-red-300 text-xs mt-1">{balanceError}</p>
-                )}
+              <div className="flex items-center justify-between gap-2">
+                <NetworkBadge mainnet={mainnet} />
+                <button
+                  type="button"
+                  className="main-balance-refresh"
+                  onClick={() => {
+                    setRefreshing(true);
+                    updateBalance();
+                    updateBalanceUSD();
+                    setHoldingsTick((tick) => tick + 1);
+                    window.setTimeout(() => setRefreshing(false), 800);
+                  }}
+                >
+                  <span className="text-[#FDB913]">{refreshing ? "…" : "⟳"}</span>
+                  {refreshing ? "Refreshing…" : "Refresh"}
+                </button>
               </div>
-              <TokenSelector
-                selectedToken={selectedToken}
-                onSelect={setSelectedToken}
-                nodeUrl={nodeList[selectedNodeIndex]?.url}
-              />
+              <ChainPicker chains={chains} chain={chain} onChange={setChain} />
+              {chain === "wart" || !accounts ? (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <TokenMark symbol={selectedToken.hash ? selectedToken.name : "WART"} size={28} />
+                      <p className="text-sm font-semibold text-white">
+                        {selectedToken.hash ? selectedToken.name : "WART"}
+                      </p>
+                    </div>
+                    <p className="font-mono text-sm font-semibold text-white">
+                      {showAmount(wartSpend.available || "0")}
+                    </p>
+                  </div>
+                  {!selectedToken.hash && hasPositiveLocked(wartSpend.locked) ? (
+                    <p className="text-[11px] text-zinc-500">
+                      Locked {showAmount(wartSpend.locked)} · Total {showAmount(wartSpend.total)}
+                    </p>
+                  ) : null}
+                  {!selectedToken.hash && usd > 0 ? (
+                    <p className="font-mono text-sm text-zinc-400">≈ {showAmount(String(usd))} USD</p>
+                  ) : null}
+                  {balanceError ? <p className="text-xs text-red-300">{balanceError}</p> : null}
+                  {wallet ? (
+                    <button
+                      type="button"
+                      className="text-center font-mono text-[11px] text-zinc-400"
+                      onClick={() => copyAddress(wallet)}
+                    >
+                      {wallet.slice(0, 10)}…{wallet.slice(-8)}
+                    </button>
+                  ) : null}
+                  <TokenSelector
+                    selectedToken={selectedToken}
+                    onSelect={setSelectedToken}
+                    nodeUrl={nodeList[selectedNodeIndex]?.url || ""}
+                  />
+                  {chains.length < 2 && !phrasePending ? (
+                    <p className="text-[11px] text-zinc-500">
+                      {ledgerAccount
+                        ? "This Ledger session is the Warthog account. Other networks sign in the phone app."
+                        : "Bitcoin, Ethereum, Hemi, and Solana come from the recovery phrase. A private-key import only has the Warthog account."}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <ChainHoldings
+                  chain={chain}
+                  ethAddress={accounts.ethAddress}
+                  btcAddress={accounts.btcAddress}
+                  solAddress={accounts.solAddress}
+                  refreshTick={holdingsTick}
+                  onSend={() => navigate("/chain-send")}
+                  onTunnel={() => navigate("/swap", { state: { mode: "tunnel" } })}
+                />
+              )}
             </div>
             <div className="flex flex-row justify-center gap-3 w-full">
               <div
                 className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate("/send")}
+                onClick={() => navigate(chain === "wart" ? "/send" : "/chain-send")}
               >
                 <IoSend className="text-2xl text-primary" />
                 <p className="text-white text-sm font-semibold">Send</p>
@@ -472,26 +566,31 @@ const Home: React.FC = () => {
                 <IoTrendingUp className="text-2xl text-primary" />
                 <p className="text-white text-sm font-semibold">Swap</p>
               </div>
-              <div
-                className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate("/liquidity")}
-              >
-                <IoWater className="text-2xl text-primary" />
-                <p className="text-white text-sm font-semibold">Liquidity</p>
-              </div>
-              <div
-                className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate("/create-token")}
-              >
-                <IoDiamond className="text-2xl text-primary" />
-                <p className="text-white text-sm font-semibold">Mint</p>
-              </div>
+              {chain === "wart" ? (
+                <>
+                  <div
+                    className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
+                    onClick={() => navigate("/liquidity")}
+                  >
+                    <IoWater className="text-2xl text-primary" />
+                    <p className="text-white text-sm font-semibold">Liquidity</p>
+                  </div>
+                  <div
+                    className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
+                    onClick={() => navigate("/create-token")}
+                  >
+                    <IoDiamond className="text-2xl text-primary" />
+                    <p className="text-white text-sm font-semibold">Mint</p>
+                  </div>
+                </>
+              ) : null}
             </div>
             {ledgerNote && (
               <p className="text-amber-200/90 text-xs text-center px-2">{ledgerNote}</p>
             )}
           </div>
         );
+      }
 
       case Tab.History:
         return (
