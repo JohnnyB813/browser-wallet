@@ -207,11 +207,10 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
             aria-selected={tab === id}
             onClick={() => {
               setTab(id);
-              // Switching the wallet needs a node to switch to. The tab
-              // still opens, so the user can add one.
-              if (nodes.some((node) => node.network === id)) {
-                setActiveNetwork(id);
-              }
+              // The family changes either way, like the badge does. The
+              // card says which family is missing a node, and the tab
+              // still lists it so a node can be added.
+              setActiveNetwork(id);
             }}
             className={`text-xs px-3 py-1.5 rounded-full border ${
               tab === id

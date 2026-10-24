@@ -19,6 +19,7 @@ import NetworkBadge from "../components/chains/NetworkBadge";
 import NodeError from "../components/NodeError";
 import TokenMark from "../components/chains/TokenMark";
 import { toast } from "../utils/toast";
+import { isDefiNode } from "../utils/nodes";
 import { hasPositiveLocked } from "../utils/balanceBreakdown";
 import { formatDisplayNumber, loadNumberDisplayPrefs } from "../utils/numberDisplay";
 import { FaChevronDown, FaSearch, FaSync } from "react-icons/fa";
@@ -246,6 +247,7 @@ const Home: React.FC = () => {
     switchNetwork,
     setActiveNetwork,
     nodeError,
+    selectedNode,
   } = useWallet();
   const { accounts, chains, chain, setChain, phrasePending } = useChainAccounts();
   const navigate = useNavigate();
@@ -672,7 +674,7 @@ const Home: React.FC = () => {
                   for WART on the testnet, so a testnet asset does not show
                   them either. They are also Warthog chain actions, so they
                   are hidden on Ethereum, Bitcoin, Hemi and Solana. */}
-              {isWart && chain === "wart" && activeNetwork === "defi-testnet" ? (
+              {isWart && chain === "wart" && isDefiNode(selectedNode) ? (
                 <>
                   <div
                     className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"

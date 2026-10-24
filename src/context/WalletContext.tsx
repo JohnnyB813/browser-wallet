@@ -488,14 +488,13 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
       return next;
     });
-    if (!node) {
-      // The family has no node, so there is nothing to switch to. The slot
-      // is empty now, and the card says which family is missing a node.
-      setNodeError(`No ${familyLabel(target)} node configured.`);
-      return;
-    }
-    setNodeError(null);
+    // The family changes either way. A family with no node is still a
+    // family the user asked for, and the card says which family is
+    // missing a node so the choice can be undone or a node added.
     setActiveNetworkKeyState(target);
+    setNodeError(
+      node ? null : `No ${familyLabel(target)} node configured.`,
+    );
   }, [activeNetworkKey, nodeList, selectedNodeUrls, saveToBrowserStorage]);
 
   /**
@@ -507,13 +506,18 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const setActiveNetwork = useCallback(
     (family: NodeNetwork): void => {
       const node = nodeForFamily(nodeList, family, selectedNodeUrls);
-      if (!node) return;
       setSelectedNodeUrlsState((prev) => {
-        const next = { ...prev, [family]: node.url };
+        const next = { ...prev, [family]: node?.url ?? "" };
         saveToBrowserStorage("selectedNodeUrls", JSON.stringify(next));
         return next;
       });
+      // The family changes either way. A family with no node is still a
+      // family the user asked for, and the card says which family is
+      // missing a node.
       setActiveNetworkKeyState(family);
+      setNodeError(
+        node ? null : `No ${familyLabel(family)} node configured.`,
+      );
     },
     [nodeList, selectedNodeUrls, saveToBrowserStorage],
   );
