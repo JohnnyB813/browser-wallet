@@ -9,6 +9,7 @@ import {
   type AnyTransactionContext,
   type AnyWarthogApi,
   type TransactionJson,
+  type LegacyTransactionJson,
 } from "warthog-ts";
 import type { WalletNode } from "./config/network";
 import { privilegedFetch } from "./utils/hostAccess";
@@ -88,7 +89,7 @@ const requireDeFiContext = (
 const submitTransaction = async (
   nodeList: WalletNode[],
   selectedNodeIndex: number,
-  tx: TransactionJson,
+  tx: TransactionJson | LegacyTransactionJson,
 ): Promise<string> => {
   const node = nodeList[selectedNodeIndex];
   const api = createApi(node);

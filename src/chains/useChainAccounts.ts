@@ -4,8 +4,8 @@ import { deriveEthAddress } from "../mobile-port/utils/evmAddress";
 import { chainAddresses } from "../mobile-port/utils/networks/derive";
 import { setChainSession } from "../mobile-port/utils/sessionVault";
 import { exportWalletFromWorker, getSigningStatus } from "../utils/signingBridge";
-
-export type BrowserChain = "wart" | "ethereum" | "bitcoin" | "hemi" | "solana";
+import { WALLET_NETWORKS, type WalletNetworkId, type BrowserChain } from "../config/walletNetworks";
+export type { BrowserChain } from "../config/walletNetworks";
 
 const KEY = "warthogBrowserChain";
 const EVENT = "warthog-chain";
@@ -24,8 +24,8 @@ function readChain(): BrowserChain {
   return ORDER.includes(saved as BrowserChain) ? (saved as BrowserChain) : "wart";
 }
 
-export function useChainAccounts() {
-  const { seedPhrase, canAddAccounts, signingUnlocked } = useWallet();
+export function useChainAccounts(syncSession = false) {
+  const { seedPhrase, canAddAccounts, signingUnlocked, selectedWalletIndex, wallet, activeNetwork, setActiveNetwork } = useWallet();
   const [recovered, setRecovered] = useState("");
   const [phrasePending, setPhrasePending] = useState(false);
 
@@ -55,27 +55,29 @@ export function useChainAccounts() {
     return () => {
       alive = false;
     };
-  }, [seedPhrase, signingUnlocked, canAddAccounts]);
+  }, [seedPhrase, signingUnlocked, canAddAccounts, wallet]);
 
   const phrase = seedPhrase?.trim() || recovered;
 
   useEffect(() => {
-    setChainSession(phrase || null);
-  }, [phrase]);
+    if (!syncSession) return;
+    setChainSession(signingUnlocked ? phrase : null, selectedWalletIndex);
+    return () => setChainSession(null);
+  }, [phrase, signingUnlocked, selectedWalletIndex, syncSession]);
 
   const accounts = useMemo(() => {
     if (!phrase) return null;
     try {
-      const derived = chainAddresses(phrase);
+      const derived = chainAddresses(phrase, selectedWalletIndex);
       return {
-        ethAddress: deriveEthAddress(phrase),
+        ethAddress: deriveEthAddress(phrase, selectedWalletIndex),
         btcAddress: derived.btcAddress,
         solAddress: derived.solAddress,
       };
     } catch {
       return null;
     }
-  }, [phrase]);
+  }, [phrase, selectedWalletIndex]);
 
   const chains: BrowserChain[] = accounts
     ? ["wart", "ethereum", "bitcoin", "hemi", "solana"]
@@ -97,5 +99,18 @@ export function useChainAccounts() {
     window.dispatchEvent(new Event(EVENT));
   };
 
-  return { accounts, chains, chain: active, setChain, phrasePending };
+  const networkId: WalletNetworkId = active === "wart"
+    ? activeNetwork === "defi-testnet" ? "wart-testnet" : "wart-mainnet"
+    : active;
+  const network = WALLET_NETWORKS.find((item) => item.id === networkId)!;
+  const networks = WALLET_NETWORKS.filter((item) => chains.includes(item.chain));
+  const setNetwork = (id: WalletNetworkId) => {
+    const next = networks.find((item) => item.id === id);
+    if (!next) return;
+    if (next.chain === "wart") setActiveNetwork(id === "wart-testnet" ? "defi-testnet" : "mainnet");
+    setChain(next.chain);
+  };
+  const address = active === "wart" ? wallet || "" : active === "bitcoin"
+    ? accounts?.btcAddress || "" : active === "solana" ? accounts?.solAddress || "" : accounts?.ethAddress || "";
+  return { accounts, chains, chain: active, setChain, phrasePending, network, networks, setNetwork, address };
 }

@@ -18,6 +18,7 @@ export type EncryptedWalletPayload = {
   publicKey: string;
   address: string;
   mnemonic?: string;
+  pathType?: "hardened" | "non-hardened";
 };
 
 const NAMED_PREFIX = "warthogWallet_";
@@ -137,9 +138,9 @@ export async function encryptWallet(
   password: string,
 ): Promise<string> {
   if (!password) throw new Error("Password is required");
-  const { privateKey, publicKey, address, mnemonic } = walletData;
+  const { privateKey, publicKey, address, mnemonic, pathType } = walletData;
   return encryptV3(
-    JSON.stringify({ privateKey, publicKey, address, mnemonic }),
+    JSON.stringify({ privateKey, publicKey, address, mnemonic, pathType }),
     password,
   );
 }

@@ -13,6 +13,8 @@ import { explainChainError } from "../mobile-port/utils/networks/http";
 import { formatUnits, parseUnits } from "../mobile-port/utils/networks/units";
 import { readOneBalance } from "../mobile-port/utils/tokenBalances";
 import { defaultsFor, subscribeTokens, tokensFor, type WalletToken } from "../mobile-port/utils/walletTokens";
+import TickerMenu from "../components/TickerMenu";
+import { tokenMark } from "../components/chains/TokenMark";
 
 const ERC20 = new ethers.Interface(["function transfer(address,uint256)"]);
 
@@ -174,13 +176,20 @@ export default function ChainSend() {
       <Header title={`Send ${unit}`} />
       {error ? <p className="text-xs text-red-300">{error}</p> : null}
       {assets.length > 1 ? (
-        <select className={field} value={asset?.id ?? ""} onChange={(event) => setAssetId(event.target.value)}>
-          {assets.map((token) => (
-            <option key={token.id} value={token.id}>{token.symbol}</option>
-          ))}
-        </select>
+        <TickerMenu
+          className="ticker-menu--field"
+          ariaLabel="Asset"
+          value={asset?.id ?? ""}
+          onChange={setAssetId}
+          items={assets.map((token) => ({
+            id: token.id,
+            label: token.symbol,
+            symbol: tokenMark(token.symbol, chain === "hemi" ? "hemi" : token.network, token.native),
+            hint: token.name !== token.symbol ? token.name : undefined,
+          }))}
+        />
       ) : null}
-      {held != null ? <p className="text-xs text-white/50">Available {held} {unit}</p> : null}
+      {held != null ? <p className="text-xs text-white/50">Available <span className="bal-color">{held}</span> {unit}</p> : null}
       <input className={field} value={to} onChange={(event) => setTo(event.target.value)} placeholder="Recipient" />
       <div className="flex gap-2">
         <input className={field} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" inputMode="decimal" />

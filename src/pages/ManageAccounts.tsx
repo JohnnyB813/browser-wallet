@@ -3,6 +3,7 @@ import Button from "../components/Button";
 import Header from "../components/Header";
 import AccountCard from "../components/AccountCard";
 import useWallet from "../hooks/useWallet";
+import { toast } from "../utils/toast";
 
 interface AccountType {
   id: number;
@@ -18,9 +19,6 @@ function ManageAccounts() {
     nameList,
     walletList,
     visibleWalletList,
-    setName,
-    setWallet,
-    setSelectedWalletIndex,
     addAccount,
     canAddAccounts,
     switchActiveAccount,
@@ -30,12 +28,18 @@ function ManageAccounts() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const handleAddAccount = async () => {
-    if (!canAddAccounts) return;
-    await addAccount(newAccountName.length ? newAccountName : null);
-    setNewAccountName("");
-    setIsDialogOpen(false);
+    if (!canAddAccounts || busy) return;
+    setBusy(true);
+    try {
+      await addAccount(newAccountName.trim() || null);
+      setNewAccountName("");
+      setIsDialogOpen(false);
+    } catch (error) {
+      toast.error("Could not add account", error instanceof Error ? error.message : "Try again");
+    } finally { setBusy(false); }
   };
 
   const handleCancel = () => {
@@ -51,10 +55,9 @@ function ManageAccounts() {
   );
 
   const setPrimaryAccount = (id: number) => {
-    setName(nameList[id]);
-    setWallet(walletList[id]);
-    setSelectedWalletIndex(id);
-    void switchActiveAccount(id);
+    if (busy) return;
+    setBusy(true);
+    void switchActiveAccount(id).catch((error: unknown) => toast.error("Account switch failed", error instanceof Error ? error.message : "Try again")).finally(() => setBusy(false));
   };
 
   // const removeAccount = (id: number) => {
@@ -123,7 +126,7 @@ function ManageAccounts() {
             onClick={() => setIsDialogOpen(true)}
             className="w-full"
           >
-            + Add more account
+             + Add account
           </Button>
         ) : (
           <p className="text-white/40 text-xs text-center">
@@ -157,6 +160,7 @@ function ManageAccounts() {
               </Button>
               <Button
                 variant="primary"
+                disabled={busy}
                 onClick={handleAddAccount} // Add account
                 className="w-full"
               >

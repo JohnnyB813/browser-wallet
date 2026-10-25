@@ -1,7 +1,6 @@
 import React from "react";
 import {
   formatDisplayNumber,
-  getColorHex,
   loadNumberDisplayPrefs,
 } from "../utils/numberDisplay";
 import { hasPositiveLocked } from "../utils/balanceBreakdown";
@@ -66,7 +65,8 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
   const showLocked = hasPositiveLocked(locked);
   const totalVal = total ?? free;
   const prefs = loadNumberDisplayPrefs();
-  const balanceColor = primaryColor ?? getColorHex(prefs.balanceColor);
+  const balanceColor = primaryColor ?? "var(--balance-color, #fff)";
+  const numberColor = "var(--number-color, #fff)";
 
   const unitEl = unit ? (
     <span className={unitClassName || "text-primary font-semibold"}>{unit}</span>
@@ -137,7 +137,7 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
           </div>
         ) : null}
         {usdValue !== undefined || isTestnet ? (
-          <div className={`main-balance-usd${refreshing ? " opacity-60" : ""}`}>
+          <div className={`main-balance-usd${refreshing ? " opacity-60" : ""}`} style={{ color: numberColor }}>
             ≈ {usd === "Testnet" || usd === "—" ? usd : `${usd} USD`}
           </div>
         ) : null}
@@ -162,8 +162,8 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
           }`}
         >
           <span
-            className={`text-white break-all min-w-0 ${primaryClassName}`.trim()}
-            style={primaryColor ? { color: primaryColor } : undefined}
+            className={`break-all min-w-0 ${primaryClassName}`.trim()}
+            style={{ color: balanceColor }}
           >
             {fmt(free)}
           </span>
@@ -182,10 +182,10 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
             }`}
           >
             <span>
-              Total <span className="text-zinc-400 break-all">{fmt(totalVal)}</span>
+              Total <span className="break-all" style={{ color: balanceColor }}>{fmt(totalVal)}</span>
             </span>
             <span className="text-amber-400/90">
-              Locked <span className="text-amber-300">{fmt(locked)}</span>
+              Locked <span style={{ color: balanceColor }}>{fmt(locked)}</span>
             </span>
           </div>
         ) : null}
@@ -196,16 +196,16 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
   if (layout === "inline") {
     return (
       <span className={`tabular-nums ${className}`.trim()}>
-        <span className={primaryClassName}>{fmt(free)}</span>
+        <span className={primaryClassName} style={{ color: balanceColor }}>{fmt(free)}</span>
         {unit ? <> {unitEl ?? unit}</> : null}
         {showLocked ? (
           <span className="text-zinc-500 text-[11px] ml-2">
             (locked{" "}
-            <span className="text-amber-300 font-mono">{fmt(locked)}</span>
+            <span className="font-mono" style={{ color: balanceColor }}>{fmt(locked)}</span>
             {total != null ? (
               <>
                 {" · "}total{" "}
-                <span className="text-zinc-400 font-mono">{fmt(totalVal)}</span>
+                <span className="font-mono" style={{ color: balanceColor }}>{fmt(totalVal)}</span>
               </>
             ) : null}
             )
@@ -225,8 +225,8 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
           <span />
         )}
         <span
-          className={`font-mono text-white tabular-nums ${primaryClassName}`.trim()}
-          style={primaryColor ? { color: primaryColor } : undefined}
+          className={`font-mono tabular-nums ${primaryClassName}`.trim()}
+          style={{ color: balanceColor }}
         >
           {fmt(free)}
           {unit ? (
@@ -241,13 +241,13 @@ const SpendableBalanceDisplay: React.FC<Props> = ({
         <div className="flex flex-col items-end gap-0.5 text-[11px] text-zinc-500">
           <span>
             Total{" "}
-            <span className="text-zinc-400 font-mono break-all">
+            <span className="font-mono break-all" style={{ color: balanceColor }}>
               {fmt(totalVal)}
             </span>
           </span>
           <span>
             Locked{" "}
-            <span className="text-amber-300 font-mono">{fmt(locked)}</span>
+            <span className="font-mono" style={{ color: balanceColor }}>{fmt(locked)}</span>
           </span>
         </div>
       ) : null}

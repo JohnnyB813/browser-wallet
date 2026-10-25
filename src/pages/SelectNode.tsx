@@ -139,7 +139,7 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
     const name = newNodeName.trim() || labelForNodeUrl(normalized);
     const node: WalletNode = { url: normalized, name, network: newNodeNetwork };
     setNodeList([...nodeList, node]);
-    setSelectedNodeUrl(node.url);
+    setSelectedNodeUrl(node.url, node.network);
     setNewNodeName("");
     setNewNodeAddress("");
     setIsDialogOpen(false);

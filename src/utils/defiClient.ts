@@ -196,7 +196,7 @@ async function signAndSubmit(
 
   // warthog-ts serializes bigints to numbers inside request(), so no local
   // serializer is needed here.
-  const tx = await runWithUnlockedAccount((account) => buildTx(ctx, account));
+  const tx = await runWithUnlockedAccount((account) => buildTx(ctx, account), address);
   const submit = await api.submitTransaction(tx);
   if (!submit.success) {
     const err = submit.error || "Node rejected transaction";
@@ -788,6 +788,15 @@ export async function cancelOrderTx(
     params.orderTxHash,
     address,
   );
+  return cancelOrderTargetTx(nodeBase, address, { ...target, fee: params.fee });
+}
+
+export async function cancelOrderTargetTx(
+  nodeBase: string,
+  address: string,
+  params: { cancelHeight: number; cancelNonceId: number; fee?: string },
+) {
+  const target = params;
   const cancelNonce = NonceId.fromNumber(target.cancelNonceId);
   if (!cancelNonce) {
     throw new Error(`Invalid cancel nonce ${target.cancelNonceId}`);

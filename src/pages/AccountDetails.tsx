@@ -1,394 +1,77 @@
-import { useState, useEffect, useCallback } from "react";
-import BackButton from "../components/BackButton";
-import Button from "../components/Button";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import Header from "../components/Header";
 import useWallet from "../hooks/useWallet";
-import { addressToSeed } from "../utils";
-import Jazzicon from "react-jazzicon/dist/Jazzicon";
-import { QRCodeSVG } from "qrcode.react";
-import {
-  encryptWallet,
-  loadNamedWalletEncrypted,
-  inspectNamedBlob,
-} from "../utils/warthogWalletCrypto";
+import { encryptWallet } from "../utils/warthogWalletCrypto";
+import { exportWalletFromWorker } from "../utils/signingBridge";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
 import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
-import LedgerWindowSetting from "../components/LedgerWindowSetting";
 
-function IconButton({
-  iconSrc,
-  label,
-  onClick,
-}: {
-  iconSrc: string;
-  label: string;
-  onClick?: () => void;
-}) {
-  return (
-    <div
-      className="flex flex-col items-center gap-2 cursor-pointer"
-      onClick={onClick}
-    >
-      <div className="flex justify-center items-center w-16 h-16 bg-[#f1f1f1] rounded-full">
-        <img src={iconSrc} alt={label} />
-      </div>
-      <div className="text-sm text-white">{label}</div>
-    </div>
-  );
-}
-
-function useDebounce(value: string | null, delay: number): string | null {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-
-  return debouncedValue;
-}
-
-function AccountDetails() {
-  const {
-    wallet,
-    name,
-    nameList,
-    setNameList,
-    selectedWalletIndex,
-    setName,
-    password,
-    saveCurrentAsNamedWallet,
-    enablePasskeyOnCurrentWallet,
-    seedPhrase,
-    ledgerAccount,
-  } = useWallet();
-  const [copyLabel, setCopyLabel] = useState("Copy");
-  const [isEditing, setIsEditing] = useState(false);
-  const [tempName, setTempName] = useState<string | null>(name);
-  const debouncedName = useDebounce(tempName, 1000);
-  const navigate = useNavigate();
+export default function AccountDetails() {
+  const { name, nameList, selectedWalletIndex, setName, setNameList, password, pathType, ledgerAccount, saveCurrentAsNamedWallet, enablePasskeyOnCurrentWallet } = useWallet();
+  const [accountName, setAccountName] = useState(name || "");
   const [saveName, setSaveName] = useState(name || "My Wallet");
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-  const [saveErr, setSaveErr] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [backupPassword, setBackupPassword] = useState("");
+  const [twoFactor, setTwoFactor] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [awaitingPasskey, setAwaitingPasskey] = useState(false);
-  const [hasPasskey, setHasPasskey] = useState(false);
-  const [require2faActive, setRequire2faActive] = useState(false);
-  const [want2fa, setWant2fa] = useState(false);
-  const [passkeysSupported] = useState(() => isWebAuthnAvailable());
-
-  const refreshPasskeyStatus = useCallback(async () => {
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const pwd = backupPassword || password;
+  const run = async (action: () => Promise<void>) => {
+    setBusy(true); setError(""); setStatus("");
+    try { await action(); }
+    catch (err) { if (!isPasskeyHandedOff(err)) setError(err instanceof Error ? err.message : "Operation failed"); }
+    finally { clearPasskeyWaiting(setAwaitingPasskey, setBusy); }
+  };
+  const download = async () => {
+    if (!pwd) throw new Error("Enter a password to encrypt the backup");
+    const exported = await exportWalletFromWorker();
     try {
-      const tag = (saveName || name || "").trim();
-      if (!tag) {
-        setHasPasskey(false);
-        setRequire2faActive(false);
-        return;
-      }
-      const raw = await loadNamedWalletEncrypted(tag);
-      const info = inspectNamedBlob(raw);
-      setHasPasskey(Boolean(info.hasPasskey));
-      setRequire2faActive(Boolean(info.require2fa));
-      if (info.require2fa) setWant2fa(true);
-    } catch {
-      setHasPasskey(false);
-      setRequire2faActive(false);
-    }
-  }, [saveName, name]);
-
-  useEffect(() => {
-    void refreshPasskeyStatus();
-  }, [refreshPasskeyStatus]);
-
-  const handleSaveNamed = async () => {
-    if (!password) {
-      setSaveErr("Unlock password missing — re-open the wallet or set a password");
-      return;
-    }
-    setSaving(true);
-    setSaveErr(null);
-    setSaveMsg(null);
-    try {
-      await saveCurrentAsNamedWallet(saveName.trim(), password);
-      setSaveMsg(`Saved as "${saveName.trim()}" for quick login`);
-      await refreshPasskeyStatus();
-    } catch (e) {
-      setSaveErr(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
-    }
+      const encrypted = await encryptWallet({ privateKey: exported.privateKey, publicKey: exported.publicKey || "", address: exported.address || "", mnemonic: exported.mnemonic || undefined, pathType }, pwd);
+      const url = URL.createObjectURL(new Blob([encrypted], { type: "text/plain" }));
+      const link = document.createElement("a"); link.href = url; link.download = "warthog_wallet.txt"; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus("Encrypted backup downloaded");
+    } finally { exported.privateKey = ""; exported.mnemonic = null; }
   };
-
-  const handleEnablePasskey = async (force2fa?: boolean) => {
-    setSaveErr(null);
-    setSaveMsg(null);
-    const twoFactor = Boolean(force2fa ?? want2fa);
-    if (twoFactor && !password?.trim()) {
-      setSaveErr("2FA needs a password — enter it above");
-      return;
-    }
-    try {
-      await paintPasskeyWaiting(setAwaitingPasskey, setPasskeyBusy);
-      const ok = await enablePasskeyOnCurrentWallet({
-        password: password || null,
-        name: saveName.trim() || name || "Main",
-        preferFingerprint: false,
-        require2fa: twoFactor,
-      });
-      if (ok) {
-        setSaveMsg(
-          twoFactor
-            ? `2FA enabled for “${saveName.trim() || name}” — password + passkey at login`
-            : hasPasskey
-              ? `Passkey re-registered for “${saveName.trim() || name}”`
-              : `Passkey enabled for “${saveName.trim() || name}” — next login: Unlock with passkey`,
-        );
-        await refreshPasskeyStatus();
-      }
-    } catch (e) {
-      if (isPasskeyHandedOff(e)) return;
-      setSaveErr(e instanceof Error ? e.message : "Could not enable passkey");
-    } finally {
-      clearPasskeyWaiting(setAwaitingPasskey, setPasskeyBusy);
-    }
-  };
-
-  const handleDownloadFile = async () => {
-    if (!password || !wallet) return;
-    try {
-      const { exportWalletFromWorker } = await import("../utils/signingBridge");
-      const exported = await exportWalletFromWorker();
-      const encrypted = await encryptWallet(
-        {
-          privateKey: exported.privateKey,
-          publicKey: exported.publicKey || "",
-          address: exported.address || wallet,
-          mnemonic: exported.mnemonic || seedPhrase || undefined,
-        },
-        password,
-      );
-      const blob = new Blob([encrypted], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "warthog_wallet.txt";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setSaveErr(e instanceof Error ? e.message : "Download failed");
-    }
-  };
-
-  const handleCopyAddress = () => {
-    if (wallet) {
-      navigator.clipboard
-        .writeText(wallet)
-        .then(() => {
-          setCopyLabel("Copied!");
-          setTimeout(() => setCopyLabel("Copy"), 2000);
-        })
-        .catch((err) => {
-          console.log("Failed to copy wallet address: ", err);
-        });
-    } else {
-      alert("No wallet connected to copy.");
-    }
-  };
-
-  const handleEditClick = () => {
-    setIsEditing(true);
-  };
-
-  useEffect(() => {
-    if (debouncedName !== name) {
-      setName(debouncedName || "");
-      setNameList(
-        nameList.map((item, index) =>
-          index === selectedWalletIndex ? debouncedName || "" : item,
-        ),
-      );
-    }
-  }, [
-    debouncedName,
-    name,
-    nameList,
-    selectedWalletIndex,
-    setName,
-    setNameList,
-  ]);
-
-  return (
-    <div className="min-h-screen container relative">
-      <BackButton />
-
-      <div className="flex justify-center items-center gap-4 mt-6">
-        {/* <img
-                    className="w-20 h-20 rounded-full object-cover"
-                    src="profile-image.png"
-                    alt="Profile"
-                /> */}
-        {<Jazzicon diameter={80} seed={addressToSeed(wallet || "")} />}
-        <div>
-          <div className="text-xl font-semibold text-white">
-            {isEditing ? (
-              <input
-                type="text"
-                value={tempName || ""}
-                onChange={(e) => setTempName(e.target.value)}
-                onBlur={() => setIsEditing(false)} // Exit edit mode on blur
-                className="text-xl font-semibold text-white bg-transparent border-b border-white focus:outline-hidden max-w-28"
-                autoFocus
-                placeholder="Your Name"
-              />
-            ) : (
-              name || ""
-            )}
-          </div>
-          <div className="text-xs text-white/50">Connected Wallet</div>
-        </div>
-        <img
-          className="w-6 h-6 cursor-pointer"
-          src="icons/edit-2.svg"
-          alt="Edit Profile"
-          onClick={handleEditClick}
-        />
+  return <div className="container">
+    <Header title="Account and security" />
+    <h2 className="wallet-section-label">Account name</h2>
+    <form onSubmit={(event) => {
+      event.preventDefault();
+      if (!accountName.trim()) return;
+      setName(accountName.trim());
+      setNameList(nameList.map((item, index) => index === selectedWalletIndex ? accountName.trim() : item));
+      setStatus("Account renamed");
+    }}>
+      <input className="defi-input" aria-label="Account name" value={accountName} onChange={(event) => setAccountName(event.target.value)} />
+      <button className="defi-compact-btn" disabled={!accountName.trim()}>Save name</button>
+    </form>
+    {ledgerAccount ? <p className="text-xs text-zinc-400 mt-5">Your keys stay on the Ledger. The extension cannot export its recovery phrase or private key.</p> : <>
+      <h2 className="wallet-section-label">Encrypted backup and saved wallet</h2>
+      <p className="text-xs text-zinc-500 mb-3">A seed-wallet backup contains the recovery phrase for all accounts and networks. Account names and custom nodes remain local preferences.</p>
+      <label className="defi-label">Saved wallet name<input className="defi-input" value={saveName} onChange={(event) => setSaveName(event.target.value)} /></label>
+      <label className="defi-label">Encryption password<input className="defi-input" type="password" autoComplete="new-password" placeholder={password ? "Use unlock password, or enter a new one" : "Required for password backup"} value={backupPassword} onChange={(event) => setBackupPassword(event.target.value)} /></label>
+      <div className="defi-btn-row">
+        <button className="defi-compact-btn" disabled={busy || !saveName.trim()} onClick={() => void run(async () => {
+          if (!pwd) throw new Error("Enter an encryption password");
+          await saveCurrentAsNamedWallet(saveName.trim(), pwd);
+          setStatus(`Saved as ${saveName.trim()}`);
+        })}>Save for quick login</button>
+        <button className="defi-compact-btn" disabled={busy} onClick={() => void run(download)}>Download encrypted file</button>
       </div>
-
-      <div className="bg-gray-800 p-6 rounded-lg border border-gray-600 flex flex-col items-center gap-4 mt-6">
-        {wallet ? (
-          <QRCodeSVG
-            value={wallet}
-            size={128}
-            bgColor="#000000"
-            fgColor="#ffffff"
-            level="H"
-          />
-        ) : (
-          <></>
-        )}
-        {/* <img
-                    src="qrCode.png"
-                    alt="QR Code to receive payment"
-                    className="w-32 h-32"
-                /> */}
-        <div
-          className="text-sm text-gray-200 text-white cursor-pointer hover:underline"
-          onClick={handleCopyAddress}
-        >
-          {wallet || "No wallet connected"}
-        </div>
-      </div>
-
-      <div className="flex justify-center gap-10 mt-6">
-        <IconButton
-          iconSrc="icons/Icon-copy.svg"
-          label={copyLabel}
-          onClick={handleCopyAddress}
-        />
-      </div>
-
-      {ledgerAccount ? (
-        <p className="mt-6 px-1 text-white/60 text-sm">
-          This address stays on the Ledger. The pencil changes the name on the
-          login list. The extension keeps no seed or private key for it.
-        </p>
-      ) : (
-      <div className="mt-6 px-1 grid gap-2">
-        <p className="text-white text-sm font-medium">Save for quick login</p>
-        <input
-          type="text"
-          value={saveName}
-          onChange={(e) => setSaveName(e.target.value)}
-          placeholder="Wallet name"
-          className="w-full bg-primary/10 text-white border border-primary/50 rounded-lg px-3 py-2 text-sm"
-        />
-        <Button
-          className="w-full"
-          variant="outline"
-          onClick={() => void handleSaveNamed()}
-          disabled={saving || passkeyBusy || !saveName.trim()}
-        >
-          {saving ? "Saving…" : "Save named wallet (password)"}
-        </Button>
-        {passkeysSupported && (
-          <>
-            <label className="flex items-center gap-2 text-white/70 text-xs cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={want2fa}
-                onChange={(e) => setWant2fa(e.target.checked)}
-                disabled={passkeyBusy || saving}
-              />
-              Require 2FA (password + passkey)
-            </label>
-            <Button
-              className="w-full"
-              variant="outline"
-              onClick={() => void handleEnablePasskey(want2fa)}
-              disabled={passkeyBusy || saving || !saveName.trim()}
-            >
-              {awaitingPasskey
-                ? "Waiting for passkey…"
-                : want2fa
-                  ? hasPasskey
-                    ? "Update passkey + 2FA"
-                    : "Enable passkey with 2FA"
-                  : hasPasskey
-                    ? "Re-register passkey"
-                    : "Enable passkey unlock"}
-            </Button>
-          </>
-        )}
-        {require2faActive ? (
-          <p className="text-sky-300/90 text-xs">
-            2FA active — enter password, then passkey on login.
-          </p>
-        ) : hasPasskey ? (
-          <p className="text-emerald-400/80 text-xs">
-            Passkey unlock is active for this name — use Unlock with passkey on
-            login. Toggle 2FA above and re-enable to require password too.
-          </p>
-        ) : null}
-        <Button className="w-full" variant="outline" onClick={handleDownloadFile}>
-          Download warthog_wallet.txt
-        </Button>
-        {saveMsg && <p className="text-emerald-400 text-xs">{saveMsg}</p>}
-        {saveErr && <p className="text-red-400 text-xs">{saveErr}</p>}
-      </div>
-      )}
-
-      {awaitingPasskey && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="rounded-xl border border-primary/40 bg-[#1a1a1a] px-6 py-5 max-w-sm text-center">
-            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-white font-medium">Waiting for passkey…</p>
-            <p className="text-white/50 text-xs mt-1">
-              Use your password manager, Face ID, fingerprint, security key, or
-              scan the QR code when prompted.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className="mt-6 px-1">
-        <LedgerWindowSetting />
-      </div>
-
-      {!ledgerAccount && (
-        <div className="w-full mt-4 px-3 pb-4">
-          <Button className="w-full" onClick={() => navigate("/private-key")}>
-            Show Private Key
-          </Button>
-        </div>
-      )}
-    </div>
-  );
+      <h2 className="wallet-section-label">Passkey and 2FA</h2>
+      <p className="text-xs text-zinc-500 mb-3">Register or replace the passkey for the saved wallet name above.</p>
+      <label className="flex gap-2 text-xs mb-3"><input type="checkbox" checked={twoFactor} onChange={(event) => setTwoFactor(event.target.checked)} disabled={busy} />Require password and passkey at unlock</label>
+      <button className="defi-compact-btn" disabled={busy || !isWebAuthnAvailable() || !saveName.trim()} onClick={() => void run(async () => {
+        if (twoFactor && !pwd) throw new Error("Enter a password for 2FA");
+        await paintPasskeyWaiting(setAwaitingPasskey, setBusy);
+        await enablePasskeyOnCurrentWallet({ password: pwd, name: saveName.trim(), require2fa: twoFactor, preferFingerprint: false });
+        setStatus(twoFactor ? "Passkey and 2FA enabled" : "Passkey registered");
+      })}>{awaitingPasskey ? "Waiting for passkey…" : twoFactor ? "Register passkey with 2FA" : "Register passkey"}</button>
+    </>}
+    {error && <p className="defi-error mt-4">{error}</p>}{status && <p className="defi-success mt-4">{status}</p>}
+    {awaitingPasskey && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6" role="status"><p>Confirm the passkey prompt in your browser.</p></div>}
+  </div>;
 }
-
-export default AccountDetails;

@@ -6,6 +6,7 @@ import NetworkBadge from "../components/chains/NetworkBadge";
 import SpendConfirm, { useSpendFlow } from "../components/SpendConfirm";
 import NodeError from "../components/NodeError";
 import SwapStyleCard from "../components/SwapStyleCard";
+import TickerMenu from "../components/TickerMenu";
 import useWallet from "../hooks/useWallet";
 import { createTransactionContext, submitTransaction } from "../utils";
 import { amountExceedsAvailable, insufficientFreeBalanceMessage } from "../utils/balanceBreakdown";
@@ -923,18 +924,22 @@ export default function SafeTradePage() {
             >
               Withdraw
             </button>
-            <select
-              className="swap-chip-btn bg-zinc-900"
+            <TickerMenu
+              className="ticker-menu--chip ticker-menu--end"
+              ariaLabel="SafeTrade network"
               value={network}
-              onChange={(event) => {
-                const next = event.target.value as (typeof NETWORKS)[number];
+              onChange={(id) => {
+                const next = id as (typeof NETWORKS)[number];
                 setNetwork(next);
                 const first = routesOn(next)[0];
                 if (first) setPayId(first.id);
               }}
-            >
-              {NETWORKS.map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
+              items={NETWORKS.map((name) => ({
+                id: name,
+                label: name,
+                symbol: name === "Warthog" ? "WART" : name === "Ethereum" ? "ETH" : name === "Bitcoin" ? "BTC" : "SOL",
+              }))}
+            />
           </div>
         )}
         payHint={panel === "move" && moveDir === "deposit"
@@ -1201,19 +1206,23 @@ function OrderBook({
   const levelRow = (level: { price: number; amount: number }, side: "buy" | "sell", hot: boolean) => {
     const width = Math.min(100, (level.amount / maxAmount) * 100);
     const priceText = level.price.toFixed(market.pricePlaces);
-    const barClass = side === "sell"
-      ? (hot ? "bg-[rgba(251,113,133,0.4)]" : "bg-[rgba(251,113,133,0.16)]")
-      : (hot ? "bg-[rgba(52,211,153,0.4)]" : "bg-[rgba(52,211,153,0.16)]");
     const body = (
       <div className="relative flex min-h-[22px] items-center">
-        <div className={`absolute inset-y-px right-0 rounded-sm ${barClass}`} style={{ width: `${width}%` }} />
-        <span className={`relative z-[1] flex-1 text-[11px] font-semibold tabular-nums ${side === "sell" ? "text-rose-400" : "text-emerald-400"}`}>
+        <div
+          className="absolute inset-y-px right-0 rounded-sm"
+          style={{
+            width: `${width}%`,
+            background: side === "sell" ? "var(--defi-sell-muted)" : "var(--defi-buy-muted)",
+            opacity: hot ? 1 : 0.7,
+          }}
+        />
+        <span className="relative z-[1] flex-1 text-[11px] font-semibold tabular-nums" style={{ color: side === "sell" ? "var(--defi-sell)" : "var(--defi-buy)" }}>
           {priceText}
         </span>
-        <span className="relative z-[1] flex-1 text-right text-[11px] tabular-nums text-zinc-300">
+        <span className="num-color relative z-[1] flex-1 text-right text-[11px] tabular-nums">
           {formatBook(level.amount, market.amountPlaces)}
         </span>
-        <span className="relative z-[1] flex-1 text-right text-[11px] tabular-nums text-zinc-300">
+        <span className="num-color relative z-[1] flex-1 text-right text-[11px] tabular-nums">
           {formatBook(level.price * level.amount, market.totalPlaces)}
         </span>
       </div>
@@ -1256,7 +1265,7 @@ function OrderBook({
           <span className="ml-1 text-[11px] font-medium text-zinc-500">{quote}</span>
         </span>
         {changeText ? (
-          <span className={changeDown ? "text-rose-400" : changeUp ? "text-emerald-400" : "text-zinc-500"}>{changeText}</span>
+          <span style={{ color: changeDown ? "var(--defi-sell)" : changeUp ? "var(--defi-buy)" : undefined }} className={changeDown || changeUp ? undefined : "text-zinc-500"}>{changeText}</span>
         ) : null}
       </div>
       {bids.map((level, index) => (

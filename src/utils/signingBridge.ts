@@ -14,7 +14,11 @@ const pending = new Map<
   { resolve: (v: WorkerResponse) => void; reject: (e: Error) => void }
 >();
 
-const AUTO_LOCK_MS = 15 * 60 * 1000;
+function readAutoLockMinutes(): number {
+  const minutes = Number(localStorage.getItem("warthogAutoLockMinutes"));
+  return [1, 5, 15, 30, 60].includes(minutes) ? minutes : 15;
+}
+let autoLockMs = readAutoLockMinutes() * 60 * 1000;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let idleLockHandler: (() => void) | null = null;
 
@@ -52,7 +56,14 @@ function callWorker(action: string, payload: Record<string, unknown> = {}) {
 }
 
 export function getAutoLockMs() {
-  return AUTO_LOCK_MS;
+  return autoLockMs;
+}
+
+export function setAutoLockMinutes(minutes: number) {
+  if (![1, 5, 15, 30, 60].includes(minutes)) return;
+  localStorage.setItem("warthogAutoLockMinutes", String(minutes));
+  autoLockMs = minutes * 60 * 1000;
+  bumpIdleTimer();
 }
 
 export function setIdleLockHandler(fn: (() => void) | null) {
@@ -64,7 +75,7 @@ export function bumpIdleTimer() {
   idleTimer = setTimeout(() => {
     void lockSigningWorker();
     idleLockHandler?.();
-  }, AUTO_LOCK_MS);
+  }, autoLockMs);
 }
 
 export async function unlockSigningWorker(data: {
@@ -122,6 +133,7 @@ export async function exportWalletFromWorker() {
  */
 export async function runWithUnlockedAccount<T>(
   fn: (account: Account) => T | Promise<T>,
+  expectedAddress?: string,
 ): Promise<T> {
   const status = await getSigningStatus();
   if (!status.unlocked) {
@@ -129,6 +141,9 @@ export async function runWithUnlockedAccount<T>(
   }
   const wallet = await exportWalletFromWorker();
   try {
+    if (expectedAddress && wallet.address?.toLowerCase() !== expectedAddress.toLowerCase()) {
+      throw new Error("The active account changed. Review the transaction again.");
+    }
     const account = Account.fromPrivateKeyHex(wallet.privateKey);
     return await fn(account);
   } finally {

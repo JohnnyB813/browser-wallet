@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Header from "../components/Header";
 import Button from "../components/Button";
 import { useNavigate } from "react-router-dom";
-import UserDropdown from "../components/UserDropdown";
+import SenderSummary from "../components/SenderSummary";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, addressToSeed, createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
 import { explorerBaseUrl } from "../config/nodes";
@@ -16,7 +16,7 @@ import {
   Liquidity,
   RoundedFee,
   NonceId,
-  HDWallet,
+  Account,
   TransactionJson,
 } from "warthog-ts";
 import { ledgerWartSubmitJson, signWartTransferOnLedger } from "../ledger/warthogApp";
@@ -27,15 +27,7 @@ import {
   openLedgerInSidePanel,
 } from "../ledger/shell";
 import { isExtensionSidePanel } from "../utils/extensionNav";
-
-interface AccountType {
-  id: number;
-  name: string;
-  address: string;
-  balance: number;
-  balanceUSD: number;
-  visible: boolean;
-}
+import { exportWalletFromWorker } from "../utils/signingBridge";
 
 function SendFinalStep() {
   const {
@@ -43,7 +35,6 @@ function SendFinalStep() {
     token,
     selectedWalletIndex,
     selectedNodeIndex,
-    nameList,
     walletList,
     nodeList,
     tmpDestinationWallet,
@@ -52,11 +43,6 @@ function SendFinalStep() {
     tmpTokenAmount,
     tmpPrecision,
     tmpTransferType,
-    visibleWalletList,
-    setSelectedWalletIndex,
-    setName,
-    setWallet,
-    seedPhrase,
     ledgerAccount,
   } = useWallet();
   const navigate = useNavigate();
@@ -68,7 +54,6 @@ function SendFinalStep() {
     });
   }, []);
 
-  const [accounts, setAccounts] = useState<AccountType[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -80,32 +65,13 @@ function SendFinalStep() {
   const [transactionError, setTransactionError] = useState<string>("");
   const [customFee, setCustomFee] = useState<string>(DEFAULT_FEE_WART);
 
-  const selectUser = (id: number) => {
-    setName(nameList[id]);
-    setWallet(walletList[id]);
-    setSelectedWalletIndex(id);
+  const getAccountFromIndex = async (index: number) => {
+    const exported = await exportWalletFromWorker();
+    try {
+      if (exported.address !== walletList[index]) throw new Error("Signing account changed. Start the send again.");
+      return Account.fromPrivateKeyHex(exported.privateKey);
+    } finally { exported.privateKey = ""; }
   };
-
-  const getAccountFromIndex = (index: number) => {
-    return HDWallet.fromMnemonic(seedPhrase!).deriveAccountAtIndex(index);
-  };
-
-  useEffect(() => {
-    if (nameList.length !== walletList.length) {
-      console.log(`**** error:`, nameList.length, walletList.length);
-    } else {
-      setAccounts(
-        nameList.map((name, index) => ({
-          id: index,
-          name,
-          address: walletList[index],
-          balance: 0,
-          balanceUSD: 0,
-          visible: visibleWalletList[index],
-        })),
-      );
-    }
-  }, [walletList, nameList, visibleWalletList]);
 
   const getTransferTitle = () => {
     if (tmpTransferType === "wart") return "Send WART";
@@ -147,8 +113,6 @@ function SendFinalStep() {
     setTransactionStatus("processing");
 
     console.log("=== handleTransaction try block START ===");
-    console.log("  seedPhrase:", seedPhrase ? "EXISTS (" + seedPhrase.length + ")" : "NULL/UNDEFINED");
-    console.log("  seedPhrase (first 10):", seedPhrase ? seedPhrase.substring(0, 10) + "..." : "NULL");
     console.log("  selectedWalletIndex:", selectedWalletIndex);
     console.log("  password set:", !!password);
     console.log("  walletList length:", walletList.length);
@@ -157,7 +121,7 @@ function SendFinalStep() {
     try {
       const nonceId = NonceId.random();
 
-      const account = ledgerAccount ? null : getAccountFromIndex(selectedWalletIndex);
+      const account = ledgerAccount ? null : await getAccountFromIndex(selectedWalletIndex);
       const toAddr = Address.fromHex(tmpDestinationWallet!);
       if (!toAddr) {
         throw new Error("Invalid recipient address");
@@ -226,7 +190,7 @@ function SendFinalStep() {
       } else if (tmpTransferType === "token") {
         const fundsParsed = Funds.parse(
           tmpTokenAmount || "0",
-          new TokenDecimals(tmpPrecision || 8),
+          new TokenDecimals(tmpPrecision),
         );
         if (!fundsParsed) throw new Error("Invalid token amount");
         tx = requireDeFiContext(context).transferAsset(account!, tmpAssetHash!, toAddr, fundsParsed);
@@ -266,11 +230,7 @@ function SendFinalStep() {
 
       <div className="flex flex-col gap-1">
         <p className="text-white text-sm">From</p>
-        <UserDropdown
-          users={accounts}
-          selectedUser={accounts[selectedWalletIndex]}
-          onSelectUser={selectUser}
-        />
+        <SenderSummary />
 
         <p className="text-white text-sm mt-3">To</p>
         <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md">

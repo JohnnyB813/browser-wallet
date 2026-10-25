@@ -870,7 +870,7 @@ export default function ChainSwap({ chain }: { chain: Chain }) {
             ) : null}
           </div>
         )}
-        payHint={available ? <>Available <span className="text-zinc-300 tabular-nums">{formatUnits(available.raw, available.decimals)}</span> {paySymbol}{locked && !ends ? ` · ${locked.payNetwork}` : ""}</> : "Available …"}
+        payHint={available ? <>Available <span className="bal-color tabular-nums">{formatUnits(available.raw, available.decimals)}</span> {paySymbol}{locked && !ends ? ` · ${locked.payNetwork}` : ""}</> : "Available …"}
         onMax={available && available.raw > 0n ? () => setAmount(formatUnits(available.raw, available.decimals)) : undefined}
         amount={amount}
         onAmount={setAmount}

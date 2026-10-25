@@ -110,6 +110,7 @@ type Props = {
   /** Called when selected asset changes (for chart parent). */
   onAssetChange?: (hash: string, name: string, decimals: number) => void;
   initialMode?: SwapOrderMode;
+  poolOnly?: boolean;
   /** When set, the form stays visible and the submit buttons stay off. */
   inactiveReason?: string | null;
 };
@@ -133,6 +134,7 @@ export default function SwapDexPanel({
   onSuccess,
   onAssetChange,
   initialMode = "market",
+  poolOnly = false,
   inactiveReason = null,
 }: Props) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -698,12 +700,11 @@ export default function SwapDexPanel({
       {inactiveReason && (
         <p className="text-amber-200/90 text-xs mb-2 leading-relaxed">{inactiveReason}</p>
       )}
-      <div className="dex-tabs flex w-full gap-1.5 p-1 bg-zinc-950/80 border border-zinc-800/80 rounded-full mb-2.5">
+      {!poolOnly && <div className="dex-tabs flex w-full gap-1.5 p-1 bg-zinc-950/80 border border-zinc-800/80 rounded-full mb-2.5">
         {(
           [
             { id: "market" as const, label: "Market" },
             { id: "limit" as const, label: "Limit" },
-            { id: "pool" as const, label: "Pool" },
           ] as const
         ).map((tab) => (
           <button
@@ -711,16 +712,13 @@ export default function SwapDexPanel({
             type="button"
             onClick={() => {
               setOrderMode(tab.id);
-              if (tab.id === "pool" && assetHash) {
-                void loadMarket(assetHash);
-              }
             }}
             className={`dex-tab-btn${orderMode === tab.id ? " dex-tab-btn--active" : ""}`}
           >
             {tab.label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ── Pool / Liquidity ── */}
       {orderMode === "pool" && (
@@ -796,7 +794,7 @@ export default function SwapDexPanel({
               {lpBalance != null && (
                 <p className="text-[10px] text-zinc-500 mt-2">
                   Your LP shares:{" "}
-                  <span className="text-amber-400/90 tabular-nums">
+                  <span className="bal-color tabular-nums">
                     {lpBalance}
                   </span>
                 </p>
@@ -804,7 +802,7 @@ export default function SwapDexPanel({
               {spotPrice != null && (
                 <p className="text-[10px] text-zinc-500 mt-1">
                   Spot:{" "}
-                  <span className="text-zinc-300 tabular-nums">
+                  <span className="num-color tabular-nums">
                     {formatSpot(spotPrice)}
                   </span>{" "}
                   WART
@@ -991,7 +989,7 @@ export default function SwapDexPanel({
                       title="Use available balance"
                     >
                       <span className="text-zinc-500">Available </span>
-                      <span className="text-zinc-300 tabular-nums">
+                      <span className="bal-color tabular-nums">
                         {displayPayAvailable.available}
                       </span>
                       <span className="text-zinc-500">
@@ -1273,7 +1271,7 @@ export default function SwapDexPanel({
                         <>
                           <div className="defi-stat-box">
                             <div className="defi-stat-label">WART</div>
-                            <div className="defi-stat-value">
+                            <div className="defi-stat-value bal-color">
                               {String(
                                 (pool.wart as { str?: string })?.str ||
                                   pool.wart ||
@@ -1284,7 +1282,7 @@ export default function SwapDexPanel({
                           </div>
                           <div className="defi-stat-box">
                             <div className="defi-stat-label">Asset</div>
-                            <div className="defi-stat-value">
+                            <div className="defi-stat-value bal-color">
                               {String(
                                 (pool.asset as { str?: string })?.str ||
                                   pool.asset ||

@@ -164,6 +164,32 @@ class WarthogBackground {
       const url = sender.url || '';
       const origin = this.extractOrigin(url);
 
+      if (message.action === 'walletListConnections' || message.action === 'walletRevokeConnection') {
+        // These administration messages are private to our extension pages.
+        // A content script has the website URL here, even though its ID is ours.
+        if (!url.startsWith(browser.runtime.getURL(''))) {
+          sendResponse({ error: 'Unauthorized' });
+          return;
+        }
+        return this.ready.then(async () => {
+          if (message.action === 'walletListConnections') {
+            return [...this.connections.entries()].map(([siteOrigin, connection]) => ({ origin: siteOrigin, accounts: connection.accounts || [] }));
+          }
+          const siteOrigin = message.origin;
+          this.connections.delete(siteOrigin);
+          if (this.pendingRequest?.origin === siteOrigin) {
+            this.handleRejectRequest();
+            await browser.storage.local.remove('pendingApproval');
+          }
+          await browser.storage.local.set({ connections: JSON.stringify(Object.fromEntries(this.connections)) });
+          const tabs = await browser.tabs.query({});
+          for (const tab of tabs) {
+            if (tab.id != null && this.extractOrigin(tab.url || '') === siteOrigin) this.sendToTab(tab.id, 'accountsChanged', []);
+          }
+          return { success: true };
+        });
+      }
+
       if (message.action === 'approvalResult') {
         console.log('handling approvalResult:', message.payload);
         this.handleApprovalResult(message.payload);

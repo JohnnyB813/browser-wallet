@@ -3,8 +3,7 @@ import { searchAssetsDetailed, type AssetInfo } from "../utils/defiClient";
 import { fetchWartUsdPrice } from "../utils/wartPrice";
 import { shouldStartUpdate } from "../utils/updatePending";
 import { fetchBalanceAndPin, nodeRead } from "../utils/warthogNode";
-import ProfileHeader from "../components/ProfileHeader";
-import TabNavigation, { Tab } from "../components/TabNavigation";
+import { Tab } from "../components/TabNavigation";
 import TransactionHistoryPanel, {
   type HistoryActivity,
 } from "../components/TransactionHistoryPanel";
@@ -12,27 +11,30 @@ import PendingTxRow from "../components/PendingTxRow";
 import CancelConfirmModal from "../components/CancelConfirmModal";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
-import { IoSend, IoTrendingUp, IoWater, IoDiamond, IoCloseCircleOutline } from "react-icons/io5";
+import { IoSend, IoTrendingUp, IoDownloadOutline, IoCloseCircleOutline, IoWater, IoDiamond } from "react-icons/io5";
 import { useChainAccounts } from "../chains/useChainAccounts";
-import ChainPicker from "../components/chains/ChainPicker";
 import ChainHoldings from "../components/chains/ChainHoldings";
 import NetworkBadge from "../components/chains/NetworkBadge";
+import ChainActivity from "../components/chains/ChainActivity";
+import OpenOrders from "../components/OpenOrders";
+import WatchedAssets from "../components/WatchedAssets";
 import NodeError from "../components/NodeError";
 import TokenMark from "../components/chains/TokenMark";
-import { toast } from "../utils/toast";
-import { isDefiNode } from "../utils/nodes";
+import AssetMark, { AssetTitle } from "../components/AssetMark";
+import { TickerFace, type TickerMenuItem } from "../components/TickerMenu";
 import { hasPositiveLocked } from "../utils/balanceBreakdown";
 import { formatDisplayNumber, loadNumberDisplayPrefs } from "../utils/numberDisplay";
-import { FaChevronDown, FaSearch, FaSync } from "react-icons/fa";
-import Jazzicon from "react-jazzicon";
+import { FaSync } from "react-icons/fa";
+import SenderSummary from "../components/SenderSummary";
 import { getPendingApproval, approveRequest, rejectRequest, PendingApproval } from "../utils/extensionApi";
-import { addressToSeed, createTransactionContext, formatAddress, submitTransaction } from "../utils";
+import { createTransactionContext, formatAddress, submitTransaction } from "../utils";
 import { Address, NonceId, RoundedFee, Wart } from "warthog-ts";
 import { ledgerWartSubmitJson, signWartTransferOnLedger } from "../ledger/warthogApp";
 import { readLedgerWindowMode, storeLedgerSignJob, takeLedgerLastTx, type LedgerWindowMode } from "../ledger/session";
 import { isToolbarActionPopup, openLedgerHost, openLedgerInSidePanel } from "../ledger/shell";
 import { reloadDocumentOnce } from "../utils/extensionNav";
 import { DEFAULT_FEE_WART } from "../config";
+import { runWithUnlockedAccount } from "../utils/signingBridge";
 import {
   type NodeMempoolEntry,
   type NodeTx,
@@ -132,89 +134,87 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl, defi }: { selectedTok
     setRecentTokens(recent);
   };
 
-  const displayName = selectedToken.hash
-    ? `${selectedToken.name} (${formatAddress(selectedToken.hash, 8)})`
-    : 'WART';
+  const tokenItem = (token: Token): TickerMenuItem => token.hash
+    ? {
+        id: token.hash,
+        label: token.name,
+        hash: token.hash,
+        name: token.name,
+        hint: formatAddress(token.hash, 6),
+      }
+    : { id: "wart", label: "WART", symbol: "WART", hint: "Native currency" };
 
   return (
-    <div className="relative w-full" ref={dropdownRef}>
+    <div className={`ticker-menu ticker-menu--field${showDropdown ? " ticker-menu--open" : ""}`} ref={dropdownRef}>
       <button
+        type="button"
+        className="ticker-menu-btn"
+        aria-haspopup="listbox"
+        aria-expanded={showDropdown}
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-left transition-colors hover:bg-white/15"
       >
-        <span className="text-primary font-medium">{displayName}</span>
-        <FaChevronDown className={`text-white/50 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+        <TickerFace item={tokenItem(selectedToken)} size={18} compact />
+        <span className="ticker-menu-chevron" aria-hidden="true">{showDropdown ? "▴" : "▾"}</span>
       </button>
 
       {showDropdown && (
-        <div className="home-token-menu">
-          <div className="p-2 border-b border-white/10">
-            {defi ? (
-              <div className="relative">
-                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search tokens..."
-                  className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-hidden focus:border-primary"
-                  autoFocus
-                />
-              </div>
-            ) : (
-              <p className="text-[11px] text-white/40 py-1">
-                Assets are on the DeFi testnet. Switch the network to pick one.
-              </p>
-            )}
-          </div>
+        <div className="ticker-menu-panel">
+          {defi ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tokens"
+              className="ticker-menu-search"
+              aria-label="Search tokens"
+              autoFocus
+            />
+          ) : (
+            <p className="ticker-menu-note">
+              Assets are on the DeFi testnet. Switch the network to pick one.
+            </p>
+          )}
 
-          <div className="max-h-64 overflow-y-auto">
+          <div className="ticker-menu-list" role="listbox" aria-label="Assets">
             {!searchQuery && recentTokens.length > 0 && (
               <div>
-                <div className="px-3 py-1 text-xs text-white/40 uppercase tracking-wider">Recent</div>
+                <div className="ticker-menu-label">Recent</div>
                 {/* A testnet asset does not belong in a mainnet list. */}
                 {recentTokens
                   .filter((token) => defi || !token.hash)
                   .map((token) => (
                   <button
-                    key={token.hash || 'wart'}
+                    key={token.hash || "wart"}
+                    type="button"
+                    role="option"
                     onClick={() => handleSelect(token)}
-                    className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2"
+                    className="ticker-menu-option"
                   >
-                    <span className={token.hash ? 'text-primary' : 'text-yellow-400'}>
-                      {token.name}
-                    </span>
-                    {token.hash && (
-                      <span className="text-white/40 text-xs font-mono">
-                        ({formatAddress(token.hash, 6)})
-                      </span>
-                    )}
+                    <TickerFace item={tokenItem(token)} />
                   </button>
                 ))}
-                <div className="border-t border-white/10 mt-1" />
               </div>
             )}
 
             {searchQuery && (
             <div>
-              <div className="px-3 py-1 text-xs text-white/40 uppercase tracking-wider">Search Results</div>
+              <div className="ticker-menu-label">Search results</div>
               {searchLoading && (
-                <div className="px-3 py-2 text-white/50 text-sm">Searching...</div>
+                <p className="ticker-menu-note">Searching...</p>
               )}
-              {!searchLoading && searchResults.length === 0 && searchQuery && (
-                <div className="px-3 py-2 text-white/50 text-sm">No tokens found</div>
+              {!searchLoading && searchResults.length === 0 && (
+                <p className="ticker-menu-note">No tokens found</p>
               )}
               {!searchLoading && searchResults.map((token) => (
                 <button
                   key={token.hash}
-                  onClick={() => handleSelect({ spec: 'asset', name: token.name, hash: token.hash })}
-                  className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2"
+                  type="button"
+                  role="option"
+                  onClick={() => handleSelect({ spec: "asset", name: token.name, hash: token.hash })}
+                  className="ticker-menu-option"
                 >
-                  <span className="text-primary">{token.name}</span>
-                  <span className="text-white/40 text-xs font-mono">
-                    ({token.hash && formatAddress(token.hash, 6)})
-                  </span>
+                  <TickerFace item={tokenItem(token)} />
                 </button>
               ))}
             </div>
@@ -222,11 +222,12 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl, defi }: { selectedTok
 
             {!searchQuery && (
               <button
-                onClick={() => handleSelect({ spec: 'WART', name: 'WART', hash: null })}
-                className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 border-t border-white/10"
+                type="button"
+                role="option"
+                onClick={() => handleSelect({ spec: "WART", name: "WART", hash: null })}
+                className="ticker-menu-option"
               >
-                <span className="text-yellow-400 font-semibold">WART</span>
-                <span className="text-white/40 text-xs">(native currency)</span>
+                <TickerFace item={{ id: "wart", label: "WART", symbol: "WART", hint: "Native currency" }} />
               </button>
             )}
           </div>
@@ -236,21 +237,17 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl, defi }: { selectedTok
   );
 }
 
-const Home: React.FC = () => {
+const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) => {
   const {
     wallet,
     selectedNodeIndex,
     nodeList,
-    walletList,
-    nameList,
     ledgerAccount,
     activeNetwork,
-    switchNetwork,
-    setActiveNetwork,
     nodeError,
     selectedNode,
   } = useWallet();
-  const { accounts, chains, chain, setChain, phrasePending } = useChainAccounts();
+  const { accounts, chains, chain, phrasePending, network, setNetwork, address } = useChainAccounts();
   const navigate = useNavigate();
   const [balance, setBalance] = useState(0);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -279,19 +276,17 @@ const Home: React.FC = () => {
   const [holdingsTick, setHoldingsTick] = useState(0);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [showApprovalBanner, setShowApprovalBanner] = useState(false);
-  const [approvalWalletIndex, setApprovalWalletIndex] = useState(selectedNodeIndex);
-  const [isDropdownVisible, setDropdownVisible] = useState(false);
   const [selectedToken, setSelectedToken] = useState<Token>({ spec: 'WART', name: 'WART', hash: null });
   // WART is the native currency. Any other selection is a DeFi testnet
   // asset, which only the testnet node knows about.
-  const isWart = !selectedToken.hash;
   // The card is pending while the update of the node the wallet is on is
   // running. An update of another node does not make this one wait.
   const refreshing = Boolean(
-    pendingNodeUrl && pendingNodeUrl === currentNodeRef.current,
+    chain === "wart" && pendingNodeUrl && pendingNodeUrl === currentNodeRef.current,
   );
 
-  const [activeTab, setActiveTab] = useState<Tab>(Tab.Actions);
+  const [activeTab, setActiveTab] = useState<Tab>(view === "activity" ? Tab.History : Tab.Actions);
+  const [showOrders, setShowOrders] = useState(false);
   const [ledgerNote, setLedgerNote] = useState<string | null>(null);
   const windowModeRef = useRef<LedgerWindowMode>("dropdown");
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -304,19 +299,12 @@ const Home: React.FC = () => {
     navigate("/activity-details", { state: item });
   };
 
-  /**
-   * Pick the coin the card shows.
-   *
-   * A DeFi asset only exists on the testnet, so picking one moves the
-   * wallet there. The mainnet node has no asset balances and no asset
-   * search, so a testnet asset on a mainnet node would show nothing.
-   */
+  /** Asset selection never changes the active network. */
   const selectToken = useCallback(
     (token: Token) => {
       setSelectedToken(token);
-      if (token.hash) setActiveNetwork("defi-testnet");
     },
-    [setActiveNetwork],
+    [],
   );
 
   useEffect(() => {
@@ -362,9 +350,17 @@ const Home: React.FC = () => {
   };
 
   const handleApprove = async () => {
+    if (chain !== "wart") {
+      setLedgerNote("Select the Warthog network requested by this site before approving.");
+      return;
+    }
+    if (pendingApproval?.from && pendingApproval.from.toLowerCase() !== wallet?.toLowerCase()) {
+      setLedgerNote("This request is for another account. Select that account in the header before approving.");
+      return;
+    }
     if (pendingApproval?.action === 'requestAccounts') {
-      const account = walletList[approvalWalletIndex];
-      await approveRequest([account]);
+      if (!wallet) return;
+      await approveRequest([wallet]);
       setShowApprovalBanner(false);
       setPendingApproval(null);
       return;
@@ -435,6 +431,26 @@ const Home: React.FC = () => {
       } finally {
         setApprovalBusy(false);
       }
+      return;
+    }
+    if (pendingApproval?.action === "sendTransaction" || pendingApproval?.action === "transferWart") {
+      setApprovalBusy(true);
+      setLedgerNote(null);
+      try {
+        if (!wallet) throw new Error("No account selected");
+        const recipient = Address.fromHex(pendingApproval.to || "");
+        const amount = Wart.parse(pendingApproval.amount || "0");
+        const fee = RoundedFee.fromE8(BigInt(Math.round(Number(DEFAULT_FEE_WART) * 1e8)), false);
+        if (!recipient || !amount || !fee) throw new Error("Invalid transaction request");
+        const context = await createTransactionContext(nodeList, selectedNodeIndex, fee, NonceId.random());
+        const transaction = await runWithUnlockedAccount((account) => context.transferWart(account, recipient, amount), wallet);
+        const hash = await submitTransaction(nodeList, selectedNodeIndex, transaction);
+        await approveRequest(undefined, hash);
+        setShowApprovalBanner(false);
+        setPendingApproval(null);
+      } catch (error) {
+        setLedgerNote(error instanceof Error ? error.message : "Signing failed");
+      } finally { setApprovalBusy(false); }
     }
   };
 
@@ -559,12 +575,16 @@ const Home: React.FC = () => {
    * is working for as long as the node takes to answer.
    */
   const refreshCard = useCallback(() => {
+    if (chain !== "wart") {
+      setHoldingsTick((tick) => tick + 1);
+      return;
+    }
     // An update already running for this node is not started again.
     if (!startUpdate(currentNodeRef.current)) return;
     updateBalance(true);
     updateBalanceUSD();
     setHoldingsTick((tick) => tick + 1);
-  }, [startUpdate, updateBalance, updateBalanceUSD]);
+  }, [chain, startUpdate, updateBalance, updateBalanceUSD]);
 
   /**
    * Move to the other family and refresh what the card shows.
@@ -574,10 +594,6 @@ const Home: React.FC = () => {
    * yet, so it would read the node being left. The pending state is set
    * by that effect, once it knows which node the wallet landed on.
    */
-  const switchNetworkAndRefresh = useCallback(() => {
-    switchNetwork();
-    setHoldingsTick((tick) => tick + 1);
-  }, [switchNetwork]);
 
   // Read the balance when the node changes.
   //
@@ -590,27 +606,28 @@ const Home: React.FC = () => {
   // so toggling back to a node that is still being read does not queue a
   // second read of it.
   useEffect(() => {
-    if (!wallet) return;
+    if (!wallet || chain !== "wart" || view !== "wallet") return;
     const nodeUrl = selectedNode?.url ?? null;
     if (!nodeUrl) return;
     if (!shouldStartUpdate(nodeUrl, pendingNodeRef.current)) return;
     pendingNodeRef.current = nodeUrl;
     setPendingNodeUrl(nodeUrl);
     void updateBalance(true);
-  }, [wallet, selectedNode?.url, updateBalance]);
+  }, [wallet, chain, view, selectedNode?.url, updateBalance]);
 
   useEffect(() => {
-    if (wallet) {
-      const intervalIdPrice = setInterval(updateBalanceUSD, 1500);
+    if (wallet && chain === "wart" && view === "wallet") {
+      updateBalanceUSD();
+      const intervalIdPrice = setInterval(updateBalanceUSD, 60000);
       // A poll is a background refresh, not something the user asked for,
       // so it does not own the pending state.
-      const intervalId = setInterval(() => void updateBalance(false), 1500);
+      const intervalId = setInterval(() => void updateBalance(false), 15000);
       return () => {
         clearInterval(intervalIdPrice);
         clearInterval(intervalId);
       };
     }
-  }, [wallet, selectedToken, selectedNodeIndex, updateBalance, updateBalanceUSD]);
+  }, [wallet, chain, view, selectedToken, selectedNodeIndex, updateBalance, updateBalanceUSD]);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -618,29 +635,16 @@ const Home: React.FC = () => {
         const showAmount = (value: string) =>
           formatDisplayNumber(value, loadNumberDisplayPrefs(), { fallback: value || "0" });
         const usd = balance * balanceUSD;
-        const copyAddress = (value: string) => {
-          void navigator.clipboard.writeText(value);
-          toast.success("Copied", value);
-        };
         return (
           <div className="space-y-4">
             <div className="home-wallet-card">
-              {/* One row: the chain, the network within it, and the refresh.
-                  The badge belongs beside the chain picker, because the two
-                  answer the same question from different sides: the picker
-                  says which chain, the badge says which network in it. */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <ChainPicker chains={chains} chain={chain} onChange={setChain} />
-                  {/* The network switch is a Warthog setting. A testnet asset
-                      is not on the Warthog chain, so there is no network to
-                      switch and the badge does not apply. Off the Warthog
-                      chain the card shows that chain's coins, and the
-                      Warthog node's family says nothing about them. */}
-                  {chain === "wart" && isWart ? (
+                  <span className="text-xs text-zinc-500">Available balance</span>
+                  {chain === "wart" ? (
                     <NetworkBadge
-                      network={activeNetwork}
-                      onSwitch={switchNetworkAndRefresh}
+                      network={network.id === "wart-testnet" ? "defi-testnet" : "mainnet"}
+                      onSwitch={() => setNetwork(network.id === "wart-testnet" ? "wart-mainnet" : "wart-testnet")}
                     />
                   ) : null}
                 </div>
@@ -658,22 +662,29 @@ const Home: React.FC = () => {
                 <>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
-                      <TokenMark symbol={selectedToken.hash ? selectedToken.name : "WART"} size={28} />
-                      <p className="text-sm font-semibold text-white">
-                        {selectedToken.hash ? selectedToken.name : "WART"}
+                      {selectedToken.hash ? (
+                        <AssetMark hash={selectedToken.hash} name={selectedToken.name} round />
+                      ) : (
+                        <TokenMark symbol="WART" size={28} />
+                      )}
+                      <p className="min-w-0 truncate text-sm font-semibold text-white">
+                        {selectedToken.hash ? (
+                          <AssetTitle hash={selectedToken.hash} name={selectedToken.name} />
+                        ) : "WART"}
                       </p>
                     </div>
-                    <p className="font-mono text-sm font-semibold text-white">
+                    <p className="bal-color font-mono text-sm font-semibold">
                       {showAmount(wartSpend.available || "0")}
                     </p>
                   </div>
                   {!selectedToken.hash && hasPositiveLocked(wartSpend.locked) ? (
                     <p className="text-[11px] text-zinc-500">
-                      Locked {showAmount(wartSpend.locked)} · Total {showAmount(wartSpend.total)}
+                      Locked <span className="bal-color">{showAmount(wartSpend.locked)}</span>
+                      {" · "}Total <span className="bal-color">{showAmount(wartSpend.total)}</span>
                     </p>
                   ) : null}
-                  {!selectedToken.hash && usd > 0 ? (
-                    <p className="font-mono text-sm text-zinc-400">≈ {showAmount(String(usd))} USD</p>
+                  {!selectedToken.hash && activeNetwork === "mainnet" && usd > 0 ? (
+                    <p className="num-color font-mono text-sm">≈ {showAmount(String(usd))} USD</p>
                   ) : null}
                   <NodeError message={balanceError} />
                   {/* The family has no node at all, so the picker is the
@@ -685,21 +696,12 @@ const Home: React.FC = () => {
                       alwaysLink
                     />
                   ) : null}
-                  {wallet ? (
-                    <button
-                      type="button"
-                      className="text-center font-mono text-[11px] text-zinc-400"
-                      onClick={() => copyAddress(wallet)}
-                    >
-                      {wallet.slice(0, 10)}…{wallet.slice(-8)}
-                    </button>
-                  ) : null}
-                  <TokenSelector
+                  {activeNetwork === "defi-testnet" && <TokenSelector
                     selectedToken={selectedToken}
                     onSelect={selectToken}
                     nodeUrl={nodeList[selectedNodeIndex]?.url || ""}
                     defi={activeNetwork === "defi-testnet"}
-                  />
+                  />}
                   {chains.length < 2 && !phrasePending ? (
                     <p className="text-[11px] text-zinc-500">
                       {ledgerAccount
@@ -715,73 +717,45 @@ const Home: React.FC = () => {
                   btcAddress={accounts.btcAddress}
                   solAddress={accounts.solAddress}
                   refreshTick={holdingsTick}
-                  onSend={() => navigate("/chain-send")}
-                  onTunnel={() => navigate("/swap", { state: { mode: "tunnel" } })}
                 />
               )}
             </div>
-            <div className="flex flex-row justify-center gap-3 w-full">
-              <div
-                className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                onClick={() => navigate(chain === "wart" ? "/send" : "/chain-send")}
-              >
-                <IoSend className="text-2xl text-primary" />
-                <p className="text-white text-sm font-semibold">Send</p>
-              </div>
-              {/* The Warthog dex swap needs a DeFi node: the mainnet node has
-                  no dex endpoints and cannot build a limit swap. Off the
-                  Warthog chain the swap screen is the cross-chain one, which
-                  does not use a Warthog node at all, so it is always here. */}
-              {chain !== "wart" ? (
-                <div
-                  className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                  onClick={() => navigate("/swap")}
-                >
-                  <IoTrendingUp className="text-2xl text-primary" />
-                  <p className="text-white text-sm font-semibold">Swap</p>
-                </div>
-              ) : null}
-              {/* Liquidity and Mint are the Warthog dex actions. They need a
-                  DeFi node: the mainnet node has no dex endpoints and cannot
-                  build a liquidity deposit or an asset creation. They are
-                  for WART on the testnet, so a testnet asset does not show
-                  them either. They are also Warthog chain actions, so they
-                  are hidden on Ethereum, Bitcoin, Hemi and Solana. */}
-              {isWart && chain === "wart" && isDefiNode(selectedNode) ? (
+            <div className={`wallet-actions${chain === "wart" && network.id === "wart-testnet" ? " wallet-actions--quad" : ""}`}>
+              <button type="button" onClick={() => navigate(chain === "wart" ? "/send" : "/chain-send")}>
+                <IoSend />
+                Send
+              </button>
+              {chain === "wart" && network.id === "wart-testnet" ? (
                 <>
-                  <div
-                    className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                    onClick={() => navigate("/swap")}
-                  >
-                    <IoTrendingUp className="text-2xl text-primary" />
-                    <p className="text-white text-sm font-semibold">Swap</p>
-                  </div>
-                  <div
-                    className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                    onClick={() => navigate("/liquidity")}
-                  >
-                    <IoWater className="text-2xl text-primary" />
-                    <p className="text-white text-sm font-semibold">Liquidity</p>
-                  </div>
-                  <div
-                    className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                    onClick={() => navigate("/create-token")}
-                  >
-                    <IoDiamond className="text-2xl text-primary" />
-                    <p className="text-white text-sm font-semibold">Mint</p>
-                  </div>
+                  <button type="button" onClick={() => navigate("/swap")}>
+                    <IoTrendingUp />
+                    Swap
+                  </button>
+                  <button type="button" onClick={() => navigate("/liquidity")}>
+                    <IoWater />
+                    Liquidity
+                  </button>
+                  <button type="button" onClick={() => navigate("/create-token")}>
+                    <IoDiamond />
+                    Mint
+                  </button>
                 </>
-              ) : null}
-              {chain === "ethereum" ? (
-                <div
-                  className="p-4 bg-white/10 rounded-xl flex flex-col items-center gap-2 cursor-pointer border border-transparent hover:border-primary/50 transition-all duration-200 min-w-[80px]"
-                  onClick={() => navigate("/aave")}
-                >
-                  <IoWater className="text-2xl text-primary" />
-                  <p className="text-white text-sm font-semibold">Aave</p>
-                </div>
-              ) : null}
+              ) : (
+                <>
+                  <button type="button" onClick={() => navigate("/receive")}>
+                    <IoDownloadOutline />
+                    Receive
+                  </button>
+                  {chain !== "wart" && network.capabilities.includes("swap") ? (
+                    <button type="button" onClick={() => navigate("/swap")}>
+                      <IoTrendingUp />
+                      Swap
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
+            {network.id === "wart-testnet" && <WatchedAssets refreshTick={holdingsTick} />}
             {ledgerNote && (
               <p className="text-amber-200/90 text-xs text-center px-2">{ledgerNote}</p>
             )}
@@ -812,7 +786,7 @@ const Home: React.FC = () => {
                 key={item.transaction?.hash || idx}
                 type={item.type}
                 tx={item.transaction ?? {}}
-                onCancel={handleCancel}
+                onCancel={network.capabilities.includes("orders") && !ledgerAccount ? handleCancel : undefined}
               />
             ))}
             {pendingLoading && (
@@ -846,51 +820,8 @@ const Home: React.FC = () => {
               <IoCloseCircleOutline size={24} />
             </button>
           </div>
-          {pendingApproval.action === 'requestAccounts' && (
-            <div className="relative mb-2">
-              <div
-                className="flex items-center justify-between gap-3 p-3 rounded-lg border border-primary/25 bg-[#1a1a1a] cursor-pointer"
-                onClick={() => setDropdownVisible((prev) => !prev)}
-              >
-                <div className="flex items-center gap-3">
-                  <Jazzicon diameter={32} seed={addressToSeed(walletList[approvalWalletIndex])} />
-                  <div>
-                    <p className="text-white text-sm font-semibold">
-                      {nameList[approvalWalletIndex] || 'Loading...'}
-                    </p>
-                    <p className="text-white/50 text-xs">
-                      {walletList[approvalWalletIndex] ? `${walletList[approvalWalletIndex].slice(0, 6)}...${walletList[approvalWalletIndex].slice(-4)}` : '...'}
-                    </p>
-                  </div>
-                </div>
-                <FaChevronDown className="text-white" />
-              </div>
-              {isDropdownVisible && walletList.length > 0 && (
-                <div className="absolute z-10 mt-2 left-0 w-full bg-black border border-primary/50 rounded-lg overflow-hidden">
-                  {walletList.map((wallet, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer"
-                      onClick={() => {
-                        setApprovalWalletIndex(idx);
-                        setDropdownVisible(false);
-                      }}
-                    >
-                      <Jazzicon diameter={32} seed={addressToSeed(wallet)} />
-                      <div>
-                        <p className="text-white text-sm font-semibold">
-                          {nameList[idx] || `Account ${idx + 1}`}
-                        </p>
-                        <p className="text-white/50 text-xs">
-                          {`${wallet.slice(0, 6)}...${wallet.slice(-4)}`}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <SenderSummary />
+          {ledgerNote && <p className="text-xs text-amber-200 mt-2">{ledgerNote}</p>}
           {pendingApproval.to && (
             <p className="text-white/70 text-sm mb-2">To: {pendingApproval.to}</p>
           )}
@@ -915,14 +846,16 @@ const Home: React.FC = () => {
         </div>
       )}
 
-      <div className="p-2.5 bg-white/10 w-full rounded-48 backdrop-blur-[9px] flex-col justify-center items-center gap-4 inline-flex overflow-visible relative z-10">
-        <ProfileHeader wallet={wallet} />
-      </div>
-
-      <TabNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
+      <h1 className="wallet-page-title">{view === "activity" ? "Activity" : "Wallet"}</h1>
+      {view === "activity" && chain === "wart" && <div className="defi-subtabs">
+        <button className={`defi-compact-btn ${!showOrders && activeTab === Tab.History ? "defi-compact-btn-active" : ""}`} onClick={() => { setShowOrders(false); setActiveTab(Tab.History); }}>History</button>
+        <button className={`defi-compact-btn ${!showOrders && activeTab === Tab.Pending ? "defi-compact-btn-active" : ""}`} onClick={() => { setShowOrders(false); setActiveTab(Tab.Pending); }}>Pending</button>
+        {network.id === "wart-testnet" && <button className={`defi-compact-btn ${showOrders ? "defi-compact-btn-active" : ""}`} onClick={() => setShowOrders(true)}>Open orders</button>}
+      </div>}
 
       <div className="mt-4">
-        {renderTabContent()}
+        {view === "activity" && chain !== "wart" && accounts ? <ChainActivity chain={chain} address={address} ethAddress={accounts.ethAddress} btcAddress={accounts.btcAddress} solAddress={accounts.solAddress} />
+          : showOrders ? <OpenOrders /> : renderTabContent()}
       </div>
 
       {showCancelModal && cancelTx && (

@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import Button from "../components/Button";
 import Header from "../components/Header";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
 import { addressToSeed } from "../utils";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 
 function ShowPrivateKey() {
+  const recovery = useLocation().pathname === "/recovery-phrase";
   const {
     password,
     seedPhrase,
@@ -36,7 +37,10 @@ function ShowPrivateKey() {
     try {
       const { exportWalletFromWorker } = await import("../utils/signingBridge");
       const exported = await exportWalletFromWorker();
-      setRevealedKey(exported.privateKey);
+      const secret = recovery ? exported.mnemonic : exported.privateKey;
+      exported.privateKey = "";
+      if (!secret) throw new Error("No recovery phrase is available for this wallet");
+      setRevealedKey(secret);
       setPrivateKeyVisible(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not export key");
@@ -49,7 +53,7 @@ function ShowPrivateKey() {
       return;
     }
     setRevealedKey(null);
-    navigate("/home");
+    navigate("/settings");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -60,7 +64,7 @@ function ShowPrivateKey() {
 
   return (
     <div className="container min-h-screen flex flex-col items-center">
-      <Header title="Show Private Key" />
+      <Header title={recovery ? "Recovery phrase" : "Warthog private key"} />
 
       <div className="flex items-center gap-4 mt-6">
         {/* <img
@@ -77,7 +81,7 @@ function ShowPrivateKey() {
       {!isPrivateKeyVisible && signingUnlocked && (
         <div className="w-full max-w-sm mt-6">
           <label htmlFor="password" className="text-sm text-white font-normal">
-            Enter password
+              {password ? "Enter password" : "Confirm to reveal your secret"}
           </label>
           <input
             id="password"
@@ -95,8 +99,8 @@ function ShowPrivateKey() {
       {/* Show Private Key Section */}
       {isPrivateKeyVisible && revealedKey && (
         <div className="mt-6">
-          <p className="text-white text-sm">Private Key</p>
-          <div className="px-3 py-3 rounded-lg border border-primary/25 backdrop-blur-md flex items-center w-[400px]">
+          <p className="text-white text-sm">{recovery ? "Recovery phrase (all accounts and networks)" : "Warthog private key"}</p>
+          <div className="px-3 py-3 rounded-lg border border-primary/25 backdrop-blur-md flex items-center w-full">
             <div className="text-white text-lg w-full wrap-break-word">
 {revealedKey}
             </div>
@@ -107,7 +111,7 @@ function ShowPrivateKey() {
               Warning:{" "}
             </span>
             <span className="text-white/80 text-sm">
-              Never disclose this key to anyone. Your private keys can be used
+              Never disclose this secret to anyone. It can be used
               to steal any assets held in your account.
             </span>
           </p>
@@ -120,7 +124,7 @@ function ShowPrivateKey() {
           <>
             <Button
               className="w-full"
-              onClick={() => navigate("/home")}
+              onClick={() => navigate("/settings")}
               variant="outline"
             >
               Cancel

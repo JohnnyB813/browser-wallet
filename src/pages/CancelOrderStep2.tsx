@@ -1,336 +1,39 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "../components/Header";
-import Button from "../components/Button";
-import { useNavigate } from "react-router-dom";
-import UserDropdown from "../components/UserDropdown";
+import DefiNodeGate from "../components/DefiNodeGate";
 import useWallet from "../hooks/useWallet";
-import { createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
-import { explorerBaseUrl } from "../config/nodes";
-import { DEFAULT_FEE_WART } from "../config";
-import { NonceId, RoundedFee, HDWallet, TransactionJson } from "warthog-ts";
+import { cancelOrderTx, cancelOrderTargetTx } from "../utils/defiClient";
+import { DEFAULT_TX_FEE } from "../config/network";
+import { defiSubmitHold } from "../utils/nodes";
 
-interface AccountType {
-  id: number;
-  name: string;
-  address: string;
-  balance: number;
-  balanceUSD: number;
-  visible: boolean;
-}
-
-function CancelOrderStep2() {
-  const {
-    password,
-    token,
-    selectedWalletIndex,
-    selectedNodeIndex,
-    nameList,
-    walletList,
-    nodeList,
-    tmpCancelHeight,
-    tmpCancelNonceId,
-    visibleWalletList,
-    setSelectedWalletIndex,
-    setName,
-    setWallet,
-    seedPhrase,
-  } = useWallet();
+export default function CancelOrderStep2() {
+  const { wallet, selectedNodeUrl, selectedNode, ledgerAccount, tmpCancelHeight, tmpCancelNonceId } = useWallet();
+  const [params] = useSearchParams();
   const navigate = useNavigate();
-
-  const [accounts, setAccounts] = useState<AccountType[]>([]);
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [transactionStatus, setTransactionStatus] = useState<
-    "idle" | "processing" | "success" | "error"
-  >("idle");
-  const [transactionHash, setTransactionHash] = useState<string>("");
-  const [transactionError, setTransactionError] = useState<string>("");
-  const [customFee, setCustomFee] = useState<string>(DEFAULT_FEE_WART);
-
-  const selectUser = (id: number) => {
-    setName(nameList[id]);
-    setWallet(walletList[id]);
-    setSelectedWalletIndex(id);
-  };
-  const getAccountFromIndex = (index: number) =>
-    HDWallet.fromMnemonic(seedPhrase!).deriveAccountAtIndex(index);
-
-  useEffect(() => {
-    if (nameList.length !== walletList.length) console.log(`error`);
-    else
-      setAccounts(
-        nameList.map((name, index) => ({
-          id: index,
-          name,
-          address: walletList[index],
-          balance: 0,
-          balanceUSD: 0,
-          visible: visibleWalletList[index],
-        })),
-      );
-  }, [walletList, nameList, visibleWalletList]);
-
-  const handleTransaction = async () => {
-    if (!token && confirmPassword !== password) {
-      setPasswordError("Incorrect password.");
-      return;
-    }
-    if (tmpCancelHeight === null || tmpCancelNonceId === null) {
-      setTransactionError("Missing data");
-      setTransactionStatus("error");
-      return;
-    }
-    setIsProcessing(true);
-    setTransactionStatus("processing");
+  const [fee, setFee] = useState(DEFAULT_TX_FEE);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const hash = params.get("hash");
+  const hold = defiSubmitHold(selectedNode, Boolean(ledgerAccount));
+  const valid = Boolean(hash) || (tmpCancelHeight != null && tmpCancelNonceId != null);
+  const submit = async () => {
+    if (!wallet || !selectedNodeUrl || hold || !valid) return;
+    setBusy(true); setError("");
     try {
-      const nonceId = NonceId.random();
-      const account = getAccountFromIndex(selectedWalletIndex);
-      const feeInWart = parseFloat(customFee) * 1e8;
-      if (isNaN(feeInWart) || feeInWart < 0) {
-        throw new Error("Invalid fee");
-      }
-      const fee = RoundedFee.fromE8(BigInt(Math.round(feeInWart)), false);
-      if (!fee) {
-        throw new Error("Invalid fee");
-      }
-      const context = await createTransactionContext(
-        nodeList,
-        selectedNodeIndex,
-        fee,
-        nonceId,
-      );
-      const cancelNonceObj = NonceId.fromNumber(tmpCancelNonceId)!;
-      const tx = requireDeFiContext(context).cancelTransaction(
-        account,
-        tmpCancelHeight,
-        cancelNonceObj,
-      );
-      const txHash = await submitTransaction(nodeList, selectedNodeIndex, tx as TransactionJson);
-      setTransactionHash(txHash);
-      setTransactionStatus("success");
-    } catch (error) {
-      setTransactionStatus("error");
-      setTransactionError(error instanceof Error ? error.message : "Failed");
-    } finally {
-      setIsProcessing(false);
-    }
+      const result = hash ? await cancelOrderTx(selectedNodeUrl, wallet, { orderTxHash: hash, fee })
+        : await cancelOrderTargetTx(selectedNodeUrl, wallet, { cancelHeight: tmpCancelHeight!, cancelNonceId: tmpCancelNonceId!, fee });
+      setStatus(`Cancellation submitted: ${result.txHash}`);
+    } catch (err) { setError(err instanceof Error ? err.message : "Cancellation failed"); }
+    finally { setBusy(false); }
   };
-
-  return (
-    <div className="min-h-screen container relative">
-      <Header title="Cancel Order" />
-      <div className="flex flex-col gap-1">
-        <p className="text-white text-sm">From</p>
-        <UserDropdown
-          users={accounts}
-          selectedUser={accounts[selectedWalletIndex]}
-          onSelectUser={selectUser}
-        />
-        <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md mt-3">
-          <div>
-            <p className="text-white text-lg font-semibold">Cancel Height</p>
-          </div>
-          <div className="text-right">
-            <p className="text-white text-lg">{tmpCancelHeight || 0}</p>
-          </div>
-        </div>
-        <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-primary/25 backdrop-blur-md mt-3">
-          <div>
-            <p className="text-white text-lg font-semibold">Cancel Nonce ID</p>
-          </div>
-          <div className="text-right">
-            <p className="text-white text-lg">{tmpCancelNonceId || 0}</p>
-          </div>
-        </div>
-      </div>
-      <div className="flex bottom-3 absolute left-0 px-3 w-full gap-3">
-        <Button
-          variant="outline"
-          className="w-full mt-5 hover:bg-primary/10"
-          onClick={() => navigate("/cancel-order")}
-        >
-          Back
-        </Button>
-        <Button
-          variant="primary"
-          className="w-full mt-5"
-          onClick={() => setShowConfirmation(true)}
-        >
-          Continue
-        </Button>
-      </div>
-      {showConfirmation && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-[#1A1A1A] rounded-lg p-6 max-w-md w-full border border-primary/25">
-            {transactionStatus === "idle" && (
-              <>
-                <h3 className="text-white text-xl font-semibold mb-4">
-                  Confirm Transaction
-                </h3>
-                <div className="space-y-4 mb-6">
-                  <div className="bg-[#2A2A2A] p-4 rounded-lg">
-                    <p className="text-white/70 text-sm">
-                      Cancelling order at height
-                    </p>
-                    <p className="text-white text-lg font-semibold">
-                      {tmpCancelHeight}, nonce {tmpCancelNonceId}
-                    </p>
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="fee"
-                      className="block text-white/70 text-sm mb-2"
-                    >
-                      Fee (WART)
-                    </label>
-                    <input
-                      type="number"
-                      id="fee"
-                      step="0.0001"
-                      min="0"
-                      value={customFee}
-                      onChange={(e) => setCustomFee(e.target.value)}
-                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden focus:border-primary"
-                      placeholder="Enter fee"
-                    />
-                  </div>
-                  {!token && (
-                  <div>
-                    <label
-                      htmlFor="password"
-                      className="block text-white/70 text-sm mb-2"
-                    >
-                      Password
-                    </label>
-                    <input
-                      type="password"
-                      id="password"
-                      value={confirmPassword}
-                      onChange={(e) => {
-                        setConfirmPassword(e.target.value);
-                        setPasswordError("");
-                      }}
-                      className="w-full bg-[#2A2A2A] border border-primary/25 rounded-lg p-3 text-white focus:outline-hidden"
-                      placeholder="Password"
-                    />
-                    {passwordError && (
-                      <p className="text-red-500 text-sm mt-2">
-                        {passwordError}
-                      </p>
-                    )}
-                  </div>
-                )}
-                </div>
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      setShowConfirmation(false);
-                      setConfirmPassword("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    onClick={handleTransaction}
-                    disabled={isProcessing}
-                  >
-                    {isProcessing ? "Processing..." : "Confirm"}
-                  </Button>
-                </div>
-              </>
-            )}
-            {transactionStatus === "processing" && (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto mb-4"></div>
-                <h3 className="text-white text-xl font-semibold mb-2">
-                  Processing...
-                </h3>
-              </div>
-            )}
-            {transactionStatus === "success" && (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg
-                    className="w-8 h-8 text-green-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-white text-xl font-semibold mb-2">
-                  Success!
-                </h3>
-                <p className="text-sm text-white/50 break-all mb-6">
-                  Hash:{" "}
-                  <a
-                    href={`${explorerBaseUrl}/tx/${transactionHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    {transactionHash}
-                  </a>
-                </p>
-                <Button
-                  variant="primary"
-                  className="w-full"
-                  onClick={() => {
-                    setShowConfirmation(false);
-                    setTransactionStatus("idle");
-                    navigate("/home");
-                  }}
-                >
-                  Done
-                </Button>
-              </div>
-            )}
-            {transactionStatus === "error" && (
-              <div className="text-center py-8">
-                <h3 className="text-white text-xl font-semibold mb-2">
-                  Failed
-                </h3>
-                <p className="text-red-500 mb-6">{transactionError}</p>
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      setShowConfirmation(false);
-                      setTransactionStatus("idle");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="primary"
-                    className="w-full"
-                    onClick={() => {
-                      setTransactionStatus("idle");
-                      setTransactionError("");
-                    }}
-                  >
-                    Try Again
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <DefiNodeGate title="Cancel order"><div className="container">
+    <Header title="Cancel order" />
+    <p className="text-sm text-zinc-400 mb-4">Review the order before cancelling it. A cancellation is an on-chain transaction and costs a fee.</p>
+    <p className="text-xs font-mono break-all mb-4">{hash || (valid ? `Pin height ${tmpCancelHeight}, nonce ${tmpCancelNonceId}` : "No order selected")}</p>
+    <label className="defi-label">Fee (WART)<input className="defi-input" value={fee} onChange={(event) => setFee(event.target.value)} /></label>
+    {hold && <p className="defi-hint">{hold}</p>}{error && <p className="defi-error">{error}</p>}{status && <p className="defi-success break-all">{status}</p>}
+    {status ? <button className="defi-btn-primary" onClick={() => navigate("/activity")}>Back to activity</button> : <button className="defi-btn-primary" disabled={busy || !valid || Boolean(hold)} onClick={() => void submit()}>{busy ? "Submitting…" : "Confirm cancellation"}</button>}
+  </div></DefiNodeGate>;
 }
-export default CancelOrderStep2;

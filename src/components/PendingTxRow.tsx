@@ -8,7 +8,7 @@ import type { NodeTx, NodeTxData } from "../types/nodeTx";
 interface PendingTxRowProps {
   type: string;
   tx: NodeTx;
-  onCancel: (tx: NodeTx, type: string) => void;
+  onCancel?: (tx: NodeTx, type: string) => void;
 }
 
 function TxTypeIcon({ type }: { type: string }) {
@@ -77,7 +77,7 @@ const PendingTxRow: React.FC<PendingTxRowProps> = ({ type, tx, onCancel }) => {
       >
         {txHash?.slice(0, 8)}...
       </a>
-      <button
+      {type === "limitSwap" && onCancel && <button
         onClick={(e) => {
           e.stopPropagation();
           onCancel(tx, type);
@@ -86,7 +86,7 @@ const PendingTxRow: React.FC<PendingTxRowProps> = ({ type, tx, onCancel }) => {
         title="Cancel"
       >
         <IoCloseCircleOutline size={18} />
-      </button>
+      </button>}
     </div>
   );
 };

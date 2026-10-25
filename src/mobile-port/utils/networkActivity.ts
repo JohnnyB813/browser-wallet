@@ -17,7 +17,7 @@ import { networkFetch } from './networks/http';
 import { readHemiMined } from './networks/hemi';
 import { readJupBridgeMoves } from './networks/jupBridge';
 import { formatLifi, lifiOutcome, lifiStep, readLifiMoves, readLifiStatus, type LifiMove } from './networks/lifiSwap';
-import { solTxUrl, solanaRpc } from './networks/solana';
+import { formatSol, solTxUrl, solanaRpc } from './networks/solana';
 import { readStargateMoves, readStargateStage, stargateStep, type StargateMove } from './networks/stargate';
 import { formatUnits } from './networks/units';
 import {
@@ -42,6 +42,13 @@ export type ActivityItem = {
   symbol?: string;
   /** Open bridge step. The Tunnels tab shows a spinner beside this row. */
   spinning?: boolean;
+  hash?: string;
+  from?: string;
+  to?: string;
+  fee?: string;
+  /** Block height, or a slot label for Solana. */
+  height?: string;
+  status?: string;
 };
 
 const HEMI_ROUTESCAN = 'https://api.routescan.io/v2/network/mainnet/evm/43111/etherscan/api';
@@ -60,15 +67,41 @@ function fromEth(row: EthActivityRow): ActivityItem {
     tone: row.tone,
     url: `https://etherscan.io/tx/${row.hash}`,
     symbol: row.symbol || row.paySymbol,
+    hash: row.hash,
+    from: row.from,
+    to: row.to,
+    fee: row.fee,
+    height: row.height,
+    status: row.status,
   };
 }
 
 type MempoolTx = {
   txid?: string;
-  status?: { confirmed?: boolean; block_time?: number };
+  fee?: number;
+  status?: { confirmed?: boolean; block_time?: number; block_height?: number };
   vin?: { prevout?: { scriptpubkey_address?: string; value?: number } }[];
   vout?: { scriptpubkey_address?: string; value?: number }[];
 };
+
+function btcCounterparty(tx: MempoolTx, address: string, received: boolean): string {
+  if (received) {
+    const from = (tx.vin ?? []).find((input) => input.prevout?.scriptpubkey_address && input.prevout.scriptpubkey_address !== address);
+    return from?.prevout?.scriptpubkey_address || '';
+  }
+  let best = -1;
+  let to = '';
+  for (const output of tx.vout ?? []) {
+    const dest = output.scriptpubkey_address || '';
+    if (!dest || dest === address) continue;
+    const value = Math.trunc(output.value ?? 0);
+    if (value > best) {
+      best = value;
+      to = dest;
+    }
+  }
+  return to;
+}
 
 async function readBitcoinActivity(address: string): Promise<ActivityItem[]> {
   const response = await networkFetch(`${MEMPOOL}/api/address/${address}/txs`);
@@ -85,15 +118,24 @@ async function readBitcoinActivity(address: string): Promise<ActivityItem[]> {
     }
     const received = net > 0n;
     const txid = tx.txid || '';
+    const other = btcCounterparty(tx, address, received);
+    const pending = tx.status?.confirmed === false;
+    const feeSats = tx.fee != null ? BigInt(Math.trunc(tx.fee)) : 0n;
     return {
       id: txid,
       time: (tx.status?.block_time || 0) * 1000,
-      title: tx.status?.confirmed === false ? 'Bitcoin pending' : received ? 'Received BTC' : 'Sent BTC',
-      subtitle: txid ? `${txid.slice(0, 8)}…${txid.slice(-6)}` : 'Bitcoin',
+      title: pending ? 'Bitcoin pending' : received ? 'Received BTC' : 'Sent BTC',
+      subtitle: 'Bitcoin',
       amount: `${received ? '+' : '−'} ${formatBtc(net < 0n ? -net : net)} BTC`,
       tone: received ? 'in' as const : 'out' as const,
       url: txid ? btcTxUrl(txid) : null,
       symbol: 'BTC',
+      hash: txid || undefined,
+      from: received ? other || undefined : address,
+      to: received ? address : other || undefined,
+      fee: feeSats > 0n ? `${formatBtc(feeSats)} BTC` : undefined,
+      height: tx.status?.block_height != null ? String(tx.status.block_height) : undefined,
+      status: pending ? 'Pending' : 'Confirmed',
     };
   });
 }
@@ -109,7 +151,28 @@ type ScanTx = {
   tokenSymbol?: string;
   tokenDecimal?: string;
   contractAddress?: string;
+  gasUsed?: string;
+  gasPrice?: string;
+  blockNumber?: string;
+  confirmations?: string;
 };
+
+function scanFee(tx: ScanTx): string | undefined {
+  try {
+    const used = BigInt(tx.gasUsed || '0');
+    const price = BigInt(tx.gasPrice || '0');
+    if (used <= 0n || price <= 0n) return undefined;
+    return `${formatRawAmount(used * price, 18, 6)} ETH`;
+  } catch {
+    return undefined;
+  }
+}
+
+function scanStatus(tx: ScanTx, failed: boolean): string {
+  if (failed) return 'Failed';
+  if (tx.confirmations != null && tx.confirmations !== '') return `Conf: ${tx.confirmations}`;
+  return 'Confirmed';
+}
 
 async function scan(action: string, address: string): Promise<ScanTx[]> {
   const params = new URLSearchParams({
@@ -150,6 +213,12 @@ async function readHemiActivity(address: string): Promise<ActivityItem[]> {
       tone: failed ? 'fail' : incoming ? 'in' : 'out',
       url: hemiTxUrl(tx.hash),
       symbol: 'ETH',
+      hash: tx.hash,
+      from: tx.from,
+      to: tx.to,
+      fee: scanFee(tx),
+      height: tx.blockNumber,
+      status: scanStatus(tx, failed),
     });
   }
   for (const tx of tokens) {
@@ -169,26 +238,107 @@ async function readHemiActivity(address: string): Promise<ActivityItem[]> {
       tone: incoming ? 'in' : 'out',
       url: hemiTxUrl(tx.hash),
       symbol,
+      hash: tx.hash,
+      from: tx.from,
+      to: tx.to,
+      fee: scanFee(tx),
+      height: tx.blockNumber,
+      status: scanStatus(tx, false),
     });
   }
   return rows.sort((a, b) => b.time - a.time).slice(0, 40);
 }
 
+type SolSignature = {
+  signature: string;
+  blockTime: number | null;
+  err: unknown;
+  slot?: number;
+  confirmationStatus?: string;
+};
+
+type SolParsedTx = {
+  slot?: number;
+  meta?: {
+    err?: unknown;
+    fee?: number;
+    preBalances?: number[];
+    postBalances?: number[];
+  } | null;
+  transaction?: {
+    message?: {
+      accountKeys?: Array<string | { pubkey?: string }>;
+    };
+  };
+};
+
+function solAccount(key: string | { pubkey?: string }): string {
+  return typeof key === 'string' ? key : key.pubkey || '';
+}
+
+function solStatus(row: SolSignature, failed: boolean): string {
+  if (failed) return 'Failed';
+  if (row.confirmationStatus === 'finalized') return 'Finalized';
+  if (row.confirmationStatus === 'processed') return 'Processed';
+  return 'Confirmed';
+}
+
 async function readSolanaActivity(address: string): Promise<ActivityItem[]> {
-  const rows = await solanaRpc<{ signature: string; blockTime: number | null; err: unknown }[]>(
-    'getSignaturesForAddress',
-    [address, { limit: 20 }],
-  );
-  return rows.map((row) => ({
-    id: row.signature,
-    time: (row.blockTime || 0) * 1000,
-    title: row.err ? 'Solana transaction failed' : 'Solana transaction',
-    subtitle: `${row.signature.slice(0, 8)}…${row.signature.slice(-6)}`,
-    amount: row.err ? 'Failed' : 'Confirmed',
-    tone: row.err ? 'fail' as const : 'out' as const,
-    url: solTxUrl(row.signature),
-    symbol: 'SOL',
+  const rows = await solanaRpc<SolSignature[]>('getSignaturesForAddress', [address, { limit: 20 }]);
+  const parsed = await Promise.all(rows.map(async (row) => {
+    try {
+      return await solanaRpc<SolParsedTx | null>('getTransaction', [
+        row.signature,
+        { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 },
+      ]);
+    } catch {
+      return null;
+    }
   }));
+  return rows.map((row, index) => {
+    const tx = parsed[index];
+    const failed = Boolean(row.err || tx?.meta?.err);
+    const keys = (tx?.transaction?.message?.accountKeys ?? []).map(solAccount);
+    const pre = tx?.meta?.preBalances ?? [];
+    const post = tx?.meta?.postBalances ?? [];
+    const me = keys.indexOf(address);
+    const feeLamports = BigInt(Math.trunc(tx?.meta?.fee ?? 0));
+    const delta = me >= 0 && pre[me] != null && post[me] != null ? BigInt(post[me]) - BigInt(pre[me]) : 0n;
+    const transfer = me === 0 ? delta + feeLamports : delta;
+    const incoming = transfer > 0n;
+    const outgoing = transfer < 0n;
+    const amountAbs = transfer < 0n ? -transfer : transfer;
+    let counterparty = '';
+    if (me >= 0 && (incoming || outgoing)) {
+      let best = 0n;
+      for (let i = 0; i < keys.length; i += 1) {
+        if (i === me || pre[i] == null || post[i] == null) continue;
+        const change = BigInt(post[i]) - BigInt(pre[i]);
+        const opposite = incoming ? -change : change;
+        if (opposite > best) {
+          best = opposite;
+          counterparty = keys[i];
+        }
+      }
+    }
+    const slot = tx?.slot ?? row.slot;
+    return {
+      id: row.signature,
+      time: (row.blockTime || 0) * 1000,
+      title: failed ? 'Solana transaction failed' : incoming ? 'Received SOL' : outgoing ? 'Sent SOL' : 'Solana transaction',
+      subtitle: 'Solana',
+      amount: failed ? 'Failed' : incoming || outgoing ? `${incoming ? '+' : '−'} ${formatSol(amountAbs)} SOL` : 'Confirmed',
+      tone: failed ? 'fail' as const : incoming ? 'in' as const : 'out' as const,
+      url: solTxUrl(row.signature),
+      symbol: 'SOL',
+      hash: row.signature,
+      from: incoming ? counterparty || undefined : outgoing ? address : undefined,
+      to: incoming ? address : outgoing ? counterparty || undefined : undefined,
+      fee: feeLamports > 0n ? `${formatSol(feeLamports)} SOL` : undefined,
+      height: slot != null ? `Slot ${slot}` : undefined,
+      status: solStatus(row, failed),
+    };
+  });
 }
 
 export async function readTransferActivity(
@@ -333,6 +483,7 @@ export async function readTunnelActivity(
         tone: 'swap',
         url: move.direction === 'to-hemi' ? btcTxUrl(move.txHash) : hemiTxUrl(move.txHash),
         symbol: 'HEMIBTC',
+        hash: move.txHash,
         spinning: step?.spinning,
       });
     });
@@ -355,6 +506,7 @@ export async function readTunnelActivity(
         tone: step?.failed ? 'fail' : 'swap',
         url: move.direction === 'to-hemi' ? ethTxUrl(move.txHash) : hemiTxUrl(move.txHash),
         symbol: 'ETH',
+        hash: move.txHash,
         spinning: step?.spinning,
       });
     });
@@ -370,6 +522,7 @@ export async function readTunnelActivity(
         tone: step?.failed ? 'fail' : 'swap',
         url: `https://layerzeroscan.com/tx/${move.txHash}`,
         symbol: 'ETH',
+        hash: move.txHash,
         spinning: step?.spinning,
       });
     });
@@ -390,6 +543,7 @@ export async function readTunnelActivity(
         tone: step?.failed || move.status === 'failed' ? 'fail' : 'swap',
         url: move.fromChain === 'sol' ? solTxUrl(move.txHash) : btcTxUrl(move.txHash),
         symbol: asset,
+        hash: move.txHash,
         spinning: step?.spinning,
       });
     });
@@ -407,6 +561,7 @@ export async function readTunnelActivity(
         tone: 'swap',
         url: move.fromChain === 'ethereum' ? ethTxUrl(move.txHash) : solTxUrl(move.txHash),
         symbol: move.paySymbol,
+        hash: move.txHash,
       });
     }
   }

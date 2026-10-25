@@ -8,6 +8,29 @@ const ROUTESCAN = 'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/a
 const PAGE = '40';
 const ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const APPROVE = '0x095ea7b3';
+const MAX_ALLOWANCE = (1n << 256n) - 1n;
+
+/** `approve(spender, amount)` allowance. USDT uses 6 decimals. A max uint256 is unlimited. */
+function approveAmount(input: string): string {
+  const data = input.startsWith('0x') ? input.slice(2) : input;
+  if (data.length < 8 + 128) return 'USDT';
+  let value = 0n;
+  try {
+    value = BigInt(`0x${data.slice(8 + 64, 8 + 128)}`);
+  } catch {
+    return 'USDT';
+  }
+  if (value === 0n) return '0 USDT';
+  if (value >= MAX_ALLOWANCE >> 1n) return 'Unlimited USDT';
+  return `${formatRawAmount(value, 6, 6)} USDT`;
+}
+
+function approveSpender(input: string): string | undefined {
+  const data = input.startsWith('0x') ? input.slice(2) : input;
+  if (data.length < 8 + 64) return undefined;
+  const addr = `0x${data.slice(8 + 24, 8 + 64)}`;
+  return /^0x[a-f0-9]{40}$/.test(addr) ? addr : undefined;
+}
 
 export interface EthActivityRow {
   id: string;
@@ -20,6 +43,11 @@ export interface EthActivityRow {
   symbol?: 'ETH' | 'USDT';
   paySymbol?: 'ETH' | 'USDT';
   receiveSymbol?: 'ETH' | 'USDT';
+  from?: string;
+  to?: string;
+  fee?: string;
+  height?: string;
+  status?: string;
 }
 
 interface ChainTx {
@@ -32,6 +60,10 @@ interface ChainTx {
   txreceipt_status?: string;
   input?: string;
   contractAddress?: string;
+  gasUsed?: string;
+  gasPrice?: string;
+  blockNumber?: string;
+  confirmations?: string;
 }
 
 export interface EthActivityResult {
@@ -59,6 +91,33 @@ function short(addr: string | undefined): string {
 
 function failed(tx: ChainTx): boolean {
   return tx.isError === '1' || tx.txreceipt_status === '0';
+}
+
+function chainStatus(tx: ChainTx): string {
+  if (failed(tx)) return 'Failed';
+  if (tx.confirmations != null && tx.confirmations !== '') return `Conf: ${tx.confirmations}`;
+  return 'Confirmed';
+}
+
+function chainFee(tx: ChainTx): string | undefined {
+  try {
+    const used = BigInt(tx.gasUsed || '0');
+    const price = BigInt(tx.gasPrice || '0');
+    if (used <= 0n || price <= 0n) return undefined;
+    return `${formatRawAmount(used * price, 18, 6)} ETH`;
+  } catch {
+    return undefined;
+  }
+}
+
+function chainDetail(tx: ChainTx, from?: string, to?: string): Pick<EthActivityRow, 'from' | 'to' | 'fee' | 'height' | 'status'> {
+  return {
+    from: from || undefined,
+    to: to || undefined,
+    fee: chainFee(tx),
+    height: tx.blockNumber || undefined,
+    status: chainStatus(tx),
+  };
 }
 
 function asList(body: unknown): ChainTx[] {
@@ -137,6 +196,7 @@ export function buildEthereumActivity(address: string, txs: ChainTx[], tokens: C
         tone: bad ? 'fail' : 'swap',
         paySymbol: payEth ? 'ETH' : 'USDT',
         receiveSymbol: usdtIn > 0n ? 'USDT' : 'ETH',
+        ...chainDetail(tx, tx.from, tx.to),
       });
       continue;
     }
@@ -150,10 +210,11 @@ export function buildEthereumActivity(address: string, txs: ChainTx[], tokens: C
         hash: tx.hash || hash,
         time,
         title: bad ? 'Approval failed' : cleared ? 'Cleared USDT approval' : 'Approved USDT',
-        subtitle: 'SushiSwap',
-        amount: 'USDT',
+        subtitle: cleared ? 'Cleared SushiSwap allowance' : 'Approved for SushiSwap',
+        amount: approveAmount(input),
         tone: bad ? 'fail' : 'out',
         symbol: 'USDT',
+        ...chainDetail(tx, tx.from, approveSpender(input) || tx.to),
       });
       continue;
     }
@@ -169,6 +230,7 @@ export function buildEthereumActivity(address: string, txs: ChainTx[], tokens: C
         amount: `− ${formatRawAmount(value, 18, 6)} ETH`,
         tone: bad ? 'fail' : 'out',
         symbol: 'ETH',
+        ...chainDetail(tx, tx.from, tx.to),
       });
     } else if (value > 0n && to === me) {
       used.add(hash);
@@ -181,11 +243,12 @@ export function buildEthereumActivity(address: string, txs: ChainTx[], tokens: C
         amount: `+ ${formatRawAmount(value, 18, 6)} ETH`,
         tone: bad ? 'fail' : 'in',
         symbol: 'ETH',
+        ...chainDetail(tx, tx.from, tx.to),
       });
     }
   }
 
-  const usdtGroups = new Map<string, { inn: bigint; out: bigint; time: number; hash: string; counterparty: string }>();
+  const usdtGroups = new Map<string, { inn: bigint; out: bigint; time: number; hash: string; counterparty: string; fee?: string; height?: string; status?: string }>();
   for (const tx of tokens) {
     const hash = lower(tx.hash);
     if (!hash || used.has(hash)) continue;
@@ -199,6 +262,9 @@ export function buildEthereumActivity(address: string, txs: ChainTx[], tokens: C
       time: Number(tx.timeStamp) || 0,
       hash: tx.hash || hash,
       counterparty: from === me ? tx.to || '' : tx.from || '',
+      fee: chainFee(tx),
+      height: tx.blockNumber || undefined,
+      status: chainStatus(tx),
     };
     if (from === me) current.out += wei(tx.value);
     if (to === me) current.inn += wei(tx.value);
@@ -218,16 +284,21 @@ export function buildEthereumActivity(address: string, txs: ChainTx[], tokens: C
       amount: `${outgoing ? '−' : '+'} ${formatRawAmount(amount, 6, 6)} USDT`,
       tone: outgoing ? 'out' : 'in',
       symbol: 'USDT',
+      from: outgoing ? address : group.counterparty,
+      to: outgoing ? group.counterparty : address,
+      fee: group.fee,
+      height: group.height,
+      status: group.status,
     });
   }
 
-  const ethIn = new Map<string, { value: bigint; from: string; time: number; hash: string }>();
+  const ethIn = new Map<string, { value: bigint; from: string; time: number; hash: string; height?: string }>();
   for (const tx of internals) {
     const hash = lower(tx.hash);
     if (!hash || used.has(hash) || tx.isError === '1' || lower(tx.to) !== me) continue;
     const value = wei(tx.value);
     if (value <= 0n) continue;
-    const current = ethIn.get(hash) ?? { value: 0n, from: tx.from || '', time: Number(tx.timeStamp) || 0, hash: tx.hash || hash };
+    const current = ethIn.get(hash) ?? { value: 0n, from: tx.from || '', time: Number(tx.timeStamp) || 0, hash: tx.hash || hash, height: tx.blockNumber || undefined };
     current.value += value;
     ethIn.set(hash, current);
   }
@@ -242,6 +313,10 @@ export function buildEthereumActivity(address: string, txs: ChainTx[], tokens: C
       amount: `+ ${formatRawAmount(group.value, 18, 6)} ETH`,
       tone: 'in',
       symbol: 'ETH',
+      from: group.from,
+      to: address,
+      height: group.height,
+      status: 'Confirmed',
     });
   }
 

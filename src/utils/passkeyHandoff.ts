@@ -127,6 +127,7 @@ export type ToolbarUnlock = {
   publicKey: string;
   address: string;
   mnemonic?: string;
+  pathType?: "hardened" | "non-hardened";
   password: string | null;
   name: string;
 };

@@ -1,0 +1,82 @@
+.wallet-shell { min-height: 100vh; padding-bottom: 76px; color: #f4f4f5; }
+.wallet-header { position: relative; z-index: 35; padding: 16px; background: #18181b; border-bottom: 1px solid #ffffff12; }
+.wallet-header-row { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wallet-header-row:has(.ticker-menu--open) { z-index: 5; }
+.wallet-network-row { position: relative; z-index: 1; margin-top: 14px; padding-top: 12px; border-top: 1px solid #ffffff0d; }
+.wallet-account-select { min-width: 0; flex: 1; border: 0; outline: none; color: #fafafa; background: transparent; cursor: pointer; font-size: 16px; font-weight: 650; }
+.wallet-header option { color: #fafafa; background: #27272a; }
+.ticker-menu { position: relative; min-width: 0; }
+.ticker-menu--open { z-index: 50; }
+.ticker-menu-btn { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; border: 1px solid rgba(253, 185, 19, 0.55); background: rgba(253, 185, 19, 0.1); color: #fdb913; border-radius: 999px; padding: 6px 12px 6px 8px; font-size: 13px; font-weight: 650; cursor: pointer; text-align: left; }
+.ticker-menu-btn:hover { background: rgba(253, 185, 19, 0.16); }
+.ticker-menu-chevron { margin-left: auto; flex-shrink: 0; font-size: 11px; line-height: 1; }
+.ticker-menu-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; line-height: 1.15; }
+.ticker-menu-copy > span, .ticker-menu-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ticker-menu-copy small { color: #a1a1aa; font-size: 10px; font-weight: 500; }
+.ticker-menu-option--active .ticker-menu-copy small { color: rgba(253, 185, 19, 0.75); }
+.ticker-menu-panel { position: absolute; z-index: 50; top: calc(100% + 6px); left: 0; width: max-content; min-width: 100%; max-width: min(280px, calc(100vw - 32px)); padding: 6px; border-radius: 14px; border: 1px solid rgba(253, 185, 19, 0.35); background: #18181b; box-shadow: 0 16px 32px -18px rgba(0, 0, 0, 0.9); }
+.ticker-menu--end .ticker-menu-panel { left: auto; right: 0; }
+.ticker-menu-list { max-height: 320px; overflow: auto; }
+.ticker-menu-option { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; border-radius: 10px; background: transparent; color: #e4e4e7; padding: 8px 10px; font-size: 13px; font-weight: 650; text-align: left; cursor: pointer; }
+.ticker-menu-option:hover, .ticker-menu-option--active { background: rgba(253, 185, 19, 0.12); color: #fdb913; }
+.ticker-menu-label { padding: 6px 10px 2px; color: #71717a; font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+.ticker-menu-search { width: 100%; margin: 0 0 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; background: rgba(0, 0, 0, 0.35); color: #fafafa; padding: 8px 10px; font-size: 13px; outline: none; }
+.ticker-menu-search:focus { border-color: #fdb913; }
+.ticker-menu-note { margin: 0; padding: 8px 10px; color: #a1a1aa; font-size: 12px; }
+.ticker-menu--field .ticker-menu-btn { border-radius: 12px; border-color: rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06); color: #fafafa; padding: 8px 12px; }
+.ticker-menu--field .ticker-menu-panel { width: 100%; max-width: none; }
+.ticker-menu--account { flex: 1; }
+.ticker-menu--account .ticker-menu-btn { border: 0; background: transparent; color: #fafafa; border-radius: 10px; padding: 2px 4px; font-size: 16px; font-weight: 650; }
+.ticker-menu--account .ticker-menu-btn:hover { background: #ffffff09; }
+.ticker-menu--account .ticker-menu-btn:disabled { opacity: 0.6; cursor: wait; }
+/* The open list is positioned against the whole header row, so it covers
+   the network line instead of ending through the address. */
+.ticker-menu--account.ticker-menu--open { position: static; }
+.ticker-menu--account .ticker-menu-panel { left: 0; right: 0; width: auto; min-width: 0; max-width: none; padding: 8px; background: #18181b; }
+.ticker-menu--account .ticker-menu-list { display: flex; flex-direction: column; gap: 8px; }
+.account-mark { display: inline-flex; flex-shrink: 0; width: 26px; height: 26px; align-items: center; justify-content: center; line-height: 0; }
+.ticker-menu--header { flex: 1; }
+.ticker-menu--header .ticker-menu-btn { padding: 4px 10px 4px 6px; font-size: 12px; }
+.ticker-menu--header .ticker-menu-panel { width: 240px; }
+.ticker-menu--chip { width: auto; }
+.ticker-menu--chip .ticker-menu-btn { width: auto; border-color: rgba(113, 113, 122, 0.9); background: rgba(39, 39, 42, 0.95); color: #fafafa; padding: 4px 10px 4px 6px; font-size: 12px; }
+.wallet-icon-button { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; color: #a1a1aa; font-size: 19px; }
+.wallet-icon-button:hover { color: #fdb913; background: #ffffff09; }
+.wallet-address-copy { display: flex; align-items: center; gap: 5px; color: #a1a1aa; font-family: monospace; font-size: 11px; }
+.wallet-bottom-nav { position: fixed; z-index: 40; bottom: 0; left: 0; right: 0; display: flex; padding: 9px 8px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid #ffffff12; background: #18181bf5; backdrop-filter: blur(12px); }
+.wallet-nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #71717a; font-size: 11px; font-weight: 600; text-decoration: none; padding: 4px; border-radius: 10px; }
+.wallet-nav-item svg { font-size: 21px; }
+.wallet-nav-active { color: #fdb913; background: #fdb9130a; }
+.wallet-content > .container, .wallet-content .min-h-screen { min-height: calc(100vh - 210px); }
+.wallet-content .container { padding-top: 16px; padding-bottom: 24px; }
+.wallet-content .absolute.bottom-3 { position: static; margin-top: 24px; }
+.wallet-page-title { margin: 0 0 16px; font-size: 19px; font-weight: 650; }
+.wallet-section-label { margin: 24px 0 10px; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .1em; color: #71717a; }
+.wallet-menu-card { display: flex; align-items: center; gap: 14px; width: 100%; padding: 15px; border: 1px solid #ffffff10; border-radius: 14px; background: #ffffff04; text-align: left; margin-bottom: 8px; }
+.wallet-menu-card:hover { border-color: #fdb91350; background: #fdb91306; }
+.wallet-menu-card > svg { font-size: 23px; color: #fdb913; flex-shrink: 0; }
+.wallet-menu-card strong { display: block; font-size: 14px; font-weight: 600; }
+.wallet-menu-card small { display: block; font-size: 11px; color: #a1a1aa; margin-top: 3px; }
+.wallet-actions { display: flex; gap: 10px; margin: 16px 0; }
+.wallet-actions button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 84px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; background: #101012; color: #fff; font-size: 13px; font-weight: 650; padding: 12px 4px; }
+.wallet-actions button:hover { border-color: rgba(253, 185, 19, 0.45); }
+.wallet-actions svg { display: block; margin: 0; font-size: 22px; color: #fdb913; }
+.wallet-actions--quad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.wallet-actions--quad button { aspect-ratio: 1; min-height: 0; }
+.wallet-feature-card { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; padding: 14px; border: 1px solid rgba(253, 185, 19, 0.28); border-radius: 16px; background: #101012; }
+.wallet-feature-card svg { flex-shrink: 0; font-size: 26px; color: #fdb913; }
+.wallet-feature-card strong { display: block; font-size: 15px; }
+.wallet-feature-card small { display: block; margin-top: 3px; color: #a1a1aa; font-size: 12px; line-height: 1.35; }
+.wallet-gear { display: block; transition: transform 0.55s cubic-bezier(0.2, 0.75, 0.2, 1); }
+.color-drop { margin-bottom: 8px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; background: rgba(0, 0, 0, 0.28); }
+.color-drop summary { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; list-style: none; }
+.color-drop summary::-webkit-details-marker { display: none; }
+.color-drop summary::after { content: "▾"; margin-left: auto; color: #a1a1aa; font-size: 11px; }
+.color-drop[open] summary::after { content: "▴"; }
+.color-drop-copy { display: flex; min-width: 0; flex-direction: column; line-height: 1.15; }
+.color-drop-copy strong { font-size: 12px; font-weight: 650; }
+.color-drop-copy small { color: #a1a1aa; font-size: 10px; }
+.color-drop-body { padding: 0 10px 10px; }
+@media (prefers-reduced-motion: reduce) { .wallet-gear { transition: none; } }
+.wallet-content .fixed.inset-0 { z-index: 60; }
+@media (min-width: 700px) { .wallet-shell { max-width: 600px; margin: auto; } .wallet-bottom-nav { max-width: 600px; margin: auto; } }

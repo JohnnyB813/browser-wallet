@@ -351,6 +351,7 @@ export function saveNumberDisplayPrefs(
   } catch {
     /* ignore */
   }
+  applyNumberDisplayTheme(normalized);
   return normalized;
 }
 
@@ -398,6 +399,25 @@ export function getBrandColorStyles(
     DEFAULT_NUMBER_DISPLAY_PREFS.numberColor,
   );
   return BRAND_COLOR_STYLES[resolved] ?? BRAND_COLOR_STYLES.white;
+}
+
+/** Push the saved colors onto the page so balances, prices, and order marks follow them. */
+export function applyNumberDisplayTheme(prefs?: NumberDisplayPrefs): void {
+  if (typeof document === "undefined") return;
+  const next = prefs ?? loadNumberDisplayPrefs();
+  const root = document.documentElement;
+  const buy = getBrandColorStyles(next.limitOrderBuyColor);
+  const sell = getBrandColorStyles(next.limitOrderSellColor);
+  const pool = getBrandColorStyles(next.liquidityPoolColor);
+  root.style.setProperty("--number-color", getColorHex(next.numberColor));
+  root.style.setProperty("--balance-color", getColorHex(next.balanceColor));
+  root.style.setProperty("--defi-buy", buy.text);
+  root.style.setProperty("--defi-buy-muted", buy.bgMuted);
+  root.style.setProperty("--defi-sell", sell.text);
+  root.style.setProperty("--defi-sell-muted", sell.bgMuted);
+  root.style.setProperty("--pool-color", pool.text);
+  root.style.setProperty("--defi-lp-bg", pool.bgMuted);
+  root.style.setProperty("--defi-lp-border", pool.border);
 }
 
 function coerceNumber(input: unknown): number | null {

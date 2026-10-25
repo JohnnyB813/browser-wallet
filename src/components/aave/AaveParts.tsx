@@ -99,7 +99,7 @@ export function StatTile({ label, value, tone }: { label: string; value: ReactNo
   return (
     <div className="min-w-0 rounded-lg bg-black/30 px-2.5 py-2">
       <p className="truncate text-[10px] uppercase tracking-wide text-white/40">{label}</p>
-      <p className={`truncate font-mono text-sm ${tone ?? "text-white"}`}>{value}</p>
+      <p className={`truncate font-mono text-sm ${tone ?? "bal-color"}`}>{value}</p>
     </div>
   );
 }
