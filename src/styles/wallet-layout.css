@@ -1,7 +1,8 @@
 .wallet-shell { min-height: 100vh; padding-bottom: 76px; color: #f4f4f5; }
 .wallet-header { position: relative; z-index: 35; padding: 16px; background: #18181b; border-bottom: 1px solid #ffffff12; }
-.wallet-header-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.wallet-network-row { margin-top: 14px; padding-top: 12px; border-top: 1px solid #ffffff0d; }
+.wallet-header-row { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wallet-header-row:has(.ticker-menu--open) { z-index: 5; }
+.wallet-network-row { position: relative; z-index: 1; margin-top: 14px; padding-top: 12px; border-top: 1px solid #ffffff0d; }
 .wallet-account-select { min-width: 0; flex: 1; border: 0; outline: none; color: #fafafa; background: transparent; cursor: pointer; font-size: 16px; font-weight: 650; }
 .wallet-header option { color: #fafafa; background: #27272a; }
 .ticker-menu { position: relative; min-width: 0; }
@@ -24,6 +25,16 @@
 .ticker-menu-note { margin: 0; padding: 8px 10px; color: #a1a1aa; font-size: 12px; }
 .ticker-menu--field .ticker-menu-btn { border-radius: 12px; border-color: rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06); color: #fafafa; padding: 8px 12px; }
 .ticker-menu--field .ticker-menu-panel { width: 100%; max-width: none; }
+.ticker-menu--account { flex: 1; }
+.ticker-menu--account .ticker-menu-btn { border: 0; background: transparent; color: #fafafa; border-radius: 10px; padding: 2px 4px; font-size: 16px; font-weight: 650; }
+.ticker-menu--account .ticker-menu-btn:hover { background: #ffffff09; }
+.ticker-menu--account .ticker-menu-btn:disabled { opacity: 0.6; cursor: wait; }
+/* The open list is positioned against the whole header row, so it covers
+   the network line instead of ending through the address. */
+.ticker-menu--account.ticker-menu--open { position: static; }
+.ticker-menu--account .ticker-menu-panel { left: 0; right: 0; width: auto; min-width: 0; max-width: none; padding: 8px; background: #18181b; }
+.ticker-menu--account .ticker-menu-list { display: flex; flex-direction: column; gap: 8px; }
+.account-mark { display: inline-flex; flex-shrink: 0; width: 26px; height: 26px; align-items: center; justify-content: center; line-height: 0; }
 .ticker-menu--header { flex: 1; }
 .ticker-menu--header .ticker-menu-btn { padding: 4px 10px 4px 6px; font-size: 12px; }
 .ticker-menu--header .ticker-menu-panel { width: 240px; }
