@@ -78,7 +78,11 @@ export function createDefiApi(nodeBase: string): WarthogDeFiApi {
   if (!base) throw new Error("Invalid node URL");
   // The DeFi client speaks the V2 generation: /chain/head nests ChainHead
   // under `chainHead`, and a transfer carries its amount in `wartE8`.
-  return new WarthogDeFiApi(base);
+  //
+  // The transport is the wallet's privilegedFetch, so a plain-HTTP node is
+  // still reachable from a full tab: the page fetch falls back to the
+  // background worker.
+  return new WarthogDeFiApi(base, { fetch: privilegedFetch });
 }
 
 export function accountFromPrivateKey(privateKeyHex: string): Account {

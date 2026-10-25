@@ -11,6 +11,7 @@ import {
   type TransactionJson,
 } from "warthog-ts";
 import type { WalletNode } from "./config/network";
+import { privilegedFetch } from "./utils/hostAccess";
 
 const formatWalletAddress = (
   address: string,
@@ -39,6 +40,13 @@ const parsePriceInput = (value: string): Price | null => {
  * The family decides more than the chain head shape: it decides the amount
  * field a transfer carries, so a legacy node needs the legacy client. It is
  * part of the node record, so nothing is inferred from the URL.
+ *
+ * The transport is the wallet's privilegedFetch, not the global fetch. The
+ * wallet runs as a full tab as well as in the toolbar popup, and the node
+ * list includes plain-HTTP nodes. A page fetch can fail where the
+ * background worker's does not, so the worker is the fallback the wallet
+ * has always used. Handing the same function to the SDK keeps both paths
+ * behaving identically.
  */
 const createApi = (node: WalletNode | undefined): AnyWarthogApi => {
   // The wallet can be on a family that has no node, so the index is -1 and
@@ -46,9 +54,10 @@ const createApi = (node: WalletNode | undefined): AnyWarthogApi => {
   if (!node) {
     throw new Error("No node is configured for this network. Pick another node.");
   }
+  const options = { fetch: privilegedFetch };
   return node.network === "defi-testnet"
-    ? new WarthogDeFiApi(node.url)
-    : new WarthogLegacyApi(node.url);
+    ? new WarthogDeFiApi(node.url, options)
+    : new WarthogLegacyApi(node.url, options);
 };
 
 const createTransactionContext = async (

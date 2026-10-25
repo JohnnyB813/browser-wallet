@@ -144,6 +144,25 @@ The extension will now be loaded and ready for use. It keeps its own manifest, s
 - Ensure you’re using Node.js **22.x or higher**.
 - Follow the coding standards defined in the project’s `.eslintrc` and `.prettierrc` configuration files.
 
+### Talking to a node
+
+The wallet reaches its nodes through two paths, and both use the same
+transport: `privilegedFetch` from `src/utils/hostAccess.ts`. It tries the
+page fetch first and falls back to the background worker when that fails,
+which is what keeps a plain-HTTP node reachable from a full extension tab
+and not only from the toolbar popup.
+
+- **The SDK clients** (`createApi` in `src/utils.ts`, `createDefiApi` in
+  `src/utils/defiClient.ts`) get `privilegedFetch` passed in as their
+  transport, so `warthog-ts` owns the request and the wallet owns the
+  fallback.
+- **The wallet’s own reads** (`nodeRead` in `src/utils/warthogNode.ts`) call
+  `privilegedFetch` directly. They cover the endpoints the SDK does not
+  expose: the mempool, asset lookup, open orders, history and `fake_mine`.
+
+A new node call should go through one of those two, not through the global
+`fetch`.
+
 ---
 
 ## 📚 Resources & Documentation

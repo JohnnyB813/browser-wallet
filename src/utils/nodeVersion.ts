@@ -1,17 +1,3 @@
-import { isDefiNode } from "./nodes";
-import type { WalletNode } from "../config/network";
-
-/**
- * The endpoint a node family serves its version on.
- *
- * The payload is the same either way: five flat fields. Only the path
- * differs, and the family is on the node record, so nothing is guessed
- * from the address.
- */
-export function nodeVersionPath(node: WalletNode): string {
-  return isDefiNode(node) ? "version" : "tools/version";
-}
-
 /**
  * How a node's version is written on the card.
  *

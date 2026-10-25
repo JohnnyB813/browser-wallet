@@ -7,8 +7,7 @@ import { DEFAULT_TX_FEE, type WalletNode } from "../config/network";
 import { isDefiNode, normalizeNodeUrl } from "./nodes";
 import { formatBalanceBreakdown } from "./balanceBreakdown";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
-import { NodeVersion } from "warthog-ts";
-import { nodeVersionPath } from "./nodeVersion";
+import { NodeVersion, WarthogDeFiApi, WarthogLegacyApi } from "warthog-ts";
 
 /**
  * How long a node has to answer before the read gives up.
@@ -637,6 +636,11 @@ export async function fetchAccountHistory(
  * cheap, and it says what the node is as well as that it is up. The
  * account read stays, because a node on the wrong chain answers the
  * version request happily but has never heard of this wallet.
+ *
+ * The version comes from the SDK client, so it goes through the same
+ * transport as everything else the wallet does: the privileged fetch that
+ * falls back to the background worker. The path is the caller's business
+ * because it differs per family, and the SDK picks it from the family.
  */
 export async function probeNode(
   node: WalletNode,
@@ -649,11 +653,14 @@ export async function probeNode(
   const nodeBase = node.url;
   const start = performance.now();
   try {
-    const data = await nodeRead<unknown>(nodeBase, nodeVersionPath(node));
-    const version = NodeVersion.parse(data);
-    if (!version) {
+    const api = isDefiNode(node)
+      ? new WarthogDeFiApi(nodeBase, { fetch: privilegedFetch })
+      : new WarthogLegacyApi(nodeBase, { fetch: privilegedFetch });
+    const result = await api.getNodeVersion();
+    if (!result.success) {
       return { online: false, latencyMs: performance.now() - start, version: null };
     }
+    const version = result.data;
     if (address) {
       if (isDefiNode(node)) {
         await nodeGet(nodeBase, `account/${address}/wart_balance`);
