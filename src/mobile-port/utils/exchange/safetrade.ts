@@ -299,12 +299,185 @@ function readOrderList(body: unknown, marketId: string): SafeOrder[] {
     ));
 }
 
-/** Market trade of a free SafeTrade balance. Buy spends the quote. Sell spends the base. */
+export type BookLevel = {
+  price: number;
+  amount: number;
+};
+
+/** Public order book. Asks are cheapest first. Bids are highest first. */
+export type SafeDepth = {
+  asks: BookLevel[];
+  bids: BookLevel[];
+  /** True when that side came back full, so a larger order may continue past it. */
+  asksCapped: boolean;
+  bidsCapped: boolean;
+};
+
+/**
+ * What a market order would take from the loaded book.
+ * A buy spends quote. A sell spends base.
+ */
+export type BookFill = {
+  averagePrice: number;
+  base: number;
+  quote: number;
+  /** Levels this order would touch, from the top of that side. */
+  touched: number;
+  /** The loaded book covers the whole spend. */
+  complete: boolean;
+  /** The loaded book ended while spend was left, and that side was truncated. */
+  shortBook: boolean;
+  bestPrice: number;
+  referencePrice: number;
+  /** The reference is the last trade. Otherwise it is the top of the book. */
+  referenceIsLast: boolean;
+  /** Positive when the average is worse than the reference. */
+  slippageBps: number;
+  /** Quote given up versus filling `base` at the reference. Positive is worse. */
+  slippageQuote: number;
+};
+
+const DEPTH_LIMIT = 500;
+
+function readLevels(raw: unknown, highFirst: boolean): BookLevel[] {
+  if (!Array.isArray(raw)) return [];
+  const levels: BookLevel[] = [];
+  for (const row of raw) {
+    if (!Array.isArray(row) || row.length < 2) continue;
+    const price = Number(row[0]);
+    const amount = Number(row[1]);
+    if (!(price > 0) || !(amount > 0) || !Number.isFinite(price) || !Number.isFinite(amount)) continue;
+    levels.push({ price, amount });
+  }
+  levels.sort((a, b) => (highFirst ? b.price - a.price : a.price - b.price));
+  return levels;
+}
+
+/** Public depth for one market. No API key. Uses the same unsigned path as the ticker. */
+export async function safeDepth(marketId: string): Promise<SafeDepth> {
+  const id = encodeURIComponent(marketId);
+  const body = await call(null, `/trade/public/markets/${id}/depth?limit=${DEPTH_LIMIT}`);
+  const rec = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  const asks = readLevels(rec.asks, false);
+  const bids = readLevels(rec.bids, true);
+  if (!asks.length && !bids.length) {
+    throw new ExchangeError('SafeTrade did not return an order book.', 0, body);
+  }
+  const rawAsks = Array.isArray(rec.asks) ? rec.asks.length : 0;
+  const rawBids = Array.isArray(rec.bids) ? rec.bids.length : 0;
+  return {
+    asks,
+    bids,
+    asksCapped: rawAsks >= DEPTH_LIMIT,
+    bidsCapped: rawBids >= DEPTH_LIMIT,
+  };
+}
+
+/** Walk the book for a market order. Returns null when that side is empty or the spend is not positive. */
+export function walkBook(
+  depth: SafeDepth,
+  side: 'buy' | 'sell',
+  spend: number,
+  referencePrice: number,
+): BookFill | null {
+  if (!(spend > 0) || !Number.isFinite(spend)) return null;
+  const levels = side === 'buy' ? depth.asks : depth.bids;
+  if (!levels.length) return null;
+  let base = 0;
+  let quote = 0;
+  let left = spend;
+  let touched = 0;
+  for (const level of levels) {
+    if (left <= spend * 1e-12) break;
+    if (side === 'buy') {
+      const levelQuote = level.price * level.amount;
+      if (!(levelQuote > 0)) continue;
+      const takeQuote = Math.min(left, levelQuote);
+      base += takeQuote / level.price;
+      quote += takeQuote;
+      left -= takeQuote;
+    } else {
+      const takeBase = Math.min(left, level.amount);
+      base += takeBase;
+      quote += takeBase * level.price;
+      left -= takeBase;
+    }
+    touched += 1;
+  }
+  if (!(base > 0) || !(quote > 0)) return null;
+  const complete = left <= Math.max(spend * 1e-9, 1e-12);
+  const capped = side === 'buy' ? depth.asksCapped : depth.bidsCapped;
+  const referenceIsLast = referencePrice > 0 && Number.isFinite(referencePrice);
+  const reference = referenceIsLast ? referencePrice : levels[0].price;
+  const averagePrice = quote / base;
+  const slippageBps = side === 'buy'
+    ? Math.round(((averagePrice - reference) / reference) * 10_000)
+    : Math.round(((reference - averagePrice) / reference) * 10_000);
+  const slippageQuote = side === 'buy'
+    ? base * (averagePrice - reference)
+    : base * (reference - averagePrice);
+  return {
+    averagePrice,
+    base,
+    quote,
+    touched,
+    complete,
+    shortBook: !complete && capped,
+    bestPrice: levels[0].price,
+    referencePrice: reference,
+    referenceIsLast,
+    slippageBps,
+    slippageQuote,
+  };
+}
+
+/**
+ * Worst price SafeTrade will accept on a market order.
+ * Their trade form sets max_price to last × (1 + percent) on a buy
+ * and last × (1 − percent) on a sell, rounded with toFixed(price precision).
+ * A sell still uses the max_price field. The matching engine treats it as the floor.
+ * A null slippage on safeSwap omits max_price, so this bound is not sent.
+ */
+export function safeSlippagePrice(
+  last: number,
+  side: 'buy' | 'sell',
+  slippageBps: number,
+  pricePlaces: number,
+): number | null {
+  if (!Number.isInteger(slippageBps) || slippageBps < 1 || slippageBps > 5_000) return null;
+  if (!(last > 0) || !Number.isInteger(pricePlaces) || pricePlaces < 0 || pricePlaces > 12) return null;
+  const factor = side === 'buy' ? 1 + slippageBps / 10_000 : 1 - slippageBps / 10_000;
+  const price = Number((last * factor).toFixed(pricePlaces));
+  return price > 0 ? price : null;
+}
+
+function retryableOrderShape(err: unknown): boolean {
+  if (!(err instanceof ExchangeError) || (err.status !== 400 && err.status !== 422)) return false;
+  return !/market_price_exceeded|insufficient_balance|less_than_min|geater_than_max|greater_than_max|non_round/i.test(err.message);
+}
+
+/**
+ * Market trade of a free SafeTrade balance. Buy spends the quote. Sell spends the base.
+ * `slippageBps` null sends no max_price. The caller confirms the book average first.
+ */
 export async function safeSwap(
   creds: SafeTradeCredentials,
-  input: { market: SafeMarket; side: 'buy' | 'sell'; amount: number },
+  input: { market: SafeMarket; side: 'buy' | 'sell'; amount: number; slippageBps: number | null },
 ): Promise<SafeOrder> {
   const { market, side } = input;
+  let maxPrice: number | null = null;
+  let last = 0;
+  if (input.slippageBps != null || side === 'buy') {
+    const ticker = await safeTicker(market.id);
+    last = Number(ticker.last);
+  }
+  if (input.slippageBps != null) {
+    maxPrice = safeSlippagePrice(last, side, input.slippageBps, market.pricePlaces);
+    if (maxPrice == null) {
+      throw new ExchangeError('That slippage does not leave a usable price.', 0, null);
+    }
+  }
+  const bounded = maxPrice == null ? {} : { max_price: maxPrice };
   if (side === 'sell') {
     const amount = floorDecimals(input.amount, market.amountPlaces);
     if (amount < market.minBase) {
@@ -312,7 +485,7 @@ export async function safeSwap(
     }
     const body = await call(creds, '/trade/market/orders', {
       method: 'POST',
-      body: { market: market.id, side: 'sell', type: 'market', amount },
+      body: { market: market.id, side: 'sell', type: 'market', amount, ...bounded },
     });
     return readOrder(body);
   }
@@ -321,40 +494,51 @@ export async function safeSwap(
   try {
     const body = await call(creds, '/trade/market/orders', {
       method: 'POST',
-      body: { market: market.id, side: 'buy', type: 'market_quote', total },
+      body: { market: market.id, side: 'buy', type: 'market', total, ...bounded },
     });
     return readOrder(body);
   } catch (err) {
-    if (!(err instanceof ExchangeError) || (err.status !== 400 && err.status !== 422)) throw err;
-    const quote = await safeTicker(market.id);
-    const last = Number(quote.last);
-    if (!(last > 0)) throw err;
-    const body = await call(creds, '/trade/market/orders', {
-      method: 'POST',
-      body: {
-        market: market.id,
-        side: 'buy',
-        type: 'market',
-        amount: floorDecimals(total / last, market.amountPlaces),
-        max_price: floorDecimals(last * 1.01, market.pricePlaces),
-      },
-    });
-    return readOrder(body);
+    if (!retryableOrderShape(err)) throw err;
+    try {
+      const body = await call(creds, '/trade/market/orders', {
+        method: 'POST',
+        body: { market: market.id, side: 'buy', type: 'market_quote', total, ...bounded },
+      });
+      return readOrder(body);
+    } catch (again) {
+      if (!retryableOrderShape(again)) throw again;
+      if (!(last > 0)) throw again;
+      const amount = floorDecimals(total / last, market.amountPlaces);
+      if (amount < market.minBase) throw again;
+      const body = await call(creds, '/trade/market/orders', {
+        method: 'POST',
+        body: { market: market.id, side: 'buy', type: 'market', amount, ...bounded },
+      });
+      return readOrder(body);
+    }
   }
 }
 
-/** Spend USDT already on SafeTrade to buy WART at the market. */
-export async function safeBuyWart(creds: SafeTradeCredentials, usdtTotal: number): Promise<SafeOrder> {
+/** Spend USDT already on SafeTrade to buy WART at the market. Default slippage is 1%. */
+export async function safeBuyWart(
+  creds: SafeTradeCredentials,
+  usdtTotal: number,
+  slippageBps = 100,
+): Promise<SafeOrder> {
   const pair = safePair('usdt', 'wart');
   if (!pair) throw new ExchangeError('SafeTrade has no WART/USDT market.', 0, null);
-  return safeSwap(creds, { ...pair, amount: usdtTotal });
+  return safeSwap(creds, { ...pair, amount: usdtTotal, slippageBps });
 }
 
-/** Sell WART already on SafeTrade for USDT at the market. */
-export async function safeSellWart(creds: SafeTradeCredentials, wartAmount: number): Promise<SafeOrder> {
+/** Sell WART already on SafeTrade for USDT at the market. Default slippage is 1%. */
+export async function safeSellWart(
+  creds: SafeTradeCredentials,
+  wartAmount: number,
+  slippageBps = 100,
+): Promise<SafeOrder> {
   const pair = safePair('wart', 'usdt');
   if (!pair) throw new ExchangeError('SafeTrade has no WART/USDT market.', 0, null);
-  return safeSwap(creds, { ...pair, amount: wartAmount });
+  return safeSwap(creds, { ...pair, amount: wartAmount, slippageBps });
 }
 
 /** Rest a limit order on a direct SafeTrade market. Amount is the base size. No slippage. */

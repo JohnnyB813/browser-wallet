@@ -8,6 +8,7 @@ import "./styles/wallet-layout.css";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { WalletProvider } from "./context/WalletContext";
+import { applyNumberDisplayTheme } from "./utils/numberDisplay";
 import { warmDockWindow } from "./ledger/shell";
 import {
   applyExtensionShellClass,
@@ -29,6 +30,7 @@ warmDockWindow();
 applyExtensionShellClass(isCompactShellPreferred());
 
 window.Buffer = window.Buffer || Buffer;
+applyNumberDisplayTheme();
 
 // The error boundary sits outside everything. Without it a throw during
 // render unmounts the whole tree and the document shows only the black

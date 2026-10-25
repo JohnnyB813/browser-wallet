@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { IoDiamond } from "react-icons/io5";
 import Header from "../components/Header";
 import DefiNodeGate from "../components/DefiNodeGate";
 import SpendConfirm from "../components/SpendConfirm";
@@ -28,7 +29,14 @@ export default function CreateAsset() {
     finally { setBusy(false); }
   };
   return <DefiNodeGate title="Create asset"><div className="container">
-    <Header title="Create asset" />
+    <Header title="Mint" />
+    <div className="wallet-feature-card">
+      <IoDiamond />
+      <div>
+        <strong>Mint</strong>
+        <small>Issue a new asset on the DeFi testnet. The name is one to five characters, then you set the supply.</small>
+      </div>
+    </div>
     <label className="defi-label">Name (1 to 5 characters)<input className="defi-input" maxLength={5} value={name} onChange={(event) => setName(event.target.value.toUpperCase())} /></label>
     <label className="defi-label">Total supply<input className="defi-input" inputMode="decimal" value={supply} onChange={(event) => setSupply(event.target.value)} /></label>
     <label className="defi-label">Decimals<select className="defi-input" value={decimals} onChange={(event) => setDecimals(Number(event.target.value))}>{Array.from({ length: 19 }, (_, i) => <option key={i}>{i}</option>)}</select></label>

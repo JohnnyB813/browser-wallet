@@ -11,17 +11,20 @@ import PendingTxRow from "../components/PendingTxRow";
 import CancelConfirmModal from "../components/CancelConfirmModal";
 import { useNavigate } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
-import { IoSend, IoTrendingUp, IoDownloadOutline, IoCloseCircleOutline } from "react-icons/io5";
+import { IoSend, IoTrendingUp, IoDownloadOutline, IoCloseCircleOutline, IoWater, IoDiamond } from "react-icons/io5";
 import { useChainAccounts } from "../chains/useChainAccounts";
 import ChainHoldings from "../components/chains/ChainHoldings";
+import NetworkBadge from "../components/chains/NetworkBadge";
 import ChainActivity from "../components/chains/ChainActivity";
 import OpenOrders from "../components/OpenOrders";
 import WatchedAssets from "../components/WatchedAssets";
 import NodeError from "../components/NodeError";
 import TokenMark from "../components/chains/TokenMark";
+import AssetMark, { AssetTitle } from "../components/AssetMark";
+import { TickerFace, type TickerMenuItem } from "../components/TickerMenu";
 import { hasPositiveLocked } from "../utils/balanceBreakdown";
 import { formatDisplayNumber, loadNumberDisplayPrefs } from "../utils/numberDisplay";
-import { FaChevronDown, FaSearch, FaSync } from "react-icons/fa";
+import { FaSync } from "react-icons/fa";
 import SenderSummary from "../components/SenderSummary";
 import { getPendingApproval, approveRequest, rejectRequest, PendingApproval } from "../utils/extensionApi";
 import { createTransactionContext, formatAddress, submitTransaction } from "../utils";
@@ -131,89 +134,87 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl, defi }: { selectedTok
     setRecentTokens(recent);
   };
 
-  const displayName = selectedToken.hash
-    ? `${selectedToken.name} (${formatAddress(selectedToken.hash, 8)})`
-    : 'WART';
+  const tokenItem = (token: Token): TickerMenuItem => token.hash
+    ? {
+        id: token.hash,
+        label: token.name,
+        hash: token.hash,
+        name: token.name,
+        hint: formatAddress(token.hash, 6),
+      }
+    : { id: "wart", label: "WART", symbol: "WART", hint: "Native currency" };
 
   return (
-    <div className="relative w-full" ref={dropdownRef}>
+    <div className={`ticker-menu ticker-menu--field${showDropdown ? " ticker-menu--open" : ""}`} ref={dropdownRef}>
       <button
+        type="button"
+        className="ticker-menu-btn"
+        aria-haspopup="listbox"
+        aria-expanded={showDropdown}
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-left transition-colors hover:bg-white/15"
       >
-        <span className="text-primary font-medium">{displayName}</span>
-        <FaChevronDown className={`text-white/50 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+        <TickerFace item={tokenItem(selectedToken)} size={18} compact />
+        <span className="ticker-menu-chevron" aria-hidden="true">{showDropdown ? "▴" : "▾"}</span>
       </button>
 
       {showDropdown && (
-        <div className="home-token-menu">
-          <div className="p-2 border-b border-white/10">
-            {defi ? (
-              <div className="relative">
-                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search tokens..."
-                  className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-hidden focus:border-primary"
-                  autoFocus
-                />
-              </div>
-            ) : (
-              <p className="text-[11px] text-white/40 py-1">
-                Assets are on the DeFi testnet. Switch the network to pick one.
-              </p>
-            )}
-          </div>
+        <div className="ticker-menu-panel">
+          {defi ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tokens"
+              className="ticker-menu-search"
+              aria-label="Search tokens"
+              autoFocus
+            />
+          ) : (
+            <p className="ticker-menu-note">
+              Assets are on the DeFi testnet. Switch the network to pick one.
+            </p>
+          )}
 
-          <div className="max-h-64 overflow-y-auto">
+          <div className="ticker-menu-list" role="listbox" aria-label="Assets">
             {!searchQuery && recentTokens.length > 0 && (
               <div>
-                <div className="px-3 py-1 text-xs text-white/40 uppercase tracking-wider">Recent</div>
+                <div className="ticker-menu-label">Recent</div>
                 {/* A testnet asset does not belong in a mainnet list. */}
                 {recentTokens
                   .filter((token) => defi || !token.hash)
                   .map((token) => (
                   <button
-                    key={token.hash || 'wart'}
+                    key={token.hash || "wart"}
+                    type="button"
+                    role="option"
                     onClick={() => handleSelect(token)}
-                    className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2"
+                    className="ticker-menu-option"
                   >
-                    <span className={token.hash ? 'text-primary' : 'text-yellow-400'}>
-                      {token.name}
-                    </span>
-                    {token.hash && (
-                      <span className="text-white/40 text-xs font-mono">
-                        ({formatAddress(token.hash, 6)})
-                      </span>
-                    )}
+                    <TickerFace item={tokenItem(token)} />
                   </button>
                 ))}
-                <div className="border-t border-white/10 mt-1" />
               </div>
             )}
 
             {searchQuery && (
             <div>
-              <div className="px-3 py-1 text-xs text-white/40 uppercase tracking-wider">Search Results</div>
+              <div className="ticker-menu-label">Search results</div>
               {searchLoading && (
-                <div className="px-3 py-2 text-white/50 text-sm">Searching...</div>
+                <p className="ticker-menu-note">Searching...</p>
               )}
-              {!searchLoading && searchResults.length === 0 && searchQuery && (
-                <div className="px-3 py-2 text-white/50 text-sm">No tokens found</div>
+              {!searchLoading && searchResults.length === 0 && (
+                <p className="ticker-menu-note">No tokens found</p>
               )}
               {!searchLoading && searchResults.map((token) => (
                 <button
                   key={token.hash}
-                  onClick={() => handleSelect({ spec: 'asset', name: token.name, hash: token.hash })}
-                  className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2"
+                  type="button"
+                  role="option"
+                  onClick={() => handleSelect({ spec: "asset", name: token.name, hash: token.hash })}
+                  className="ticker-menu-option"
                 >
-                  <span className="text-primary">{token.name}</span>
-                  <span className="text-white/40 text-xs font-mono">
-                    ({token.hash && formatAddress(token.hash, 6)})
-                  </span>
+                  <TickerFace item={tokenItem(token)} />
                 </button>
               ))}
             </div>
@@ -221,11 +222,12 @@ function TokenSelector({ selectedToken, onSelect, nodeUrl, defi }: { selectedTok
 
             {!searchQuery && (
               <button
-                onClick={() => handleSelect({ spec: 'WART', name: 'WART', hash: null })}
-                className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 border-t border-white/10"
+                type="button"
+                role="option"
+                onClick={() => handleSelect({ spec: "WART", name: "WART", hash: null })}
+                className="ticker-menu-option"
               >
-                <span className="text-yellow-400 font-semibold">WART</span>
-                <span className="text-white/40 text-xs">(native currency)</span>
+                <TickerFace item={{ id: "wart", label: "WART", symbol: "WART", hint: "Native currency" }} />
               </button>
             )}
           </div>
@@ -245,7 +247,7 @@ const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) =
     nodeError,
     selectedNode,
   } = useWallet();
-  const { accounts, chains, chain, phrasePending, network, address } = useChainAccounts();
+  const { accounts, chains, chain, phrasePending, network, setNetwork, address } = useChainAccounts();
   const navigate = useNavigate();
   const [balance, setBalance] = useState(0);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -639,6 +641,12 @@ const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) =
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-xs text-zinc-500">Available balance</span>
+                  {chain === "wart" ? (
+                    <NetworkBadge
+                      network={network.id === "wart-testnet" ? "defi-testnet" : "mainnet"}
+                      onSwitch={() => setNetwork(network.id === "wart-testnet" ? "wart-mainnet" : "wart-testnet")}
+                    />
+                  ) : null}
                 </div>
                 <button
                   type="button"
@@ -654,22 +662,29 @@ const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) =
                 <>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
-                      <TokenMark symbol={selectedToken.hash ? selectedToken.name : "WART"} size={28} />
-                      <p className="text-sm font-semibold text-white">
-                        {selectedToken.hash ? selectedToken.name : "WART"}
+                      {selectedToken.hash ? (
+                        <AssetMark hash={selectedToken.hash} name={selectedToken.name} round />
+                      ) : (
+                        <TokenMark symbol="WART" size={28} />
+                      )}
+                      <p className="min-w-0 truncate text-sm font-semibold text-white">
+                        {selectedToken.hash ? (
+                          <AssetTitle hash={selectedToken.hash} name={selectedToken.name} />
+                        ) : "WART"}
                       </p>
                     </div>
-                    <p className="font-mono text-sm font-semibold text-white">
+                    <p className="bal-color font-mono text-sm font-semibold">
                       {showAmount(wartSpend.available || "0")}
                     </p>
                   </div>
                   {!selectedToken.hash && hasPositiveLocked(wartSpend.locked) ? (
                     <p className="text-[11px] text-zinc-500">
-                      Locked {showAmount(wartSpend.locked)} · Total {showAmount(wartSpend.total)}
+                      Locked <span className="bal-color">{showAmount(wartSpend.locked)}</span>
+                      {" · "}Total <span className="bal-color">{showAmount(wartSpend.total)}</span>
                     </p>
                   ) : null}
                   {!selectedToken.hash && activeNetwork === "mainnet" && usd > 0 ? (
-                    <p className="font-mono text-sm text-zinc-400">≈ {showAmount(String(usd))} USD</p>
+                    <p className="num-color font-mono text-sm">≈ {showAmount(String(usd))} USD</p>
                   ) : null}
                   <NodeError message={balanceError} />
                   {/* The family has no node at all, so the picker is the
@@ -705,22 +720,40 @@ const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) =
                 />
               )}
             </div>
-             <div className="wallet-actions">
-              <button
-                onClick={() => navigate(chain === "wart" ? "/send" : "/chain-send")}
-              >
-                <IoSend className="text-2xl text-primary" />
-                <p className="text-white text-sm font-semibold">Send</p>
+            <div className={`wallet-actions${chain === "wart" && network.id === "wart-testnet" ? " wallet-actions--quad" : ""}`}>
+              <button type="button" onClick={() => navigate(chain === "wart" ? "/send" : "/chain-send")}>
+                <IoSend />
+                Send
               </button>
-              <button onClick={() => navigate("/receive")}><IoDownloadOutline />Receive</button>
-              {network.capabilities.includes("swap") ? (
-                <button
-                  onClick={() => navigate("/swap")}
-                >
-                  <IoTrendingUp className="text-2xl text-primary" />
-                  <p className="text-white text-sm font-semibold">Swap</p>
-                </button>
-              ) : null}
+              {chain === "wart" && network.id === "wart-testnet" ? (
+                <>
+                  <button type="button" onClick={() => navigate("/swap")}>
+                    <IoTrendingUp />
+                    Swap
+                  </button>
+                  <button type="button" onClick={() => navigate("/liquidity")}>
+                    <IoWater />
+                    Liquidity
+                  </button>
+                  <button type="button" onClick={() => navigate("/create-token")}>
+                    <IoDiamond />
+                    Mint
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => navigate("/receive")}>
+                    <IoDownloadOutline />
+                    Receive
+                  </button>
+                  {chain !== "wart" && network.capabilities.includes("swap") ? (
+                    <button type="button" onClick={() => navigate("/swap")}>
+                      <IoTrendingUp />
+                      Swap
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
             {network.id === "wart-testnet" && <WatchedAssets refreshTick={holdingsTick} />}
             {ledgerNote && (

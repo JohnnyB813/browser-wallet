@@ -27,7 +27,7 @@ export default function OpenOrders() {
       <h3 className="text-sm font-semibold mb-2">{group.baseAsset.name || "Asset"}</h3>
       {([...(group.wartToAssetSwaps || []).map((order) => ({ order, side: "Buy" })), ...(group.assetToWartSwaps || []).map((order) => ({ order, side: "Sell" }))]).map(({ order, side }, i) =>
         <div key={order.txHash || i} className="border-t border-white/10 py-3">
-          <div className="flex justify-between gap-2 text-xs"><span>{side} {order.amount?.str || "0"}</span><span>{order.formattedLimitPrice ?? order.limit?.doubleAdjusted ?? "?"} WART</span></div>
+          <div className="flex justify-between gap-2 text-xs" style={{ color: side === "Sell" ? "var(--defi-sell)" : "var(--defi-buy)" }}><span>{side} {order.amount?.str || "0"}</span><span className="num-color">{order.formattedLimitPrice ?? order.limit?.doubleAdjusted ?? "?"} WART</span></div>
           <p className="text-[11px] text-zinc-500 mt-1">Filled: {order.filled?.str || "0"}</p>
           {order.txHash && <button className="defi-compact-btn mt-2" onClick={() => navigate(`/cancel-order-step2?hash=${order.txHash}`)}>Cancel order</button>}
         </div>)}

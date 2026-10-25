@@ -64,7 +64,7 @@ export default function WatchedAssets({ refreshTick = 0 }: { refreshTick?: numbe
     </form>
     {error && <p className="defi-error">{error}</p>}
     {results.map((asset) => asset.hash && <div key={asset.hash} className="flex items-center justify-between gap-2 py-3 border-b border-white/10">
-      <div className="min-w-0"><AssetTitle hash={asset.hash} name={asset.name || "Asset"} /><p className="text-[10px] font-mono text-zinc-500">{asset.hash.slice(0, 12)}…{asset.hash.slice(-8)}</p></div>
+      <div className="flex min-w-0 items-center gap-2"><AssetMark hash={asset.hash} name={asset.name || "Asset"} size="sm" round /><div className="min-w-0"><AssetTitle hash={asset.hash} name={asset.name || "Asset"} /><p className="text-[10px] font-mono text-zinc-500">{asset.hash.slice(0, 12)}…{asset.hash.slice(-8)}</p></div></div>
       <button className="defi-compact-btn" onClick={() => track(asset.hash!, asset.name)}>{watched.some((item) => item.hash === asset.hash) ? "Untrack" : "+ Track"}</button>
     </div>)}
   </section>;

@@ -794,7 +794,7 @@ export default function SwapDexPanel({
               {lpBalance != null && (
                 <p className="text-[10px] text-zinc-500 mt-2">
                   Your LP shares:{" "}
-                  <span className="text-amber-400/90 tabular-nums">
+                  <span className="bal-color tabular-nums">
                     {lpBalance}
                   </span>
                 </p>
@@ -802,7 +802,7 @@ export default function SwapDexPanel({
               {spotPrice != null && (
                 <p className="text-[10px] text-zinc-500 mt-1">
                   Spot:{" "}
-                  <span className="text-zinc-300 tabular-nums">
+                  <span className="num-color tabular-nums">
                     {formatSpot(spotPrice)}
                   </span>{" "}
                   WART
@@ -989,7 +989,7 @@ export default function SwapDexPanel({
                       title="Use available balance"
                     >
                       <span className="text-zinc-500">Available </span>
-                      <span className="text-zinc-300 tabular-nums">
+                      <span className="bal-color tabular-nums">
                         {displayPayAvailable.available}
                       </span>
                       <span className="text-zinc-500">
@@ -1271,7 +1271,7 @@ export default function SwapDexPanel({
                         <>
                           <div className="defi-stat-box">
                             <div className="defi-stat-label">WART</div>
-                            <div className="defi-stat-value">
+                            <div className="defi-stat-value bal-color">
                               {String(
                                 (pool.wart as { str?: string })?.str ||
                                   pool.wart ||
@@ -1282,7 +1282,7 @@ export default function SwapDexPanel({
                           </div>
                           <div className="defi-stat-box">
                             <div className="defi-stat-label">Asset</div>
-                            <div className="defi-stat-value">
+                            <div className="defi-stat-value bal-color">
                               {String(
                                 (pool.asset as { str?: string })?.str ||
                                   pool.asset ||

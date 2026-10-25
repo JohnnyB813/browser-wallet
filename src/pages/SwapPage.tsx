@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import Header from "../components/Header";
 import DefiNodeGate from "../components/DefiNodeGate";
+import { IoWater } from "react-icons/io5";
 import SwapDexPanel, { type SwapOrderMode } from "../components/SwapDexPanel";
 import ChainSwap from "./ChainSwap";
 import { useChainAccounts } from "../chains/useChainAccounts";
@@ -141,6 +142,15 @@ function SwapPage({ pool = false }: { pool?: boolean }) {
     <DefiNodeGate title={pool ? "Liquidity" : "Swap"}>
     <div className="defi-page container">
       <Header title={pool ? "Liquidity" : "Swap"} />
+      {pool ? (
+        <div className="wallet-feature-card">
+          <IoWater />
+          <div>
+            <strong>Pool</strong>
+            <small>Deposit WART and an asset, or withdraw the shares you already hold. This is the pool side of the swap screen.</small>
+          </div>
+        </div>
+      ) : null}
       {status && <p className="defi-success">{status}</p>}
       {error && <p className="defi-error">{error}</p>}
       <SwapDexPanel

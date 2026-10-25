@@ -302,7 +302,7 @@
   flex: 1 1 10.5rem;
 }
 .defi-balance {
-  color: var(--defi-text);
+  color: var(--balance-color, var(--defi-text));
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.8rem;
   text-align: right;
@@ -671,7 +671,7 @@ select.defi-input {
   margin-bottom: 3px;
 }
 .defi-stat-value {
-  color: var(--defi-text);
+  color: var(--number-color, var(--defi-text));
   font-size: 0.8rem;
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -685,14 +685,14 @@ select.defi-input {
   margin-bottom: 0.65rem;
 }
 .defi-lp-shares-label {
-  color: var(--defi-amber-text);
+  color: var(--pool-color, var(--defi-amber-text));
   font-size: 0.65rem;
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
 .defi-lp-shares-value {
-  color: var(--defi-text);
+  color: var(--balance-color, var(--defi-text));
   font-size: 1.75rem;
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -842,7 +842,7 @@ select.defi-input {
   font-weight: 500;
 }
 .defi-chart-price {
-  color: var(--defi-text);
+  color: var(--number-color, var(--defi-text));
   font-size: 1.1rem;
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -1059,7 +1059,7 @@ select.defi-input {
   position: relative;
 }
 .main-balance-value {
-  color: #fff;
+  color: var(--balance-color, #fff);
   font-size: 1.65rem;
   font-weight: 600;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -1095,14 +1095,14 @@ select.defi-input {
   line-height: 1.35;
 }
 .main-balance-meta-total {
-  color: #a1a1aa;
+  color: var(--balance-color, #a1a1aa);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 .main-balance-meta-locked {
   color: rgba(251, 191, 36, 0.9);
 }
 .main-balance-meta-locked-val {
-  color: #fcd34d;
+  color: var(--balance-color, #fcd34d);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 .main-balance-meta-hint {
@@ -1502,7 +1502,7 @@ select.defi-input {
   line-height: 1.15;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  color: #fff;
+  color: var(--number-color, #fff);
 }
 .swap-page .swap-amount-value input {
   width: 100%;
@@ -1510,7 +1510,7 @@ select.defi-input {
   background: transparent;
   border: 0;
   outline: none;
-  color: #fff;
+  color: var(--number-color, #fff);
   font: inherit;
   letter-spacing: inherit;
   padding: 0.125rem 0;
@@ -1823,6 +1823,25 @@ select.defi-input {
 }
 .swap-page .text-white {
   color: #fff;
+}
+.swap-page .swap-amount-value,
+.swap-page .swap-amount-value.text-white,
+.swap-page .swap-amount-value .text-white,
+.swap-page .swap-amount-value input {
+  color: var(--number-color, #fff);
+}
+.num-color,
+.swap-page .num-color,
+.swap-page .text-zinc-300.num-color,
+.swap-page .text-white.num-color {
+  color: var(--number-color, #fff);
+}
+.bal-color,
+.swap-page .bal-color,
+.swap-page .text-zinc-300.bal-color,
+.swap-page .text-amber-400\/90.bal-color,
+.defi-stat-value.bal-color {
+  color: var(--balance-color, #fff);
 }
 .swap-page .text-amber-400\/90 {
   color: rgba(251, 191, 36, 0.9);

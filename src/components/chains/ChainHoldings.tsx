@@ -166,7 +166,7 @@ export default function ChainHoldings({
                   {subtitle ? <p className="truncate text-[11px] text-zinc-500">{subtitle}</p> : null}
                 </div>
               </div>
-              <p className="font-mono text-sm font-semibold text-white">
+              <p className="bal-color font-mono text-sm font-semibold">
                 {showAmount(row.amount, known || Boolean(error))}
               </p>
             </div>

@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Address, Wart, Funds, TokenDecimals, Liquidity } from "warthog-ts";
 import Header from "../components/Header";
+import TickerMenu from "../components/TickerMenu";
 import useWallet from "../hooks/useWallet";
 import { useChainAccounts } from "../chains/useChainAccounts";
+import { loadWatched, type WatchedAsset } from "../utils/watchedAssets";
 import ChainSend from "./ChainSend";
 
 export default function SendPage() {
@@ -14,13 +16,37 @@ export default function SendPage() {
 function WarthogSend() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const { activeNetwork, ledgerAccount, setTmpDestinationWalletState, setTmpWartAmountState, setTmpAssetHashState, setTmpTokenAmountState, setTmpPrecisionState, setTmpTransferTypeState } = useWallet();
+  const { wallet, activeNetwork, ledgerAccount, setTmpDestinationWalletState, setTmpWartAmountState, setTmpAssetHashState, setTmpTokenAmountState, setTmpPrecisionState, setTmpTransferTypeState } = useWallet();
   const defi = activeNetwork === "defi-testnet" && !ledgerAccount;
   const prefillHash = params.get("hash") || "";
+  const initialWatched = wallet ? loadWatched(wallet) : [];
+  const [watched, setWatched] = useState<WatchedAsset[]>(initialWatched);
   const [type, setType] = useState<"wart" | "token" | "liquidity">(defi && prefillHash ? "token" : "wart");
   const [to, setTo] = useState(params.get("address") || "");
   const [amount, setAmount] = useState("");
   const [hash, setHash] = useState(prefillHash);
+  const [custom, setCustom] = useState(Boolean(prefillHash) && !initialWatched.some((item) => item.hash.toLowerCase() === prefillHash.toLowerCase()));
+  useEffect(() => { setWatched(wallet ? loadWatched(wallet) : []); }, [wallet]);
+  useEffect(() => {
+    if (!prefillHash) return;
+    const known = watched.some((item) => item.hash.toLowerCase() === prefillHash.toLowerCase());
+    if (known) setCustom(false);
+  }, [watched, prefillHash]);
+  const tracked = watched.find((item) => item.hash.toLowerCase() === hash.toLowerCase());
+  const assetId = type === "wart" ? "wart" : type === "liquidity" ? "liquidity" : !custom && tracked ? tracked.hash : "custom";
+  const pickAsset = (id: string) => {
+    if (id === "wart") { setType("wart"); setCustom(false); return; }
+    if (id === "liquidity") { setType("liquidity"); setCustom(true); return; }
+    if (id === "custom") {
+      setType("token");
+      setCustom(true);
+      if (tracked) setHash("");
+      return;
+    }
+    setType("token");
+    setCustom(false);
+    setHash(id);
+  };
   const initialDecimals = Number(params.get("decimals") ?? 8);
   const [decimals, setDecimals] = useState(Number.isInteger(initialDecimals) && initialDecimals >= 0 && initialDecimals <= 18 ? initialDecimals : 8);
   const [error, setError] = useState("");
@@ -43,8 +69,13 @@ function WarthogSend() {
   return <div className="container">
     <Header title="Send" />
     <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
-      {defi && <label className="defi-label">Asset type<select className="defi-input" value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="wart">WART</option><option value="token">Token</option><option value="liquidity">Liquidity units</option></select></label>}
-      {type !== "wart" && <label className="defi-label">Asset hash<input className="defi-input font-mono" value={hash} onChange={(event) => setHash(event.target.value)} placeholder="64-character asset hash" /></label>}
+      {defi && <div className="defi-label"><span>Asset</span><TickerMenu className="ticker-menu--field" ariaLabel="Asset" value={assetId} onChange={pickAsset} items={[
+        { id: "wart", label: "WART", symbol: "WART", hint: "Native currency" },
+        ...watched.map((item) => ({ id: item.hash, label: item.customName || "Asset", hash: item.hash, name: item.customName, hint: `${item.hash.slice(0, 8)}…${item.hash.slice(-4)}` })),
+        { id: "custom", label: "Other token", symbol: "TOKEN", hint: "Paste an asset hash" },
+        { id: "liquidity", label: "Liquidity units", symbol: "LP", hint: "Pool shares for an asset" },
+      ]} /></div>}
+      {type !== "wart" && (custom || type === "liquidity") && <label className="defi-label">Asset hash<input className="defi-input font-mono" value={hash} onChange={(event) => setHash(event.target.value)} placeholder="64-character asset hash" /></label>}
       <label className="defi-label">Recipient<input className="defi-input font-mono" value={to} onChange={(event) => setTo(event.target.value)} placeholder="Warthog public address" autoComplete="off" /></label>
       <label className="defi-label">Amount<input className="defi-input" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0" /></label>
       {type === "token" && <label className="defi-label">Token decimals<select className="defi-input" value={decimals} onChange={(event) => setDecimals(Number(event.target.value))}>{Array.from({ length: 19 }, (_, n) => <option key={n}>{n}</option>)}</select></label>}

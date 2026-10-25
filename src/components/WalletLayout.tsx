@@ -19,7 +19,8 @@ export default function WalletLayout() {
   const category = /^\/(trade|swap|liquidity|create-token|aave|safetrade)/.test(location.pathname) ? "/trade"
     : /^\/(activity|cancel-order)/.test(location.pathname) ? "/activity"
     : /^\/(settings|account-details|private-key|recovery-phrase|select-node|mainnet-nodes|manage-account)/.test(location.pathname) ? "/settings" : "/home";
-  const required: Record<string, Capability> = { "/swap": "swap", "/liquidity": "liquidity", "/create-token": "createAsset", "/aave": "aave", "/safetrade": "safetrade", "/cancel-order-step2": "orders" };
+  // SafeTrade lists every market itself, so the wallet network does not hide it.
+  const required: Record<string, Capability> = { "/swap": "swap", "/liquidity": "liquidity", "/create-token": "createAsset", "/aave": "aave", "/cancel-order-step2": "orders" };
   const capability = required[location.pathname];
   const unsupported = (capability && !network.capabilities.includes(capability))
     || (location.pathname === "/sendstep2" && (chain !== "wart" || (tmpTransferType !== "wart" && network.id !== "wart-testnet")))
