@@ -4,6 +4,7 @@ import { HashRouter } from "react-router-dom";
 import { Buffer } from "buffer";
 import "./index.css";
 import "./styles/defi.css";
+import "./styles/wallet-layout.css";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { WalletProvider } from "./context/WalletContext";

@@ -4,7 +4,7 @@ import { base58 } from '@scure/base';
 import { ed25519 } from '@noble/curves/ed25519';
 import { ethers } from 'ethers';
 import { normalizeEthPhrase } from '../evmAddress';
-import { BTC_PATH, SOL_PATH } from './chains';
+import { getSessionAccountIndex } from '../sessionVault';
 import { slip10Derive } from './slip10';
 
 export type ChainKeys = {
@@ -20,14 +20,15 @@ function wipe(bytes: Uint8Array | undefined): void {
 }
 
 /** Bitcoin and Solana keys for a BIP39 phrase. Hemi is the Ethereum key. */
-export function deriveChainKeys(mnemonic: string): ChainKeys {
+export function deriveChainKeys(mnemonic: string, index = getSessionAccountIndex()): ChainKeys {
+  if (!Number.isSafeInteger(index) || index < 0 || index >= 0x80000000) throw new Error('Invalid account index');
   const phrase = normalizeEthPhrase(mnemonic);
   const seed = ethers.getBytes(ethers.Mnemonic.fromPhrase(phrase).computeSeed());
-  const btc = HDKey.fromMasterSeed(seed).derive(BTC_PATH);
+  const btc = HDKey.fromMasterSeed(seed).derive(`m/84'/0'/0'/0/${index}`);
   if (!btc.privateKey || !btc.publicKey) throw new Error('Could not derive the Bitcoin key.');
   const payment = p2wpkh(btc.publicKey, NETWORK);
   if (!payment.address) throw new Error('Could not encode the Bitcoin address.');
-  const solPrivateKey = slip10Derive(seed, SOL_PATH);
+  const solPrivateKey = slip10Derive(seed, `m/44'/501'/${index}'/0'`);
   const solPublic = ed25519.getPublicKey(solPrivateKey);
   seed.fill(0);
   return {
@@ -40,8 +41,8 @@ export function deriveChainKeys(mnemonic: string): ChainKeys {
 }
 
 /** Public Bitcoin and Solana addresses. Does not return private keys. */
-export function chainAddresses(mnemonic: string): { btcAddress: string; solAddress: string } {
-  const keys = deriveChainKeys(mnemonic);
+export function chainAddresses(mnemonic: string, index = getSessionAccountIndex()): { btcAddress: string; solAddress: string } {
+  const keys = deriveChainKeys(mnemonic, index);
   const out = { btcAddress: keys.btcAddress, solAddress: keys.solAddress };
   wipe(keys.btcPrivateKey);
   wipe(keys.solPrivateKey);

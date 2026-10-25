@@ -31,6 +31,8 @@ function SecureSetup() {
     setPassword,
     setToken,
     setName,
+    setNameList,
+    pathType,
     saveCurrentAsNamedWallet,
   } = useWallet();
 
@@ -148,6 +150,7 @@ function SecureSetup() {
         setToken("passkey-" + Date.now().toString());
       }
       setName(name);
+      setNameList([name]);
       await saveCurrentAsNamedWallet(name, password || null, {
         withPasskey: wantPasskey,
         require2fa: require2fa && wantPassword && wantPasskey,
@@ -178,7 +181,10 @@ function SecureSetup() {
     setError(null);
     try {
       setToken("session-" + Date.now().toString());
-      if (walletName.trim()) setName(walletName.trim());
+      if (walletName.trim()) {
+        setName(walletName.trim());
+        setNameList([walletName.trim()]);
+      }
       navigate("/home", { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to open wallet");
@@ -201,6 +207,7 @@ function SecureSetup() {
           publicKey: exported.publicKey || "",
           address: exported.address || wallet,
           mnemonic: exported.mnemonic || seedPhrase || undefined,
+          pathType,
         },
         downloadPassword,
       );

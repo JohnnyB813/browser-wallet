@@ -3,7 +3,7 @@
  * extension DeFi hub, using that hub's watched-asset list.
  */
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import Header from "../components/Header";
 import DefiNodeGate from "../components/DefiNodeGate";
 import SwapDexPanel, { type SwapOrderMode } from "../components/SwapDexPanel";
@@ -18,6 +18,8 @@ import {
 } from "../utils/warthogNode";
 import {
   fetchAssetBalance,
+  fetchLiquidityPositions,
+  type LiquidityPosition,
   type DefiAssetBalance,
 } from "../utils/defiClient";
 
@@ -47,7 +49,7 @@ function parseMode(raw: string | null): SwapOrderMode {
   return "market";
 }
 
-function SwapPage() {
+function SwapPage({ pool = false }: { pool?: boolean }) {
   const [params] = useSearchParams();
   const { wallet, selectedNode, selectedNodeUrl, ledgerAccount } = useWallet();
   const { chain } = useChainAccounts();
@@ -64,6 +66,8 @@ function SwapPage() {
   const [wartAvailable, setWartAvailable] = useState("0");
   const [wartLocked, setWartLocked] = useState("0");
   const [assetBalances, setAssetBalances] = useState<DefiAssetBalance[]>([]);
+  const [positions, setPositions] = useState<LiquidityPosition[]>([]);
+  const [positionsError, setPositionsError] = useState("");
 
   const refreshBalance = useCallback(async () => {
     if (!wallet || !nodeUrl) return;
@@ -116,17 +120,31 @@ function SwapPage() {
 
   const decimals = parseInt(params.get("decimals") || "8", 10);
 
+  useEffect(() => {
+    let alive = true;
+    if (!pool || !defi || !wallet || !nodeUrl) return;
+    setPositionsError("");
+    void fetchLiquidityPositions(nodeUrl, wallet, assetBalances.map((asset) => asset.hash), assetBalances)
+      .then((items) => { if (alive) setPositions(items); })
+      .catch(() => { if (alive) setPositionsError("Could not load liquidity positions"); });
+    return () => { alive = false; };
+  }, [pool, defi, wallet, nodeUrl, assetBalances]);
+
   if (chain !== "wart") {
     return <ChainSwap chain={chain} />;
   }
+  if (!pool && params.get("mode") === "pool") {
+    return <Navigate to={`/liquidity?${params.toString()}`} replace />;
+  }
 
   return (
-    <DefiNodeGate title="Swap">
+    <DefiNodeGate title={pool ? "Liquidity" : "Swap"}>
     <div className="defi-page container">
-      <Header title="Swap" />
+      <Header title={pool ? "Liquidity" : "Swap"} />
       {status && <p className="defi-success">{status}</p>}
       {error && <p className="defi-error">{error}</p>}
       <SwapDexPanel
+        key={pool ? "pool" : params.get("mode") || "market"}
         nodeUrl={nodeUrl}
         wallet={wallet || ""}
         fee={fee}
@@ -143,9 +161,16 @@ function SwapPage() {
         setStatus={setStatus}
         setError={setError}
         onSuccess={refreshAll}
-        initialMode={parseMode(params.get("mode"))}
+        initialMode={pool ? "pool" : parseMode(params.get("mode"))}
+        poolOnly={pool}
         inactiveReason={inactiveReason}
       />
+      {pool && <section className="mt-6">
+        <h2 className="wallet-section-label">Your liquidity positions</h2>
+        {positionsError && <p className="defi-error">{positionsError}</p>}
+        {!positions.length && !positionsError && <p className="defi-hint">No positions found for tracked assets. Track pool assets in Wallet to include them here.</p>}
+        {positions.map((position) => <div className="defi-card" key={position.hash}><p className="text-sm font-semibold">{position.name} / WART</p><p className="text-xs text-zinc-400 mt-1">LP shares: {position.lpBalance}</p><p className="text-xs text-zinc-500">Pool: {position.poolWart} WART · {position.poolAsset} {position.name}</p><a className="defi-compact-btn mt-2 inline-block" href={`#/liquidity?hash=${position.hash}&name=${encodeURIComponent(position.name)}&decimals=${position.decimals}`}>Manage position</a></div>)}
+      </section>}
     </div>
     </DefiNodeGate>
   );

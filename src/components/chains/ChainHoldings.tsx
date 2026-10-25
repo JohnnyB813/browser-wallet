@@ -10,15 +10,8 @@ import {
   type WalletToken,
 } from "../../mobile-port/utils/walletTokens";
 import type { BrowserChain } from "../../chains/useChainAccounts";
-import { toast } from "../../utils/toast";
 import { formatDisplayNumber, loadNumberDisplayPrefs } from "../../utils/numberDisplay";
-import ChainActivity from "./ChainActivity";
 import TokenMark, { tokenMark } from "./TokenMark";
-
-function short(value: string): string {
-  if (value.length <= 18) return value;
-  return `${value.slice(0, 8)}…${value.slice(-6)}`;
-}
 
 function showAmount(value: string | null, failed: boolean): string {
   if (value == null) return failed ? "—" : "…";
@@ -41,16 +34,12 @@ export default function ChainHoldings({
   btcAddress,
   solAddress,
   refreshTick = 0,
-  onSend,
-  onTunnel,
 }: {
   chain: Exclude<BrowserChain, "wart">;
   ethAddress: string;
   btcAddress: string;
   solAddress: string;
   refreshTick?: number;
-  onSend: () => void;
-  onTunnel: () => void;
 }) {
   const [rows, setRows] = useState<{ token: WalletToken; amount: string | null }[]>([]);
   const [address, setAddress] = useState("");
@@ -61,13 +50,11 @@ export default function ChainHoldings({
   const [draft, setDraft] = useState("");
   const [addError, setAddError] = useState("");
   const [addBusy, setAddBusy] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     setAdding(false);
     setDraft("");
     setAddError("");
-    setActivityOpen(false);
   }, [chain]);
 
   useEffect(() => {
@@ -188,48 +175,12 @@ export default function ChainHoldings({
       </div>
       {address ? (
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="min-w-0 flex-1 truncate text-left font-mono text-[11px] text-zinc-400"
-            onClick={() => {
-              void navigator.clipboard.writeText(address);
-              toast.success("Copied", address);
-            }}
-          >
-            {short(address)}
-          </button>
-          <button type="button" className={actionBtn} onClick={onSend}>
-            Send
-          </button>
-          <button
-            type="button"
-            className={`${actionBtn} ${activityOpen ? "bg-[#E79300]/30" : ""}`}
-            aria-expanded={activityOpen}
-            onClick={() => setActivityOpen((open) => !open)}
-          >
-            Activity
-          </button>
-          {chain === "hemi" ? (
-            <button type="button" className={actionBtn} onClick={onTunnel}>
-              Tunnel
-            </button>
-          ) : null}
           {chain !== "bitcoin" ? (
             <button type="button" className={actionBtn} onClick={() => setAdding((value) => !value)}>
               Add token
             </button>
           ) : null}
         </div>
-      ) : null}
-      {activityOpen && address ? (
-        <ChainActivity
-          chain={chain}
-          address={address}
-          ethAddress={ethAddress}
-          btcAddress={btcAddress}
-          solAddress={solAddress}
-          refreshTick={refreshTick}
-        />
       ) : null}
       {note ? <p className="mt-2 text-[11px] text-zinc-500">{note}</p> : null}
       {adding && network ? (
