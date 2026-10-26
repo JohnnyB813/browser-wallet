@@ -5,7 +5,7 @@
 import { ethers } from "ethers";
 import { DEFAULT_TX_FEE, type WalletNode } from "../config/network";
 import { isDefiNode, normalizeNodeUrl } from "./nodes";
-import { formatBalanceBreakdown } from "./balanceBreakdown";
+import { formatAmountFromRaw, formatBalanceBreakdown } from "./balanceBreakdown";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 import { NodeVersion, WarthogDeFiApi, WarthogLegacyApi } from "warthog-ts";
 
@@ -63,15 +63,6 @@ async function nodeGet<T = unknown>(
   return json.data as T;
 }
 
-
-function formatAmountFromRaw(raw: bigint | number | string, precision = 8): string {
-  const value = BigInt(raw);
-  const divisor = 10n ** BigInt(precision);
-  const whole = value / divisor;
-  const frac = value % divisor;
-  if (precision === 0) return whole.toString();
-  return `${whole}.${frac.toString().padStart(precision, "0")}`;
-}
 
 /** Mainnet returns flat pin fields; DeFi may nest under chainHead */
 function normalizeChainPin(data: Record<string, unknown>): {

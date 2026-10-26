@@ -1,13 +1,15 @@
 /**
- * Phrase used by the ported Ethereum, Bitcoin, Hemi, and Solana signers.
- * The extension sets this from the unlocked recovery phrase. Ledger sessions
- * stay on the Warthog app, so other chains sign from the phrase only.
+ * Selected account index for chain derivation.
+ * The recovery phrase stays in the signing worker. This module does not keep it.
  */
-let phrase = '';
 let accountIndex = 0;
 
 export function getSessionAccountIndex(): number {
   return accountIndex;
+}
+
+export function setSessionAccountIndex(index: number): void {
+  accountIndex = Number.isSafeInteger(index) && index >= 0 && index < 0x80000000 ? index : 0;
 }
 
 /** Shape the phone ledger session uses. This port always returns null. */
@@ -21,13 +23,16 @@ export type ChainLedgerSession = {
   solPublicKey?: string;
 };
 
+/**
+ * Remember which account is selected. A phrase argument used to be stored here.
+ * It is ignored so a page signer cannot read the recovery phrase.
+ */
 export function setChainSession(mnemonic: string | null | undefined, index = 0): void {
-  phrase = mnemonic?.trim() ?? '';
-  accountIndex = phrase ? index : 0;
+  setSessionAccountIndex(mnemonic?.trim() ? index : 0);
 }
 
 export function getSessionMnemonic(): string {
-  return phrase;
+  return "";
 }
 
 export function getLedgerSession(): ChainLedgerSession | null {
@@ -35,5 +40,5 @@ export function getLedgerSession(): ChainLedgerSession | null {
 }
 
 export function getSessionPrivateKey(): string {
-  return '';
+  return "";
 }

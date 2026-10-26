@@ -33,8 +33,9 @@ import { ledgerWartSubmitJson, signWartTransferOnLedger } from "../ledger/wartho
 import { readLedgerWindowMode, storeLedgerSignJob, takeLedgerLastTx, type LedgerWindowMode } from "../ledger/session";
 import { isToolbarActionPopup, openLedgerHost, openLedgerInSidePanel } from "../ledger/shell";
 import { reloadDocumentOnce } from "../utils/extensionNav";
-import { DEFAULT_FEE_WART } from "../config";
-import { runWithUnlockedAccount } from "../utils/signingBridge";
+import { DEFAULT_TX_FEE } from "../config/network";
+import { isPlainHttpNode } from "../utils/nodes";
+import { signPreparedWarthog } from "../utils/signingBridge";
 import {
   type NodeMempoolEntry,
   type NodeTx,
@@ -384,7 +385,7 @@ const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) =
         const wartParsed = Wart.parse(pendingApproval.amount || "0");
         if (!wartParsed) throw new Error("Invalid WART amount");
         const fee = RoundedFee.fromE8(
-          BigInt(Math.round(parseFloat(DEFAULT_FEE_WART) * 1e8)),
+          BigInt(Math.round(parseFloat(DEFAULT_TX_FEE) * 1e8)),
           false,
         );
         if (!fee) throw new Error("Invalid fee");
@@ -440,10 +441,14 @@ const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) =
         if (!wallet) throw new Error("No account selected");
         const recipient = Address.fromHex(pendingApproval.to || "");
         const amount = Wart.parse(pendingApproval.amount || "0");
-        const fee = RoundedFee.fromE8(BigInt(Math.round(Number(DEFAULT_FEE_WART) * 1e8)), false);
+        const fee = RoundedFee.fromE8(BigInt(Math.round(Number(DEFAULT_TX_FEE) * 1e8)), false);
         if (!recipient || !amount || !fee) throw new Error("Invalid transaction request");
         const context = await createTransactionContext(nodeList, selectedNodeIndex, fee, NonceId.random());
-        const transaction = await runWithUnlockedAccount((account) => context.transferWart(account, recipient, amount), wallet);
+        const transaction = await signPreparedWarthog(context, {
+          op: "wartTransfer",
+          toAddr: recipient.hex,
+          amountE8: amount.E8.toString(),
+        }, wallet);
         const hash = await submitTransaction(nodeList, selectedNodeIndex, transaction);
         await approveRequest(undefined, hash);
         setShowApprovalBanner(false);
@@ -695,6 +700,11 @@ const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) =
                       linkLabel="Choose a node"
                       alwaysLink
                     />
+                  ) : null}
+                  {isPlainHttpNode(nodeList[selectedNodeIndex]?.url) ? (
+                    <p className="text-xs text-amber-300">
+                      This node uses plain HTTP. Someone on the network can read, reorder, or drop the transactions you submit.
+                    </p>
                   ) : null}
                   {activeNetwork === "defi-testnet" && <TokenSelector
                     selectedToken={selectedToken}

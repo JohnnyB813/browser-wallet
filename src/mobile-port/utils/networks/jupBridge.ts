@@ -1,10 +1,10 @@
 import AsyncStorage from '../../shims/asyncStorage';
 import { base64 } from '@scure/base';
 import { ethers } from 'ethers';
-import { deriveEthWallet } from '../evmAddress';
 import { sendEthCall } from '../ethChain';
 import { ETH_CHAIN_ID, ETH_RPC, ETH_USDT, ETH_USDC } from '../ethTokens';
-import { getLedgerSession, getSessionMnemonic } from '../sessionVault';
+import { getLedgerSession, getSessionAccountIndex } from '../sessionVault';
+import { chainPublicFromWorker } from '../../../utils/signingBridge';
 import { USDC_MINT, USDT_MINT } from './chains';
 import { networkFetch } from './http';
 import { sendRawSolana, signSolanaTransaction } from './solana';
@@ -431,9 +431,9 @@ async function sendEthereum(
       throw new Error('This Ethereum account is not unlocked.');
     }
   } else {
-    const mnemonic = getSessionMnemonic();
-    if (!mnemonic) throw new Error('This bridge needs the recovery phrase.');
-    if (deriveEthWallet(mnemonic).address.toLowerCase() !== ethAddress.toLowerCase()) {
+    const pubs = await chainPublicFromWorker(getSessionAccountIndex());
+    if (!pubs) throw new Error('This bridge needs the recovery phrase.');
+    if (pubs.ethAddress.toLowerCase() !== ethAddress.toLowerCase()) {
       throw new Error('This Ethereum account is not unlocked.');
     }
   }

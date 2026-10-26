@@ -164,13 +164,15 @@ class WarthogBackground {
       const url = sender.url || '';
       const origin = this.extractOrigin(url);
 
+      // Approval and window control resolve a pending dApp request or open
+      // the wallet. A content script's sender URL is the page, so these stay
+      // on extension pages. The page relay also refuses to forward them.
+      if (this.isPrivilegedAction(message.action) && !this.isExtensionSender(url)) {
+        sendResponse({ error: 'Unauthorized' });
+        return;
+      }
+
       if (message.action === 'walletListConnections' || message.action === 'walletRevokeConnection') {
-        // These administration messages are private to our extension pages.
-        // A content script has the website URL here, even though its ID is ours.
-        if (!url.startsWith(browser.runtime.getURL(''))) {
-          sendResponse({ error: 'Unauthorized' });
-          return;
-        }
         return this.ready.then(async () => {
           if (message.action === 'walletListConnections') {
             return [...this.connections.entries()].map(([siteOrigin, connection]) => ({ origin: siteOrigin, accounts: connection.accounts || [] }));
@@ -239,6 +241,26 @@ class WarthogBackground {
       sendResponse({ success: true });
       return true;
     });
+  }
+
+  isExtensionSender(url) {
+    if (!url) return false;
+    try {
+      return url.startsWith(browser.runtime.getURL(''));
+    } catch (err) {
+      return false;
+    }
+  }
+
+  isPrivilegedAction(action) {
+    return action === 'walletListConnections'
+      || action === 'walletRevokeConnection'
+      || action === 'approvalResult'
+      || action === 'getPendingApproval'
+      || action === 'approveRequest'
+      || action === 'rejectRequest'
+      || action === 'reopenToolbarPopup'
+      || action === 'showToolbarDropdown';
   }
 
   extensionFetch(message, sender) {

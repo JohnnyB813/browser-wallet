@@ -4,11 +4,11 @@ import { Address, NETWORK, OutScript, Transaction, p2wpkh } from '@scure/btc-sig
 import { ethers } from 'ethers';
 import { BTC_ADDRESS_PATH } from '../ledger/bitcoinProtocol';
 import { signPsbtOnLedger } from '../ledger/bitcoin';
-import { getLedgerSession, getSessionMnemonic } from '../sessionVault';
+import { getLedgerSession, getSessionAccountIndex } from '../sessionVault';
 import { BTC_DECIMALS, DUST_SATS, MEMPOOL } from './chains';
-import { deriveChainKeys, type ChainKeys } from './derive';
 import { networkFetch } from './http';
 import { formatUnits, parseUnits } from './units';
+import { chainPublicFromWorker, signBitcoinInWorker } from '../../../utils/signingBridge';
 
 export type Utxo = { txid: string; vout: number; value: number };
 
@@ -308,7 +308,21 @@ function buildUnsignedSpend(input: {
   return last;
 }
 
-type PhrasePayer = { kind: 'phrase'; keys: ChainKeys; address: string; publicKey: Uint8Array };
+/** Unsigned native-segwit PSBT. The signing worker adds the signature. */
+export function planBtcPsbt(input: {
+  publicKey: Uint8Array;
+  utxos: Utxo[];
+  payTo: { address: string; amount: bigint };
+  changeAddress: string;
+  feeRate: number;
+  memo?: Uint8Array;
+  memoAfterChange?: boolean;
+}): { psbt: Uint8Array; feeSats: bigint } {
+  const planned = buildUnsignedSpend(input);
+  return { psbt: planned.tx.toPSBT(2), feeSats: planned.feeSats };
+}
+
+type PhrasePayer = { kind: 'phrase'; index: number; address: string; publicKey: Uint8Array };
 type LedgerPayer = {
   kind: 'ledger';
   address: string;
@@ -318,12 +332,7 @@ type LedgerPayer = {
 };
 type BtcPayer = PhrasePayer | LedgerPayer;
 
-function wipeKeys(keys: ChainKeys | undefined): void {
-  keys?.btcPrivateKey.fill(0);
-  keys?.solPrivateKey.fill(0);
-}
-
-function openPayer(): BtcPayer {
+async function openPayer(): Promise<BtcPayer> {
   const ledger = getLedgerSession();
   if (ledger) {
     if (!ledger.btcAddress || !ledger.btcPublicKey || !ledger.btcFingerprint || !ledger.btcAccountXpub) {
@@ -337,12 +346,17 @@ function openPayer(): BtcPayer {
       accountXpub: ledger.btcAccountXpub,
     };
   }
-  const mnemonic = getSessionMnemonic();
-  if (!mnemonic) {
+  const index = getSessionAccountIndex();
+  const pubs = await chainPublicFromWorker(index);
+  if (!pubs) {
     throw new Error('Bitcoin sends need the recovery phrase. A private-key import cannot sign Bitcoin.');
   }
-  const keys = deriveChainKeys(mnemonic);
-  return { kind: 'phrase', keys, address: keys.btcAddress, publicKey: keys.btcPublicKey };
+  return {
+    kind: 'phrase',
+    index,
+    address: pubs.btcAddress,
+    publicKey: ethers.getBytes(pubs.btcPublicKey),
+  };
 }
 
 function hash160(publicKey: Uint8Array): Uint8Array {
@@ -412,9 +426,8 @@ async function spend(input: {
   memoAfterChange?: boolean;
 }): Promise<BuiltTx> {
   if (input.payer.kind === 'phrase') {
-    return buildSignedTx({
+    const planned = planBtcPsbt({
       publicKey: input.payer.publicKey,
-      privateKey: input.payer.keys.btcPrivateKey,
       utxos: input.utxos,
       payTo: input.payTo,
       changeAddress: input.payer.address,
@@ -422,6 +435,8 @@ async function spend(input: {
       memo: input.memo,
       memoAfterChange: input.memoAfterChange,
     });
+    const signed = await signBitcoinInWorker(input.payer.index, planned.psbt);
+    return { hex: signed.hex, txid: signed.txid, feeSats: planned.feeSats, outputIndex: 0 };
   }
   const planned = buildUnsignedSpend({
     publicKey: input.payer.publicKey,
@@ -438,31 +453,17 @@ async function spend(input: {
 
 /** Fee for a transaction that is not broadcast. A Ledger quote does not ask the Nano to sign. */
 export async function quoteBtcFee(to: string, amount: string): Promise<bigint> {
-  const payer = openPayer();
-  try {
-    const destination = assertBtcAddress(to);
-    const sats = parseBtc(amount);
-    const [utxos, rate] = await Promise.all([fetchUtxos(payer.address), fetchFeeRate()]);
-    if (payer.kind === 'ledger') {
-      return buildUnsignedSpend({
-        publicKey: payer.publicKey,
-        utxos,
-        payTo: { address: destination, amount: sats },
-        changeAddress: payer.address,
-        feeRate: rate,
-      }).feeSats;
-    }
-    return buildSignedTx({
-      publicKey: payer.publicKey,
-      privateKey: payer.keys.btcPrivateKey,
-      utxos,
-      payTo: { address: destination, amount: sats },
-      changeAddress: payer.address,
-      feeRate: rate,
-    }).feeSats;
-  } finally {
-    if (payer.kind === 'phrase') wipeKeys(payer.keys);
-  }
+  const payer = await openPayer();
+  const destination = assertBtcAddress(to);
+  const sats = parseBtc(amount);
+  const [utxos, rate] = await Promise.all([fetchUtxos(payer.address), fetchFeeRate()]);
+  return buildUnsignedSpend({
+    publicKey: payer.publicKey,
+    utxos,
+    payTo: { address: destination, amount: sats },
+    changeAddress: payer.address,
+    feeRate: rate,
+  }).feeSats;
 }
 
 /** Spend every coin except the miner fee. */
@@ -476,26 +477,22 @@ export async function maxSendableBtc(address: string): Promise<bigint> {
 }
 
 export async function sendBtc(to: string, amount: string): Promise<{ txid: string }> {
-  const payer = openPayer();
-  try {
-    const destination = assertBtcAddress(to);
-    if (destination === payer.address) throw new Error('That is this wallet’s Bitcoin address.');
-    const sats = parseBtc(amount);
-    const [utxos, rate] = await Promise.all([fetchUtxos(payer.address), fetchFeeRate()]);
-    const built = await spend({
-      payer,
-      utxos,
-      payTo: { address: destination, amount: sats },
-      feeRate: rate,
-    });
-    const txid = await broadcastTx(built.hex);
-    if (txid !== built.txid && !/^[0-9a-f]{64}$/i.test(txid)) {
-      throw new Error(txid || 'Bitcoin rejected the transaction.');
-    }
-    return { txid: /^[0-9a-f]{64}$/i.test(txid) ? txid : built.txid };
-  } finally {
-    if (payer.kind === 'phrase') wipeKeys(payer.keys);
+  const payer = await openPayer();
+  const destination = assertBtcAddress(to);
+  if (destination === payer.address) throw new Error('That is this wallet’s Bitcoin address.');
+  const sats = parseBtc(amount);
+  const [utxos, rate] = await Promise.all([fetchUtxos(payer.address), fetchFeeRate()]);
+  const built = await spend({
+    payer,
+    utxos,
+    payTo: { address: destination, amount: sats },
+    feeRate: rate,
+  });
+  const txid = await broadcastTx(built.hex);
+  if (txid !== built.txid && !/^[0-9a-f]{64}$/i.test(txid)) {
+    throw new Error(txid || 'Bitcoin rejected the transaction.');
   }
+  return { txid: /^[0-9a-f]{64}$/i.test(txid) ? txid : built.txid };
 }
 
 /** Signed send with an optional OP_RETURN. Change returns to this wallet. */
@@ -506,50 +503,42 @@ export async function sendBtcPayment(input: {
   memoAfterChange?: boolean;
   feeRate?: number;
 }): Promise<{ txid: string; feeSats: bigint; address: string }> {
-  const payer = openPayer();
-  try {
-    const destination = assertBtcAddress(input.to);
-    if (destination === payer.address) throw new Error('That is this wallet’s Bitcoin address.');
-    if (input.sats < DUST_SATS) throw new Error('That Bitcoin amount is below the dust limit.');
-    const [utxos, liveRate] = await Promise.all([fetchUtxos(payer.address), fetchFeeRate()]);
-    const feeRate = Math.max(1, liveRate, input.feeRate ?? 1);
-    const built = await spend({
-      payer,
-      utxos,
-      payTo: { address: destination, amount: input.sats },
-      feeRate,
-      memo: input.memo,
-      memoAfterChange: input.memoAfterChange,
-    });
-    const txid = await broadcastTx(built.hex);
-    if (txid !== built.txid && !/^[0-9a-f]{64}$/i.test(txid)) {
-      throw new Error(txid || 'Bitcoin rejected the transaction.');
-    }
-    return {
-      txid: /^[0-9a-f]{64}$/i.test(txid) ? txid : built.txid,
-      feeSats: built.feeSats,
-      address: payer.address,
-    };
-  } finally {
-    if (payer.kind === 'phrase') wipeKeys(payer.keys);
+  const payer = await openPayer();
+  const destination = assertBtcAddress(input.to);
+  if (destination === payer.address) throw new Error('That is this wallet’s Bitcoin address.');
+  if (input.sats < DUST_SATS) throw new Error('That Bitcoin amount is below the dust limit.');
+  const [utxos, liveRate] = await Promise.all([fetchUtxos(payer.address), fetchFeeRate()]);
+  const feeRate = Math.max(1, liveRate, input.feeRate ?? 1);
+  const built = await spend({
+    payer,
+    utxos,
+    payTo: { address: destination, amount: input.sats },
+    feeRate,
+    memo: input.memo,
+    memoAfterChange: input.memoAfterChange,
+  });
+  const txid = await broadcastTx(built.hex);
+  if (txid !== built.txid && !/^[0-9a-f]{64}$/i.test(txid)) {
+    throw new Error(txid || 'Bitcoin rejected the transaction.');
   }
+  return {
+    txid: /^[0-9a-f]{64}$/i.test(txid) ? txid : built.txid,
+    feeSats: built.feeSats,
+    address: payer.address,
+  };
 }
 
 /** Largest payment that still leaves the miner fee, including an OP_RETURN output. */
 export async function maxBtcPayment(input: { memoBytes?: number; feeRate?: number } = {}): Promise<bigint> {
-  const payer = openPayer();
-  try {
-    const [utxos, liveRate] = await Promise.all([fetchUtxos(payer.address), fetchFeeRate()]);
-    const sum = utxos.reduce((total, utxo) => total + BigInt(utxo.value), 0n);
-    if (sum === 0n || utxos.length === 0) return 0n;
-    const rate = Math.max(1, liveRate, input.feeRate ?? 1);
-    const outputs = input.memoBytes ? 2 : 1;
-    const fee = BigInt(rate) * guessVsize(utxos.length, outputs);
-    const max = sum - fee;
-    return max >= DUST_SATS ? max : 0n;
-  } finally {
-    if (payer.kind === 'phrase') wipeKeys(payer.keys);
-  }
+  const payer = await openPayer();
+  const [utxos, liveRate] = await Promise.all([fetchUtxos(payer.address), fetchFeeRate()]);
+  const sum = utxos.reduce((total, utxo) => total + BigInt(utxo.value), 0n);
+  if (sum === 0n || utxos.length === 0) return 0n;
+  const rate = Math.max(1, liveRate, input.feeRate ?? 1);
+  const outputs = input.memoBytes ? 2 : 1;
+  const fee = BigInt(rate) * guessVsize(utxos.length, outputs);
+  const max = sum - fee;
+  return max >= DUST_SATS ? max : 0n;
 }
 
 export function btcTxUrl(txid: string): string {

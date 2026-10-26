@@ -25,18 +25,40 @@
     return false;
   });
 
+  // Pages may call the provider. They may not approve, reject, or drive the
+  // wallet window. Those actions are extension pages only, and the background
+  // checks the sender again.
+  var PAGE_ACTIONS = {
+    requestAccounts: true,
+    sendTransaction: true,
+    transferWart: true,
+    openSendPage: true,
+    getAccounts: true,
+    getChainId: true,
+    disconnect: true,
+    getConnectionState: true
+  };
+
   window.addEventListener('message', function(event) {
     if (event.source !== window) return;
     if (!event.data || event.data.type !== 'WARTHOG_TO_CONTENT') return;
 
     var message = event.data;
+    if (!message.action || !PAGE_ACTIONS[message.action]) return;
 
-    browser.runtime.sendMessage({
-      id: message.requestId,
-      action: message.action,
-      payload: message.payload
-    }, function(response) {
-    });
+    try {
+      chrome.runtime.sendMessage({
+        id: message.requestId,
+        action: message.action,
+        payload: message.payload
+      }, function() {
+        // The dApp answer comes back as WARTHOG_PROVIDER_RESPONSE.
+        // Read lastError so a missing listener does not log as uncaught.
+        void chrome.runtime.lastError;
+      });
+    } catch (err) {
+      // The page promise times out if the relay cannot reach the worker.
+    }
   });
 
   var providerCode = function() {

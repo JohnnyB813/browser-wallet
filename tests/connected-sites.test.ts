@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
-type Message = { action: string; origin?: string };
+type Message = { action: string; origin?: string; payload?: { txHash?: string } };
 type Sender = { url: string; tab?: { id: number } };
 type Listener = (message: Message, sender: Sender, reply: (response: unknown) => void) => Promise<unknown> | undefined;
 
@@ -60,5 +60,18 @@ describe("connected-site administration", () => {
     expect(await app.send({ action: "walletListConnections" }, sender)).toEqual({ error: "Unauthorized" });
     expect(await app.send({ action: "walletRevokeConnection", origin: "https://app.example" }, sender)).toEqual({ error: "Unauthorized" });
     expect(await app.send({ action: "walletListConnections" })).toHaveLength(1);
+  });
+  test("a web page cannot approve, reject, or read a pending request", async () => {
+    const app = background();
+    const sender = { url: "https://app.example/", tab: { id: 1 } };
+    expect(await app.send({ action: "approveRequest", payload: { txHash: "fake" } }, sender)).toEqual({ error: "Unauthorized" });
+    expect(await app.send({ action: "rejectRequest" }, sender)).toEqual({ error: "Unauthorized" });
+    expect(await app.send({ action: "approvalResult", payload: { txHash: "fake" } }, sender)).toEqual({ error: "Unauthorized" });
+    expect(await app.send({ action: "getPendingApproval" }, sender)).toEqual({ error: "Unauthorized" });
+    expect(await app.send({ action: "showToolbarDropdown" }, sender)).toEqual({ error: "Unauthorized" });
+  });
+  test("an extension page can still reject a request", async () => {
+    const app = background();
+    expect(await app.send({ action: "rejectRequest" })).toEqual({ success: true });
   });
 });

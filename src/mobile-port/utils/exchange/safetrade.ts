@@ -1,6 +1,7 @@
 import CryptoJS from 'crypto-js';
 import { SECURE_STORE_KEYS } from '../../constants';
 import { storage } from '../storage';
+import { isSecretSeal, openSecret, sealSecret } from './credentialBox';
 import { ExchangeError, requestJson } from './http';
 import { requestSafeTradeIpv4 } from './ipv4Host';
 
@@ -115,15 +116,41 @@ function sign(apiKey: string, secret: string, nonce: string): string {
   return CryptoJS.HmacSHA256(nonce + apiKey, secret).toString(CryptoJS.enc.Hex);
 }
 
+function asStoredKeys(value: unknown): StoredExchangeKeys {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as StoredExchangeKeys;
+}
+
+async function writeStored(value: StoredExchangeKeys): Promise<void> {
+  const seal = await sealSecret(JSON.stringify(value));
+  await storage.setItemAsync(SECURE_STORE_KEYS.exchangeKeys, JSON.stringify(seal));
+}
+
 async function readStored(): Promise<StoredExchangeKeys> {
   const raw = await storage.getItemAsync(SECURE_STORE_KEYS.exchangeKeys);
   if (!raw) return {};
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as StoredExchangeKeys;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    parsed = JSON.parse(raw);
   } catch {
     return {};
   }
+  if (isSecretSeal(parsed)) {
+    try {
+      return asStoredKeys(JSON.parse(await openSecret(parsed)));
+    } catch {
+      return {};
+    }
+  }
+  const legacy = asStoredKeys(parsed);
+  if (!legacy.safetrade && !legacy.tidoex) return {};
+  // Older installs kept the API secret as JSON. Replace that copy.
+  try {
+    await writeStored(legacy);
+  } catch {
+    // The sealed write failed. The next save tries again.
+  }
+  return legacy;
 }
 
 export function keyHint(value: string): string {
@@ -152,7 +179,7 @@ export async function saveSafeTradeCredentials(next: SafeTradeCredentials): Prom
     ...existing,
     safetrade: { apiKey, secret },
   };
-  await storage.setItemAsync(SECURE_STORE_KEYS.exchangeKeys, JSON.stringify(cleaned));
+  await writeStored(cleaned);
 }
 
 export async function clearSafeTradeCredentials(): Promise<void> {
@@ -163,7 +190,7 @@ export async function clearSafeTradeCredentials(): Promise<void> {
     await storage.deleteItemAsync(SECURE_STORE_KEYS.exchangeKeys);
     return;
   }
-  await storage.setItemAsync(SECURE_STORE_KEYS.exchangeKeys, JSON.stringify(rest));
+  await writeStored(rest);
 }
 
 async function call(

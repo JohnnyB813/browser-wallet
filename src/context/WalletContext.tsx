@@ -11,7 +11,7 @@ import { getKeyFromPassword, encrypt, decrypt } from "dha-encryption";
 import browser from "webextension-polyfill";
 import { defaultNodes } from "../config/nodes";
 import { accountPreferencesKey, parseStringList, type AccountPreferences } from "../utils/accountPreferences";
-import { setChainSession } from "../mobile-port/utils/sessionVault";
+import { setSessionAccountIndex } from "../mobile-port/utils/sessionVault";
 import {
   DEFAULT_NODE_INDEX,
   type NodeGroups,
@@ -74,8 +74,10 @@ import {
   unlockEnvelopeWith2fa,
 } from "../utils/passkeyWallet";
 import {
+  activateWorkerAccount,
   bumpIdleTimer,
   exportWalletFromWorker,
+  getSigningStatus,
   lockSigningWorker,
   setIdleLockHandler,
   unlockSigningWorker,
@@ -90,6 +92,7 @@ import {
   readToolbarUnlock,
   storeToolbarUnlock,
 } from "../utils/passkeyHandoff";
+import { isOpaqueSessionToken, newSessionToken } from "../utils/sessionToken";
 
 setPasskeyProductName("Warthog Extension");
 
@@ -471,6 +474,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
 
   const setSelectedWalletIndex = (idx: number): void => {
     setSelectedWalletIndexState(idx);
+    setSessionAccountIndex(idx);
     saveToBrowserStorage("selectedWalletIndex", idx.toString());
   };
 
@@ -593,9 +597,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     const visible = addresses.map((_, i) => valid ? preferences!.visible[i] !== false : true);
     const selected = valid && Number.isInteger(preferences!.selected) && preferences!.selected >= 0 && preferences!.selected < addresses.length ? preferences!.selected : 0;
     const activeData = data.mnemonic ? deriveAccountAtIndex(data.mnemonic, restoredPath, selected) : data;
-    const sessionToken = opts?.password
-      ? opts.password + Date.now().toString()
-      : "session-" + Date.now().toString();
+    const sessionToken = newSessionToken();
     const expirationTime = Date.now() + 3600 * 1000;
 
     await unlockSigningWorker({
@@ -607,7 +609,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setLedgerAccount(null);
     void clearLedgerSession();
     setPrivateKeyState(null);
-    setSeedPhraseState(data.mnemonic || null);
+    setSeedPhraseState(null);
     setSigningUnlocked(true);
     setHasMnemonic(Boolean(data.mnemonic));
     accountRootRef.current = rootAddress;
@@ -616,9 +618,9 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setNameListState(names);
     setVisibleWalletListState(visible);
     setSelectedWalletIndexState(selected);
+    setSessionAccountIndex(selected);
     setNameState(names[selected]);
     setPathTypeState(restoredPath);
-    setChainSession(data.mnemonic, selected);
     if (opts?.password) {
       setPasswordState(opts.password);
     }
@@ -678,31 +680,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  const mnemonicFromSession = async (): Promise<string | null> => {
-    try {
-      const exported = await exportWalletFromWorker();
-      const mnemonic = exported.mnemonic || seedPhrase || null;
-      exported.privateKey = "";
-      return mnemonic;
-    } catch {
-      return seedPhrase;
-    }
-  };
-
   const addAccount = async (accountName: string | null): Promise<void> => {
     try {
-      const mnemonic = await mnemonicFromSession();
-      if (!mnemonic) {
+      const status = await getSigningStatus();
+      if (!status.hasMnemonic) {
         throw new Error("Cannot add accounts to a private-key-only wallet");
       }
       const index = walletList.length;
-      const data = deriveAccountAtIndex(mnemonic, pathType, index);
-      await unlockSigningWorker({
-        privateKey: data.privateKey,
-        publicKey: data.publicKey,
-        address: data.address,
-        mnemonic,
-      });
+      const data = await activateWorkerAccount(pathType, index);
       setPrivateKeyState(null);
       setSigningUnlocked(true);
       setHasMnemonic(true);
@@ -712,7 +697,6 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       setVisibleWalletList([...visibleWalletList, true]);
       setSelectedWalletIndex(index);
       setName(accountName || `Account ${index}`);
-      setChainSession(mnemonic, index);
     } catch (error) {
       console.log("Error adding new account:", error);
       throw error;
@@ -722,24 +706,17 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   const switchActiveAccount = async (index: number): Promise<void> => {
     if (index === selectedWalletIndex) return;
     if (!Number.isInteger(index) || index < 0 || index >= walletList.length) throw new Error("Invalid account index");
-    const mnemonic = await mnemonicFromSession();
-    if (!mnemonic) {
+    const status = await getSigningStatus();
+    if (!status.hasMnemonic) {
       throw new Error("Cannot switch accounts on a private-key-only wallet");
     }
-    const data = deriveAccountAtIndex(mnemonic, pathType, index);
-    await unlockSigningWorker({
-      privateKey: data.privateKey,
-      publicKey: data.publicKey,
-      address: data.address,
-      mnemonic,
-    });
+    const data = await activateWorkerAccount(pathType, index);
     setPrivateKeyState(null);
     setSigningUnlocked(true);
     setHasMnemonic(true);
     setWallet(data.address);
     setSelectedWalletIndex(index);
     setName(nameList[index] || `Account ${index}`);
-    setChainSession(mnemonic, index);
   };
 
     const importWallet = async (
@@ -801,7 +778,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
   ] as const;
 
   const lockSession = async (): Promise<void> => {
-    setChainSession(null);
+    setSessionAccountIndex(0);
     setSeedPhraseState(null);
     setPrivateKeyState(null);
     setPasswordState(null);
@@ -834,7 +811,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         ? Math.floor(accountIndex)
         : 0;
     const session = await connectLedgerAccount(nextPath, index);
-    const sessionToken = "ledger-" + Date.now().toString();
+    const sessionToken = newSessionToken("ledger");
     const expirationTime = Date.now() + 3600 * 1000;
     const name = accountName.trim() || "Ledger";
     if (
@@ -859,6 +836,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     setPrivateKeyState(null);
     setHasMnemonic(false);
     setPasswordState(null);
+    setSessionAccountIndex(0);
     setLedgerAccount(session);
     await saveLedgerSession(session);
     setSigningUnlocked(true);
@@ -1445,13 +1423,24 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         : [];
       setVisibleWalletListState(boolArray);
     });
-    loadFromChromeStorage("selectedWalletIndex", (idx) =>
-      setSelectedWalletIndexState(idx ? parseInt(idx, 10) : 0),
-    );
+    loadFromChromeStorage("selectedWalletIndex", (idx) => {
+      const index = idx ? parseInt(idx, 10) : 0;
+      const safe = Number.isSafeInteger(index) && index >= 0 ? index : 0;
+      setSelectedWalletIndexState(safe);
+      setSessionAccountIndex(safe);
+    });
     loadFromChromeStorage("name", (value) => {
       if (value) setNameState((current) => current || value);
     });
     loadFromChromeStorage("token", (value) => {
+      // Replace a token that still has the password baked into it.
+      if (value && !value.startsWith("ledger-") && !isOpaqueSessionToken(value)) {
+        const next = newSessionToken();
+        setTokenState((current) => current || next);
+        void saveToBrowserStorage("token", next);
+        setTokenLoaded(true);
+        return;
+      }
       if (value) setTokenState((current) => current || value);
       setTokenLoaded(true);
     });

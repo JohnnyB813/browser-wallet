@@ -1,5 +1,6 @@
 import { IoMdTrash } from "react-icons/io";
 import useWallet from "../hooks/useWallet";
+import { isPlainHttpNode } from "../utils/nodes";
 
 const NodeCard = ({
   id,
@@ -50,6 +51,9 @@ const NodeCard = ({
               <div className="text-white/40 text-[11px] font-mono truncate shrink-0">
                 {version}
               </div>
+            ) : null}
+            {isPlainHttpNode(address) ? (
+              <div className="text-amber-300 text-[11px] shrink-0">Plain HTTP</div>
             ) : null}
           </div>
           <div className="text-white/40 text-xs font-mono truncate">{address.replace(/^https?:\/\//, '')}</div>

@@ -5,8 +5,8 @@ import { useNavigate } from "react-router-dom";
 import SenderSummary from "../components/SenderSummary";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, addressToSeed, createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
-import { explorerBaseUrl } from "../config/nodes";
-import { DEFAULT_FEE_WART } from "../config";
+import { EXPLORER_URL } from "../config";
+import { DEFAULT_TX_FEE } from "../config/network";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import {
   Address,
@@ -16,7 +16,6 @@ import {
   Liquidity,
   RoundedFee,
   NonceId,
-  Account,
   TransactionJson,
 } from "warthog-ts";
 import { ledgerWartSubmitJson, signWartTransferOnLedger } from "../ledger/warthogApp";
@@ -27,7 +26,7 @@ import {
   openLedgerInSidePanel,
 } from "../ledger/shell";
 import { isExtensionSidePanel } from "../utils/extensionNav";
-import { exportWalletFromWorker } from "../utils/signingBridge";
+import { getSigningStatus, signPreparedWarthog } from "../utils/signingBridge";
 
 function SendFinalStep() {
   const {
@@ -63,15 +62,7 @@ function SendFinalStep() {
   >("idle");
   const [transactionHash, setTransactionHash] = useState<string>("");
   const [transactionError, setTransactionError] = useState<string>("");
-  const [customFee, setCustomFee] = useState<string>(DEFAULT_FEE_WART);
-
-  const getAccountFromIndex = async (index: number) => {
-    const exported = await exportWalletFromWorker();
-    try {
-      if (exported.address !== walletList[index]) throw new Error("Signing account changed. Start the send again.");
-      return Account.fromPrivateKeyHex(exported.privateKey);
-    } finally { exported.privateKey = ""; }
-  };
+  const [customFee, setCustomFee] = useState<string>(DEFAULT_TX_FEE);
 
   const getTransferTitle = () => {
     if (tmpTransferType === "wart") return "Send WART";
@@ -121,7 +112,13 @@ function SendFinalStep() {
     try {
       const nonceId = NonceId.random();
 
-      const account = ledgerAccount ? null : await getAccountFromIndex(selectedWalletIndex);
+      if (!ledgerAccount) {
+        const status = await getSigningStatus();
+        if (!status.unlocked) throw new Error("Wallet is locked");
+        if (status.address !== walletList[selectedWalletIndex]) {
+          throw new Error("Signing account changed. Start the send again.");
+        }
+      }
       const toAddr = Address.fromHex(tmpDestinationWallet!);
       if (!toAddr) {
         throw new Error("Invalid recipient address");
@@ -186,23 +183,36 @@ function SendFinalStep() {
       } else if (tmpTransferType === "wart") {
         const wartParsed = Wart.parse(tmpWartAmount || "0");
         if (!wartParsed) throw new Error("Invalid WART amount");
-        tx = context.transferWart(account!, toAddr, wartParsed);
+        tx = await signPreparedWarthog(context, {
+          op: "wartTransfer",
+          toAddr: toAddr.hex,
+          amountE8: wartParsed.E8.toString(),
+        }, walletList[selectedWalletIndex]);
       } else if (tmpTransferType === "token") {
         const fundsParsed = Funds.parse(
           tmpTokenAmount || "0",
           new TokenDecimals(tmpPrecision),
         );
         if (!fundsParsed) throw new Error("Invalid token amount");
-        tx = requireDeFiContext(context).transferAsset(account!, tmpAssetHash!, toAddr, fundsParsed);
+        requireDeFiContext(context);
+        tx = await signPreparedWarthog(context, {
+          op: "tokenTransfer",
+          assetHash: tmpAssetHash!,
+          isLiquidity: false,
+          toAddr: toAddr.hex,
+          amountU64: fundsParsed.amount.toString(),
+        }, walletList[selectedWalletIndex]);
       } else if (tmpTransferType === "liquidity") {
         const liquidityParsed = Liquidity.parse(tmpTokenAmount || "0");
         if (!liquidityParsed) throw new Error("Invalid liquidity amount");
-        tx = requireDeFiContext(context).transferLiquidity(
-          account!,
-          tmpAssetHash!,
-          toAddr,
-          liquidityParsed,
-        );
+        requireDeFiContext(context);
+        tx = await signPreparedWarthog(context, {
+          op: "tokenTransfer",
+          assetHash: tmpAssetHash!,
+          isLiquidity: true,
+          toAddr: toAddr.hex,
+          amountU64: liquidityParsed.E8.toString(),
+        }, walletList[selectedWalletIndex]);
       }
 
       const txHash = await submitTransaction(
@@ -409,7 +419,7 @@ function SendFinalStep() {
                 <p className="text-sm text-white/50 break-all mb-6">
                   Transaction Hash:{" "}
                   <a
-                    href={`${explorerBaseUrl}/tx/${transactionHash}`}
+                    href={`${EXPLORER_URL}/tx/${transactionHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline"

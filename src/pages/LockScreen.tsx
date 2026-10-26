@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import Button from "../components/Button";
 import { useNavigate, useLocation } from "react-router-dom";
 import useWallet from "../hooks/useWallet";
+import { newSessionToken } from "../utils/sessionToken";
 import { IoEye, IoEyeOff } from "react-icons/io5";
 
 function LockScreen() {
@@ -17,11 +18,8 @@ function LockScreen() {
   };
 
   const handleSubmit = () => {
-    console.log("***** password", password);
-    console.log("***** enteredPassword", enteredPassword);
     if (enteredPassword === password) {
-      const token = password + Date.now().toString();
-      setToken(token);
+      setToken(newSessionToken());
       const from = location.state?.from || "/home";
       navigate(from);
     } else {
