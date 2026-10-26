@@ -6,6 +6,11 @@ import {
   type WalletNode,
 } from "../config/network";
 
+/** True when the node URL is unencrypted HTTP. */
+export function isPlainHttpNode(url: string | null | undefined): boolean {
+  return String(url || "").trim().toLowerCase().startsWith("http://");
+}
+
 /** Normalize a node base URL from user input. */
 export function normalizeNodeUrl(nodeBase: string | null | undefined): string {
   let normalized = String(nodeBase || "")

@@ -14,7 +14,8 @@ from pathlib import Path
 
 HOST_NAME = "com.warthog.safetrade"
 GECKO_ID = "contact@warthog.network"
-BUILD = Path("/home/whitefang/webdev/browser-wallet/build")
+ROOT = Path(__file__).resolve().parent.parent
+BUILD = Path(os.environ.get("WARTHOG_EXTENSION_BUILD", ROOT / "build")).resolve()
 HOST = Path(__file__).resolve().parent / "safetrade-native-host.py"
 
 

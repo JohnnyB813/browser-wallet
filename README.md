@@ -76,9 +76,10 @@ Follow these steps to install and run the Warthog Wallet Extension:
 
 Create a `.env` file from `.env.sample`:
 
-- **VITE_APP_ENCRYPTION_KEY**: Encryption key for secure data
 - **VITE_APP_COINGECKO_API_URL**: CoinGecko API for WART price (USD)
-- **VITE_APP_XEGGEX_API_URL**: Legacy Xeggex API (deprecated)
+- **VITE_APP_EXPLORER_URL**: Warthog explorer base URL. Defaults to `https://wartscan.io`
+- **VITE_WARTHOG_INDEXER_URL**: Optional DeFi explorer indexer. When unset, a DeFi node uses the public DeFi indexer
+- **VITE_APP_ENCRYPTION_KEY**: Optional build-time storage wrapper. It ships inside the extension and does not protect the wallet password or seed
 
 ---
 

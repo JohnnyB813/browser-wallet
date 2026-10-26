@@ -90,6 +90,7 @@ import {
   readToolbarUnlock,
   storeToolbarUnlock,
 } from "../utils/passkeyHandoff";
+import { isOpaqueSessionToken, newSessionToken } from "../utils/sessionToken";
 
 setPasskeyProductName("Warthog Extension");
 
@@ -593,9 +594,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
     const visible = addresses.map((_, i) => valid ? preferences!.visible[i] !== false : true);
     const selected = valid && Number.isInteger(preferences!.selected) && preferences!.selected >= 0 && preferences!.selected < addresses.length ? preferences!.selected : 0;
     const activeData = data.mnemonic ? deriveAccountAtIndex(data.mnemonic, restoredPath, selected) : data;
-    const sessionToken = opts?.password
-      ? opts.password + Date.now().toString()
-      : "session-" + Date.now().toString();
+    const sessionToken = newSessionToken();
     const expirationTime = Date.now() + 3600 * 1000;
 
     await unlockSigningWorker({
@@ -834,7 +833,7 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
         ? Math.floor(accountIndex)
         : 0;
     const session = await connectLedgerAccount(nextPath, index);
-    const sessionToken = "ledger-" + Date.now().toString();
+    const sessionToken = newSessionToken("ledger");
     const expirationTime = Date.now() + 3600 * 1000;
     const name = accountName.trim() || "Ledger";
     if (
@@ -1452,6 +1451,14 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({
       if (value) setNameState((current) => current || value);
     });
     loadFromChromeStorage("token", (value) => {
+      // Replace a token that still has the password baked into it.
+      if (value && !value.startsWith("ledger-") && !isOpaqueSessionToken(value)) {
+        const next = newSessionToken();
+        setTokenState((current) => current || next);
+        void saveToBrowserStorage("token", next);
+        setTokenLoaded(true);
+        return;
+      }
       if (value) setTokenState((current) => current || value);
       setTokenLoaded(true);
     });

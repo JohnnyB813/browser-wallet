@@ -5,8 +5,8 @@ import { useNavigate } from "react-router-dom";
 import SenderSummary from "../components/SenderSummary";
 import useWallet from "../hooks/useWallet";
 import { formatWalletAddress, addressToSeed, createTransactionContext, requireDeFiContext, submitTransaction } from "../utils";
-import { explorerBaseUrl } from "../config/nodes";
-import { DEFAULT_FEE_WART } from "../config";
+import { EXPLORER_URL } from "../config";
+import { DEFAULT_TX_FEE } from "../config/network";
 import Jazzicon from "react-jazzicon/dist/Jazzicon";
 import {
   Address,
@@ -63,7 +63,7 @@ function SendFinalStep() {
   >("idle");
   const [transactionHash, setTransactionHash] = useState<string>("");
   const [transactionError, setTransactionError] = useState<string>("");
-  const [customFee, setCustomFee] = useState<string>(DEFAULT_FEE_WART);
+  const [customFee, setCustomFee] = useState<string>(DEFAULT_TX_FEE);
 
   const getAccountFromIndex = async (index: number) => {
     const exported = await exportWalletFromWorker();
@@ -409,7 +409,7 @@ function SendFinalStep() {
                 <p className="text-sm text-white/50 break-all mb-6">
                   Transaction Hash:{" "}
                   <a
-                    href={`${explorerBaseUrl}/tx/${transactionHash}`}
+                    href={`${EXPLORER_URL}/tx/${transactionHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline"

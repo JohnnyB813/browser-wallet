@@ -13,7 +13,7 @@ import { amountExceedsAvailable, insufficientFreeBalanceMessage } from "../utils
 import { nodeForFamily } from "../utils/nodes";
 import { fetchBalanceAndPin } from "../utils/warthogNode";
 import { deriveAccountAtIndex } from "../utils/walletKeys";
-import { DEFAULT_FEE_WART } from "../config";
+import { DEFAULT_TX_FEE } from "../config/network";
 import { sendEthAsset } from "../mobile-port/utils/ethChain";
 import { ETH_USDC, ETH_USDT } from "../mobile-port/utils/ethTokens";
 import { explainExchangeFailure } from "../mobile-port/utils/exchange/http";
@@ -186,7 +186,7 @@ async function walletHold(
     if (!owners.wart || !node) return { text: "0", max: "", failed: false };
     const live = await fetchBalanceAndPin(node, owners.wart);
     const free = Number(live.available);
-    const fee = Number(DEFAULT_FEE_WART);
+    const fee = Number(DEFAULT_TX_FEE);
     const max = Number.isFinite(free) && free > fee ? trimAmount(free - fee) : "";
     return { text: live.available || "0", max, failed: false };
   }
@@ -668,7 +668,7 @@ export default function SafeTradePage() {
     const account = wallet.seedPhrase
       ? Account.fromPrivateKeyHex(deriveAccountAtIndex(wallet.seedPhrase, wallet.pathType, wallet.selectedWalletIndex).privateKey)
       : Account.fromPrivateKeyHex(wallet.privateKey || "");
-    const fee = RoundedFee.fromE8(BigInt(Math.round(parseFloat(DEFAULT_FEE_WART) * 1e8)), false);
+    const fee = RoundedFee.fromE8(BigInt(Math.round(parseFloat(DEFAULT_TX_FEE) * 1e8)), false);
     if (!fee) throw new Error("Invalid fee.");
     const context = await createTransactionContext(wallet.nodeList, mainnetIndex, fee, NonceId.random());
     const toAddr = Address.fromHex(to);

@@ -10,6 +10,7 @@ import { isFirefoxBrowser } from "../utils/browserName";
 import { isWebAuthnAvailable } from "../utils/passkeyWallet";
 import { isPasskeyHandedOff } from "../utils/passkeyHandoff";
 import { clearPasskeyWaiting, paintPasskeyWaiting } from "../utils/passkeyUi";
+import { newSessionToken } from "../utils/sessionToken";
 import { encryptWallet } from "../utils/warthogWalletCrypto";
 
 type SecureStep = "save" | "backup";
@@ -145,10 +146,8 @@ function SecureSetup() {
       }
       if (password) {
         setPassword(password);
-        setToken(password + Date.now().toString());
-      } else {
-        setToken("passkey-" + Date.now().toString());
       }
+      setToken(newSessionToken());
       setName(name);
       setNameList([name]);
       await saveCurrentAsNamedWallet(name, password || null, {
@@ -180,7 +179,7 @@ function SecureSetup() {
     setBusy(true);
     setError(null);
     try {
-      setToken("session-" + Date.now().toString());
+      setToken(newSessionToken());
       if (walletName.trim()) {
         setName(walletName.trim());
         setNameList([walletName.trim()]);

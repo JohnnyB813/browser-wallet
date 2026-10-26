@@ -6,6 +6,7 @@ import NodeCard from "../components/NodeCard";
 import { PRESET_NODES, type NodeNetwork, type WalletNode } from "../config/network";
 import {
   familyLabel,
+  isPlainHttpNode,
   labelForNodeUrl,
   nodeForFamily,
   normalizeNodeUrl,
@@ -291,6 +292,12 @@ function SelectNode({ family }: { family?: NodeNetwork } = {}) {
         <p className="text-white/45 text-xs mb-3 leading-relaxed">
           SafeTrade buys on the Warthog mainnet, and there is no Warthog
           testnet for it, so it needs a mainnet node.
+        </p>
+      ) : null}
+
+      {isPlainHttpNode(nodeForFamily(nodeList, family ?? tab, selectedNodeUrls)?.url) ? (
+        <p className="text-amber-300 text-xs mb-3 leading-relaxed">
+          The selected node uses plain HTTP. Someone on the network can read, reorder, or drop the transactions you submit. Prefer an HTTPS node.
         </p>
       ) : null}
 

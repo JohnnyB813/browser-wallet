@@ -19,7 +19,7 @@ import {
 import { DEFAULT_TX_FEE } from "../config/network";
 import { normalizeNodeUrl } from "./nodes";
 import { nodeRead } from "./warthogNode";
-import { formatBalanceBreakdown } from "./balanceBreakdown";
+import { formatAmountFromRaw, formatBalanceBreakdown } from "./balanceBreakdown";
 import { runWithUnlockedAccount } from "./signingBridge";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 
@@ -226,16 +226,6 @@ export function normalizeAssetHash(raw: string): string {
 export function isValidAssetHash(hash: string): boolean {
   const h = normalizeAssetHash(hash);
   return h.length === 64 && /^[0-9a-f]+$/.test(h);
-}
-
-function formatAmountFromRaw(raw: bigint | number | string, precision = 8): string {
-  const value = BigInt(raw);
-  const divisor = 10n ** BigInt(precision);
-  const whole = value / divisor;
-  const frac = value % divisor;
-  if (precision === 0) return whole.toString();
-  const fracStr = frac.toString().padStart(precision, "0").replace(/0+$/, "");
-  return fracStr ? `${whole}.${fracStr}` : whole.toString();
 }
 
 function formatBalanceObj(obj: unknown, decimals = 8): string {
