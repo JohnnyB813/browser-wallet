@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import safetradeMark from "../assets/safetrade-favicon.png";
-import { Account, Address, NonceId, RoundedFee, Wart, type TransactionJson } from "warthog-ts";
+import { Address, NonceId, RoundedFee, Wart, type TransactionJson } from "warthog-ts";
 import Header from "../components/Header";
 import NetworkBadge from "../components/chains/NetworkBadge";
 import SpendConfirm, { useSpendFlow } from "../components/SpendConfirm";
@@ -12,7 +12,7 @@ import { createTransactionContext, submitTransaction } from "../utils";
 import { amountExceedsAvailable, insufficientFreeBalanceMessage } from "../utils/balanceBreakdown";
 import { nodeForFamily } from "../utils/nodes";
 import { fetchBalanceAndPin } from "../utils/warthogNode";
-import { deriveAccountAtIndex } from "../utils/walletKeys";
+import { signPreparedWarthog } from "../utils/signingBridge";
 import { DEFAULT_TX_FEE } from "../config/network";
 import { sendEthAsset } from "../mobile-port/utils/ethChain";
 import { ETH_USDC, ETH_USDT } from "../mobile-port/utils/ethTokens";
@@ -653,7 +653,7 @@ export default function SafeTradePage() {
 
   async function sendWart(to: string, wartAmount: string) {
     if (wallet.ledgerAccount) throw new Error("Ledger WART deposits use Send on the Warthog home.");
-    if (!wallet.seedPhrase && !wallet.privateKey) throw new Error("Unlock the wallet before depositing WART.");
+    if (!wallet.signingUnlocked) throw new Error("Unlock the wallet before depositing WART.");
     const live =
       wallet.wallet && mainnetNode
         ? await fetchBalanceAndPin(mainnetNode, wallet.wallet)
@@ -665,16 +665,17 @@ export default function SafeTradePage() {
         unit: "WART",
       }));
     }
-    const account = wallet.seedPhrase
-      ? Account.fromPrivateKeyHex(deriveAccountAtIndex(wallet.seedPhrase, wallet.pathType, wallet.selectedWalletIndex).privateKey)
-      : Account.fromPrivateKeyHex(wallet.privateKey || "");
     const fee = RoundedFee.fromE8(BigInt(Math.round(parseFloat(DEFAULT_TX_FEE) * 1e8)), false);
     if (!fee) throw new Error("Invalid fee.");
     const context = await createTransactionContext(wallet.nodeList, mainnetIndex, fee, NonceId.random());
     const toAddr = Address.fromHex(to);
     const parsed = Wart.parse(wartAmount);
     if (!toAddr || !parsed) throw new Error("SafeTrade returned an address this wallet cannot pay.");
-    const tx = context.transferWart(account, toAddr, parsed);
+    const tx = await signPreparedWarthog(context, {
+      op: "wartTransfer",
+      toAddr: toAddr.hex,
+      amountE8: parsed.E8.toString(),
+    }, wallet.wallet || undefined);
     await submitTransaction(wallet.nodeList, mainnetIndex, tx as TransactionJson);
   }
 

@@ -1,4 +1,14 @@
-import { Account } from "warthog-ts";
+import {
+  WarthogDeFiTransactionContext,
+  type AnyTransactionContext,
+  type LegacyTransactionJson,
+  type TransactionJson,
+} from "warthog-ts";
+import type { ChainPublic } from "../workers/phraseSign";
+import type { WarthogSignOp, WarthogSignRequest } from "../workers/warthogSign";
+import type { PathType } from "./walletKeys";
+
+export type { ChainPublic, WarthogSignOp, WarthogSignRequest };
 
 type WorkerResponse = {
   requestId: number;
@@ -15,6 +25,7 @@ const pending = new Map<
 >();
 
 function readAutoLockMinutes(): number {
+  if (typeof localStorage === "undefined") return 15;
   const minutes = Number(localStorage.getItem("warthogAutoLockMinutes"));
   return [1, 5, 15, 30, 60].includes(minutes) ? minutes : 15;
 }
@@ -116,7 +127,7 @@ export async function getSigningStatus(): Promise<{
   };
 }
 
-/** Explicit user export only (Show key / download). */
+/** Explicit user export only (Show key / download / encrypted backup). */
 export async function exportWalletFromWorker() {
   const r = await callWorker("exportWallet");
   return r.wallet as {
@@ -127,41 +138,103 @@ export async function exportWalletFromWorker() {
   };
 }
 
-/**
- * Borrow the key for one Account construction on this turn, then drop the local copy.
- * Canonical key stays in the worker.
- */
-export async function runWithUnlockedAccount<T>(
-  fn: (account: Account) => T | Promise<T>,
-  expectedAddress?: string,
-): Promise<T> {
-  const status = await getSigningStatus();
-  if (!status.unlocked) {
-    throw new Error("Wallet is locked — unlock to sign");
-  }
-  const wallet = await exportWalletFromWorker();
-  try {
-    if (expectedAddress && wallet.address?.toLowerCase() !== expectedAddress.toLowerCase()) {
-      throw new Error("The active account changed. Review the transaction again.");
-    }
-    const account = Account.fromPrivateKeyHex(wallet.privateKey);
-    return await fn(account);
-  } finally {
-    wallet.privateKey = "";
-  }
+export function warthogContextFields(
+  ctx: AnyTransactionContext,
+): Pick<WarthogSignRequest, "family" | "pinHash" | "pinHeight" | "nonceId" | "feeE8"> {
+  return {
+    family: ctx instanceof WarthogDeFiTransactionContext ? "defi" : "legacy",
+    pinHash: ctx.chainPin.pinHash,
+    pinHeight: ctx.chainPin.pinHeight,
+    nonceId: ctx.nonceId.value,
+    feeE8: ctx.fee.E8.toString(),
+  };
 }
 
-export async function runWithUnlockedPrivateKey<T>(
-  fn: (privateKeyHex: string) => T | Promise<T>,
-): Promise<T> {
+function reviveWarthogTx(value: unknown): TransactionJson | LegacyTransactionJson {
+  if (!value || typeof value !== "object") throw new Error("Could not sign the Warthog transaction.");
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (item && typeof item === "object" && "$bigint" in item) {
+      const raw = (item as { $bigint?: unknown }).$bigint;
+      if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
+        throw new Error("Could not sign the Warthog transaction.");
+      }
+      out[key] = BigInt(raw);
+    } else {
+      out[key] = item;
+    }
+  }
+  if (typeof out.signature65 !== "string" || out.signature65.length === 0) {
+    throw new Error("Could not sign the Warthog transaction.");
+  }
+  return out as TransactionJson;
+}
+
+/** Ask the worker to sign. The private key stays in the worker. */
+export async function signWarthogInWorker(
+  request: WarthogSignRequest,
+  expectedAddress?: string,
+): Promise<TransactionJson | LegacyTransactionJson> {
   const status = await getSigningStatus();
-  if (!status.unlocked) {
-    throw new Error("Wallet is locked — unlock to sign");
+  if (!status.unlocked) throw new Error("Wallet is locked — unlock to sign");
+  const result = await callWorker("signWarthog", {
+    request,
+    expectedAddress,
+  });
+  return reviveWarthogTx(result.tx);
+}
+
+export async function signPreparedWarthog(
+  ctx: AnyTransactionContext,
+  op: WarthogSignOp,
+  expectedAddress?: string,
+): Promise<TransactionJson | LegacyTransactionJson> {
+  return signWarthogInWorker({ ...warthogContextFields(ctx), ...op }, expectedAddress);
+}
+
+/** Public ETH, Bitcoin, and Solana addresses for one account. Null when the worker has no phrase. */
+export async function chainPublicFromWorker(index: number): Promise<ChainPublic | null> {
+  const status = await getSigningStatus();
+  if (!status.unlocked || !status.hasMnemonic) return null;
+  const result = await callWorker("chainPublic", { index });
+  return result.chains as ChainPublic;
+}
+
+/** Switch the active Warthog key inside the worker. The phrase stays there. */
+export async function activateWorkerAccount(
+  pathType: PathType,
+  index: number,
+): Promise<{ address: string; publicKey: string }> {
+  const result = await callWorker("activateAccount", { pathType, index });
+  const address = String(result.address || "");
+  const publicKey = String(result.publicKey || "");
+  if (!address || !publicKey) throw new Error("Could not switch accounts");
+  return { address, publicKey };
+}
+
+export async function signEthereumInWorker(index: number, unsignedSerialized: string): Promise<string> {
+  const result = await callWorker("signEthereum", { index, unsignedSerialized });
+  const signature = String(result.signature || "");
+  if (!signature) throw new Error("Could not sign the Ethereum transaction.");
+  return signature;
+}
+
+export async function signSolanaInWorker(index: number, message: Uint8Array): Promise<Uint8Array> {
+  const result = await callWorker("signSolana", { index, message });
+  const signature = result.signature;
+  if (!(signature instanceof Uint8Array) || signature.length !== 64) {
+    throw new Error("Could not sign the Solana transaction.");
   }
-  const wallet = await exportWalletFromWorker();
-  try {
-    return await fn(wallet.privateKey);
-  } finally {
-    wallet.privateKey = "";
-  }
+  return signature;
+}
+
+export async function signBitcoinInWorker(
+  index: number,
+  psbt: Uint8Array,
+): Promise<{ hex: string; txid: string }> {
+  const result = await callWorker("signBitcoin", { index, psbt });
+  const hex = String(result.hex || "");
+  const txid = String(result.txid || "");
+  if (!hex || !/^[0-9a-f]{64}$/i.test(txid)) throw new Error("Could not sign the Bitcoin transaction.");
+  return { hex, txid };
 }

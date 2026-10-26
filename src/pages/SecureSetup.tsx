@@ -2,7 +2,7 @@
  * Guided secure setup after create / restore — wartbunker parity.
  * Step 2: name + passkey/password  →  Step 3: write down seed → Save & open
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import useWallet from "../hooks/useWallet";
@@ -27,6 +27,7 @@ function SecureSetup() {
   const state = (location.state || {}) as LocationState;
   const {
     seedPhrase,
+    setSeedPhrase,
     wallet,
     signingUnlocked,
     setPassword,
@@ -66,12 +67,30 @@ function SecureSetup() {
     }
   }, [wallet, signingUnlocked, navigate]);
 
+  const clearSeedRef = useRef(setSeedPhrase);
+  clearSeedRef.current = setSeedPhrase;
+  const setupMounted = useRef(false);
+  useEffect(() => {
+    setupMounted.current = true;
+    return () => {
+      setupMounted.current = false;
+      // Strict mode remounts this effect immediately. Wait a turn so the
+      // backup screen can show the phrase, then drop it once the screen is gone.
+      window.setTimeout(() => {
+        if (!setupMounted.current) clearSeedRef.current(null);
+      }, 0);
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void import("../utils/signingBridge").then(({ exportWalletFromWorker }) =>
       exportWalletFromWorker()
         .then((exported) => {
-          if (!cancelled) setBackupPrivateKey(exported.privateKey || null);
+          const key = exported.privateKey || null;
+          exported.privateKey = "";
+          exported.mnemonic = null;
+          if (!cancelled) setBackupPrivateKey(key);
         })
         .catch(() => {
           if (!cancelled) setBackupPrivateKey(null);
@@ -79,6 +98,7 @@ function SecureSetup() {
     );
     return () => {
       cancelled = true;
+      setBackupPrivateKey(null);
     };
   }, []);
 
@@ -210,6 +230,8 @@ function SecureSetup() {
         },
         downloadPassword,
       );
+      exported.privateKey = "";
+      exported.mnemonic = null;
       const blob = new Blob([encrypted], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

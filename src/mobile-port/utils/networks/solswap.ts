@@ -306,7 +306,7 @@ export async function sendSpl(input: {
   /** Token program that owns the mint. Classic SPL when omitted. */
   program?: string;
 }): Promise<{ signature: string }> {
-  const owner = currentSolanaOwner();
+  const owner = await currentSolanaOwner();
   const destination = base58.encode(assertSolAddress(input.toOwner));
   if (destination === owner.address) throw new Error('That address is this wallet.');
   const rawAmount = parseUnits(input.amount, input.decimals, input.symbol);

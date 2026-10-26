@@ -7,7 +7,7 @@ import { ed25519 } from "@noble/curves/ed25519";
 import { deriveEthAddress, deriveEthWallet } from "../src/mobile-port/utils/evmAddress";
 import { chainAddresses, deriveChainKeys } from "../src/mobile-port/utils/networks/derive";
 import { slip10Derive } from "../src/mobile-port/utils/networks/slip10";
-import { getSessionAccountIndex, getSessionMnemonic, setChainSession } from "../src/mobile-port/utils/sessionVault";
+import { getSessionAccountIndex, getSessionMnemonic, setChainSession, setSessionAccountIndex } from "../src/mobile-port/utils/sessionVault";
 import { WALLET_NETWORKS } from "../src/config/walletNetworks";
 import { accountPreferencesKey, parseStringList } from "../src/utils/accountPreferences";
 import { deriveAccountAtIndex } from "../src/utils/walletKeys";
@@ -35,17 +35,19 @@ describe("one address per account and network", () => {
     }
   });
 
-  test("the default signing keys follow the selected account, not index zero", () => {
-    setChainSession(phrase, 2);
-    expect(deriveEthWallet(getSessionMnemonic()).address).toBe(deriveEthAddress(phrase, 2));
-    const keys = deriveChainKeys(getSessionMnemonic());
+  test("the default signing index follows the selected account, not index zero", () => {
+    setSessionAccountIndex(2);
+    expect(deriveEthWallet(phrase).address).toBe(deriveEthAddress(phrase, 2));
+    const keys = deriveChainKeys(phrase);
     expect(keys.btcAddress).toBe(chainAddresses(phrase, 2).btcAddress);
     expect(keys.solAddress).toBe(chainAddresses(phrase, 2).solAddress);
     keys.btcPrivateKey.fill(0); keys.solPrivateKey.fill(0);
   });
 
-  test("clearing the session clears the phrase and derivation index", () => {
+  test("the session keeps the account index and not the recovery phrase", () => {
     setChainSession(phrase, 3);
+    expect(getSessionMnemonic()).toBe("");
+    expect(getSessionAccountIndex()).toBe(3);
     setChainSession(null);
     expect(getSessionMnemonic()).toBe("");
     expect(getSessionAccountIndex()).toBe(0);

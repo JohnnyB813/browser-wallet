@@ -13,14 +13,12 @@ import {
   TokenDecimals,
   Wart,
   WarthogDeFiApi,
-  type TransactionJson,
-  type WarthogDeFiTransactionContext,
 } from "warthog-ts";
 import { DEFAULT_TX_FEE } from "../config/network";
 import { normalizeNodeUrl } from "./nodes";
 import { nodeRead } from "./warthogNode";
 import { formatAmountFromRaw, formatBalanceBreakdown } from "./balanceBreakdown";
-import { runWithUnlockedAccount } from "./signingBridge";
+import { signPreparedWarthog, type WarthogSignOp } from "./signingBridge";
 import { ensureHostPermission, hostPermissionError, privilegedFetch } from "./hostAccess";
 
 /** Matches mobile-wallet AssetBalance / OpenOrders shapes. */
@@ -163,15 +161,10 @@ async function resolveFee(
   return preferred;
 }
 
-type BuildFn = (
-  ctx: WarthogDeFiTransactionContext,
-  account: Account,
-) => TransactionJson;
-
 async function signAndSubmit(
   nodeBase: string,
   address: string,
-  buildTx: BuildFn,
+  op: WarthogSignOp,
   opts?: { fee?: string; nonceId?: number },
 ): Promise<{ txHash: string; nonce: number }> {
   const api = createDefiApi(nodeBase);
@@ -180,7 +173,7 @@ async function signAndSubmit(
   const nonce = NonceId.fromNumber(nonceId);
   if (!nonce) throw new Error(`Invalid nonce ${nonceId}`);
 
-  let ctx: WarthogDeFiTransactionContext;
+  let ctx;
   try {
     ctx = await api.createTransactionContext(fee, nonce);
   } catch (e) {
@@ -195,8 +188,8 @@ async function signAndSubmit(
   }
 
   // warthog-ts serializes bigints to numbers inside request(), so no local
-  // serializer is needed here.
-  const tx = await runWithUnlockedAccount((account) => buildTx(ctx, account), address);
+  // serializer is needed here. The worker signs and returns the transaction.
+  const tx = await signPreparedWarthog(ctx, op, address);
   const submit = await api.submitTransaction(tx);
   if (!submit.success) {
     const err = submit.error || "Node rejected transaction";
@@ -562,13 +555,12 @@ export async function createAssetTx(
   );
   if (!totalSupply) throw new Error("Invalid total supply");
 
-  return signAndSubmit(
-    nodeBase,
-    address,
-    (ctx, account) =>
-      ctx.createAssets(account, totalSupply, precision, assetName),
-    { fee: params.fee },
-  );
+  return signAndSubmit(nodeBase, address, {
+    op: "assetCreation",
+    supplyU64: totalSupply.amount.toString(),
+    decimals: precision.decimals,
+    name: assetName,
+  }, { fee: params.fee });
 }
 
 export async function transferAssetTx(
@@ -593,24 +585,32 @@ export async function transferAssetTx(
   if (!recipient) throw new Error("Invalid recipient address");
 
   const amountStr = String(params.amount).trim().replace(",", ".");
-  return signAndSubmit(
-    nodeBase,
-    address,
-    (ctx, account) => {
-      if (params.isLiquidity) {
-        const units = Liquidity.parse(amountStr);
-        if (!units) throw new Error("Invalid liquidity amount");
-        return ctx.transferLiquidity(account, hash, recipient, units);
-      }
-      const precision = new TokenDecimals(
-        Math.min(Math.max(params.decimals || 8, 0), 18),
-      );
-      const tokenAmount = Funds.parse(amountStr, precision);
-      if (!tokenAmount) throw new Error("Invalid token amount");
-      return ctx.transferAsset(account, hash, recipient, tokenAmount);
-    },
-    { fee: params.fee },
-  );
+  let op: WarthogSignOp;
+  if (params.isLiquidity) {
+    const units = Liquidity.parse(amountStr);
+    if (!units) throw new Error("Invalid liquidity amount");
+    op = {
+      op: "tokenTransfer",
+      assetHash: hash,
+      isLiquidity: true,
+      toAddr: recipient.hex,
+      amountU64: units.E8.toString(),
+    };
+  } else {
+    const precision = new TokenDecimals(
+      Math.min(Math.max(params.decimals || 8, 0), 18),
+    );
+    const tokenAmount = Funds.parse(amountStr, precision);
+    if (!tokenAmount) throw new Error("Invalid token amount");
+    op = {
+      op: "tokenTransfer",
+      assetHash: hash,
+      isLiquidity: false,
+      toAddr: recipient.hex,
+      amountU64: tokenAmount.amount.toString(),
+    };
+  }
+  return signAndSubmit(nodeBase, address, op, { fee: params.fee });
 }
 
 export async function limitSwapTx(
@@ -640,25 +640,27 @@ export async function limitSwapTx(
   const limit = Price.fromHex(limitHex);
   if (!limit) throw new Error("Invalid limit price encoding");
   const amountStr = String(params.amount).trim().replace(",", ".");
+  let amountU64: string;
+  if (params.isBuy) {
+    const wartAmount = Wart.parse(amountStr);
+    if (!wartAmount) throw new Error("Invalid WART amount");
+    amountU64 = wartAmount.E8.toString();
+  } else {
+    const precision = new TokenDecimals(
+      Math.min(Math.max(params.assetDecimals || 8, 0), 18),
+    );
+    const tokenAmount = Funds.parse(amountStr, precision);
+    if (!tokenAmount) throw new Error("Invalid token amount");
+    amountU64 = tokenAmount.amount.toString();
+  }
 
-  return signAndSubmit(
-    nodeBase,
-    address,
-    (ctx, account) => {
-      if (params.isBuy) {
-        const wartAmount = Wart.parse(amountStr);
-        if (!wartAmount) throw new Error("Invalid WART amount");
-        return ctx.buy(account, hash, wartAmount, limit);
-      }
-      const precision = new TokenDecimals(
-        Math.min(Math.max(params.assetDecimals || 8, 0), 18),
-      );
-      const tokenAmount = Funds.parse(amountStr, precision);
-      if (!tokenAmount) throw new Error("Invalid token amount");
-      return ctx.sell(account, hash, tokenAmount, limit);
-    },
-    { fee: params.fee },
-  );
+  return signAndSubmit(nodeBase, address, {
+    op: "limitSwap",
+    assetHash: hash,
+    isBuy: params.isBuy,
+    amountU64,
+    limitHex: limit.toHex(),
+  }, { fee: params.fee });
 }
 
 export async function depositLiquidityTx(
@@ -685,12 +687,12 @@ export async function depositLiquidityTx(
   const wart = Wart.parse(String(params.wartAmount).trim().replace(",", "."));
   if (!wart) throw new Error("Invalid WART amount");
 
-  return signAndSubmit(
-    nodeBase,
-    address,
-    (ctx, account) => ctx.depositLiquidity(account, hash, tokenAmount, wart),
-    { fee: params.fee },
-  );
+  return signAndSubmit(nodeBase, address, {
+    op: "liquidityDeposit",
+    assetHash: hash,
+    amountU64: tokenAmount.amount.toString(),
+    wartE8: wart.E8.toString(),
+  }, { fee: params.fee });
 }
 
 export async function withdrawLiquidityTx(
@@ -705,12 +707,11 @@ export async function withdrawLiquidityTx(
   );
   if (!units) throw new Error("Invalid LP shares amount");
 
-  return signAndSubmit(
-    nodeBase,
-    address,
-    (ctx, account) => ctx.withdrawLiquidity(account, hash, units),
-    { fee: params.fee },
-  );
+  return signAndSubmit(nodeBase, address, {
+    op: "liquidityWithdrawal",
+    assetHash: hash,
+    amountE8: units.E8.toString(),
+  }, { fee: params.fee });
 }
 
 async function resolveOrderCancelTarget(
@@ -792,13 +793,11 @@ export async function cancelOrderTargetTx(
     throw new Error(`Invalid cancel nonce ${target.cancelNonceId}`);
   }
 
-  return signAndSubmit(
-    nodeBase,
-    address,
-    (ctx, account) =>
-      ctx.cancelTransaction(account, target.cancelHeight, cancelNonce),
-    { fee: params.fee },
-  );
+  return signAndSubmit(nodeBase, address, {
+    op: "cancelation",
+    cancelHeight: target.cancelHeight,
+    cancelNonceId: target.cancelNonceId,
+  }, { fee: params.fee });
 }
 
 /** Parse open-order entries into a flat list for the UI. */

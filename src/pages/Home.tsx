@@ -35,7 +35,7 @@ import { isToolbarActionPopup, openLedgerHost, openLedgerInSidePanel } from "../
 import { reloadDocumentOnce } from "../utils/extensionNav";
 import { DEFAULT_TX_FEE } from "../config/network";
 import { isPlainHttpNode } from "../utils/nodes";
-import { runWithUnlockedAccount } from "../utils/signingBridge";
+import { signPreparedWarthog } from "../utils/signingBridge";
 import {
   type NodeMempoolEntry,
   type NodeTx,
@@ -444,7 +444,11 @@ const Home: React.FC<{ view?: "wallet" | "activity" }> = ({ view = "wallet" }) =
         const fee = RoundedFee.fromE8(BigInt(Math.round(Number(DEFAULT_TX_FEE) * 1e8)), false);
         if (!recipient || !amount || !fee) throw new Error("Invalid transaction request");
         const context = await createTransactionContext(nodeList, selectedNodeIndex, fee, NonceId.random());
-        const transaction = await runWithUnlockedAccount((account) => context.transferWart(account, recipient, amount), wallet);
+        const transaction = await signPreparedWarthog(context, {
+          op: "wartTransfer",
+          toAddr: recipient.hex,
+          amountE8: amount.E8.toString(),
+        }, wallet);
         const hash = await submitTransaction(nodeList, selectedNodeIndex, transaction);
         await approveRequest(undefined, hash);
         setShowApprovalBanner(false);

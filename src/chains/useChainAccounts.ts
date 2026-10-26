@@ -1,9 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import useWallet from "../hooks/useWallet";
-import { deriveEthAddress } from "../mobile-port/utils/evmAddress";
-import { chainAddresses } from "../mobile-port/utils/networks/derive";
-import { setChainSession } from "../mobile-port/utils/sessionVault";
-import { exportWalletFromWorker, getSigningStatus } from "../utils/signingBridge";
+import { setSessionAccountIndex } from "../mobile-port/utils/sessionVault";
+import { chainPublicFromWorker } from "../utils/signingBridge";
 import { WALLET_NETWORKS, type WalletNetworkId, type BrowserChain } from "../config/walletNetworks";
 export type { BrowserChain } from "../config/walletNetworks";
 
@@ -19,65 +17,54 @@ export const CHAIN_LABEL: Record<BrowserChain, string> = {
   solana: "Solana",
 };
 
+type ChainAccounts = {
+  ethAddress: string;
+  btcAddress: string;
+  solAddress: string;
+};
+
 function readChain(): BrowserChain {
   const saved = localStorage.getItem(KEY);
   return ORDER.includes(saved as BrowserChain) ? (saved as BrowserChain) : "wart";
 }
 
 export function useChainAccounts(syncSession = false) {
-  const { seedPhrase, canAddAccounts, signingUnlocked, selectedWalletIndex, wallet, activeNetwork, setActiveNetwork } = useWallet();
-  const [recovered, setRecovered] = useState("");
-  const [phrasePending, setPhrasePending] = useState(false);
+  const { canAddAccounts, signingUnlocked, selectedWalletIndex, wallet, activeNetwork, setActiveNetwork } = useWallet();
+  const [accounts, setAccounts] = useState<ChainAccounts | null>(null);
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
-    const direct = seedPhrase?.trim() ?? "";
-    if (direct || !signingUnlocked || !canAddAccounts) {
-      setRecovered("");
-      setPhrasePending(false);
+    if (!syncSession) return;
+    setSessionAccountIndex(signingUnlocked ? selectedWalletIndex : 0);
+  }, [syncSession, signingUnlocked, selectedWalletIndex]);
+
+  useEffect(() => {
+    if (!signingUnlocked || !canAddAccounts) {
+      setAccounts(null);
+      setSettled(true);
       return;
     }
     let alive = true;
-    setPhrasePending(true);
+    setSettled(false);
     void (async () => {
       try {
-        const status = await getSigningStatus();
-        if (!alive || !status.hasMnemonic) return;
-        const exported = await exportWalletFromWorker();
-        const mnemonic = exported.mnemonic?.trim() ?? "";
-        exported.privateKey = "";
-        if (alive) setRecovered(mnemonic);
+        const pubs = await chainPublicFromWorker(selectedWalletIndex);
+        if (!alive) return;
+        setAccounts(pubs ? {
+          ethAddress: pubs.ethAddress,
+          btcAddress: pubs.btcAddress,
+          solAddress: pubs.solAddress,
+        } : null);
       } catch {
-        if (alive) setRecovered("");
+        if (alive) setAccounts(null);
       } finally {
-        if (alive) setPhrasePending(false);
+        if (alive) setSettled(true);
       }
     })();
     return () => {
       alive = false;
     };
-  }, [seedPhrase, signingUnlocked, canAddAccounts, wallet]);
-
-  const phrase = seedPhrase?.trim() || recovered;
-
-  useEffect(() => {
-    if (!syncSession) return;
-    setChainSession(signingUnlocked ? phrase : null, selectedWalletIndex);
-    return () => setChainSession(null);
-  }, [phrase, signingUnlocked, selectedWalletIndex, syncSession]);
-
-  const accounts = useMemo(() => {
-    if (!phrase) return null;
-    try {
-      const derived = chainAddresses(phrase, selectedWalletIndex);
-      return {
-        ethAddress: deriveEthAddress(phrase, selectedWalletIndex),
-        btcAddress: derived.btcAddress,
-        solAddress: derived.solAddress,
-      };
-    } catch {
-      return null;
-    }
-  }, [phrase, selectedWalletIndex]);
+  }, [signingUnlocked, canAddAccounts, selectedWalletIndex, wallet]);
 
   const chains: BrowserChain[] = accounts
     ? ["wart", "ethereum", "bitcoin", "hemi", "solana"]
@@ -112,5 +99,6 @@ export function useChainAccounts(syncSession = false) {
   };
   const address = active === "wart" ? wallet || "" : active === "bitcoin"
     ? accounts?.btcAddress || "" : active === "solana" ? accounts?.solAddress || "" : accounts?.ethAddress || "";
+  const phrasePending = Boolean(signingUnlocked && canAddAccounts && !settled);
   return { accounts, chains, chain: active, setChain, phrasePending, network, networks, setNetwork, address };
 }
