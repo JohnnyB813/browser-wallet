@@ -1,19 +1,21 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 """SafeTrade native host. Signed extension calls leave with curl -4.
 
 SafeTrade can store an IPv4 allowlist entry and cannot store an IPv6 address.
-This machine's default route to safe.trade is IPv6, and the browser cannot
-choose the family. The host is started by the extension and speaks one
+The browser cannot choose the address family. The host is started by the
+extension and speaks one
 native-messaging message on stdin/stdout.
 """
 
 import json
+import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
 
-CURL = "/usr/bin/curl"
+CURL = shutil.which("curl.exe" if sys.platform == "win32" else "curl")
 ORIGIN = "https://safe.trade/api/v2"
 MAX_BODY = 16384
 MAX_OUT = 900_000
@@ -114,6 +116,9 @@ def handle(message):
     except ValueError:
         return {"error": "The SafeTrade forwarder rejected this request."}
 
+    if not CURL:
+        return {"error": "The SafeTrade IPv4 forwarder needs curl installed on this computer."}
+
     args = [
         CURL,
         "-sS",
@@ -131,6 +136,7 @@ def handle(message):
         args += ["-H", f"{name}: {value}"]
     args += ["-w", f"{MARKER}%{{http_code}}__", f"{ORIGIN}{path}{search}"]
     try:
+        launch_options = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
         # Never inherit the native-messaging stdin. Chrome keeps it open, and
         # curl would block on it.
         if payload is None:
@@ -140,6 +146,7 @@ def handle(message):
                 capture_output=True,
                 timeout=30,
                 check=False,
+                **launch_options,
             )
         else:
             proc = subprocess.run(
@@ -148,6 +155,7 @@ def handle(message):
                 capture_output=True,
                 timeout=30,
                 check=False,
+                **launch_options,
             )
     except (OSError, subprocess.TimeoutExpired):
         return {"error": "The SafeTrade IPv4 forwarder could not reach SafeTrade."}
@@ -166,6 +174,12 @@ def handle(message):
 
 
 def main():
+    if sys.platform == "win32":
+        import msvcrt
+
+        # Text mode changes newline bytes and corrupts native-message framing.
+        msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
+        msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
     try:
         reply = handle(read_message())
     except Exception:

@@ -81,8 +81,11 @@ export function explainExchangeFailure(err: unknown): string {
     if (/untrusted_ip|unauthorized ip|ip address|not trusted|whitelist/i.test(base)) {
       return 'SafeTrade accepted the key and rejected the address it saw. Trust this computer’s public IPv4 on that API key. SafeTrade cannot store an IPv6 address, and a phone on cellular data uses a different address.';
     }
-    if (/native messaging host/i.test(base)) {
-      return 'The SafeTrade IPv4 forwarder is not connected. Reload the extension, then try again.';
+    if (/forbidden|not allowed/i.test(base) && /native (messaging )?host|native application/i.test(base)) {
+      return 'The SafeTrade desktop helper does not allow this extension. Rerun the helper installer for this browser and extension ID, then reload the extension.';
+    }
+    if (/native messaging host|native host|native application/i.test(base)) {
+      return 'Install or repair the SafeTrade desktop helper using scripts/install-safetrade-host.py, then reload the extension.';
     }
     if (err.status === 401 || err.status === 403) {
       return `${base} The request reached SafeTrade. A wrong key or secret, or an address that is listed but not trusted, both look like this.`;
